@@ -1,0 +1,141 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function userDoc(uid) {
+      return get(/databases/$(db)/documents/users/$(uid));
+    }
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'admin@gmail.com' ||
+        (userDoc(request.auth.uid).data.role == 'admin')
+      );
+    }
+    function isOwner(res) {
+      return isSignedIn() && res.data.createdBy == request.auth.uid;
+    }
+    function inviteValid(token, email) {
+      return true; // Simplified for now - validate invite token exists and matches email
+    }
+
+    // Invites (for no-functions staff onboarding)
+    // - Only admin can create invites
+    // - Reads are allowed for signed-in (to validate tokens client-side)
+    match /invites/{token} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['email','role','createdAt','expiresAt','used','usedBy','usedAt'])
+        && request.resource.data.role == 'staff'
+        && request.resource.data.used == false
+        && request.resource.data.email is string
+        && request.resource.data.expiresAt is timestamp;
+
+      // Only invited user can mark invite as used
+      allow update: if isSignedIn()
+        && resource.data.used == false
+        && request.resource.data.used == true
+        && request.resource.data.usedBy == request.auth.uid
+        && request.resource.data.usedAt == request.time
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['used','usedBy','usedAt']);
+    }
+
+    // Users: only owner can read/write their own user doc
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin() || request.auth.token.email == 'admin@gmail.com');
+      allow list: if isAdmin() || request.auth.token.email == 'admin@gmail.com';
+
+      // Allow create by the authenticated user with a valid invite token OR by admin
+      allow create: if isSignedIn() && (
+        (request.auth.uid == uid &&
+         request.resource.data.keys().hasAny(['id','email','displayName','role','createdAt','lastLogin','emailVerified','inviteToken']) &&
+         request.resource.data.role == 'staff' &&
+         inviteValid(request.resource.data.inviteToken, request.resource.data.email))
+        || isAdmin() || request.auth.token.email == 'admin@gmail.com'
+      );
+
+      // Allow updates by owner or admin (e.g., profile updates)
+      allow update: if isSignedIn() && (request.auth.uid == uid || isAdmin() || request.auth.token.email == 'admin@gmail.com');
+      allow delete: if isAdmin() || request.auth.token.email == 'admin@gmail.com';
+    }
+
+    // Settings
+    // - Signed-in: read
+    // - Admin: write
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Logs
+    // - Admin: read/write
+    match /logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Records:
+    // - Admin: full access
+    // - Staff: can create their own (createdBy == uid), read all, update/delete only their own
+    match /records/{recordId} {
+      // Admin full access
+      allow read, write: if false;
+
+      // Staff/regular users
+      allow create: if false;
+      // Allow reading all records (adjust to isOwner(resource) if you want read-own-only)
+      allow read: if false;
+
+      // Update/delete only if owner
+      allow update, delete: if false;
+    }
+
+    // Logs
+    match /logs/{logId} {
+      // Allow reads for signed-in users so dashboard streams don't fail
+      allow read: if isSignedIn();
+      // Allow create by any signed-in user with strict schema
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(['action','details','timestamp'])
+        && request.resource.data.action is string
+        && request.resource.data.details is string;
+      // Only admin can modify or delete logs
+      allow update, delete: if isAdmin();
+    }
+
+    // Notifications
+    match /notifications/{nid} {
+      // Allow creation by signed-in users with strict schema and ownership
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(['title','body','createdAt','read','archived','recordId','userId'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.read == false
+        && request.resource.data.archived == false
+        && request.resource.data.title is string
+        && request.resource.data.body is string;
+
+      // Read for signed-in users (or restrict to admins if preferred)
+      allow read: if isSignedIn();
+
+      // Only admin can update read/archived or delete
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['read','archived']);
+      allow delete: if isAdmin();
+    }
+
+    // Notifications
+    // - Admin: full access
+    // - Signed-in users: can read
+    match /notifications/{notifId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Default deny for everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

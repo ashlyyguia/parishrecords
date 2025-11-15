@@ -1,0 +1,32 @@
+{
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs18"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "holyparish-af472",
+          "appId": "1:92541925437:android:9a1cd349585bf8c1519254",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "holyparish-af472",
+          "configurations": {
+            "android": "1:92541925437:android:9a1cd349585bf8c1519254",
+            "ios": "1:92541925437:ios:6b1df0f8c0163a1f519254",
+            "macos": "1:92541925437:ios:6b1df0f8c0163a1f519254",
+            "web": "1:92541925437:web:4bd0f0414fb9306a519254",
+            "windows": "1:92541925437:web:0442e277efe3a190519254"
+          }
+        }
+      }
+    }
+  }
+}

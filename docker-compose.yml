@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # Cassandra Database
+  cassandra:
+    image: cassandra:4.1
+    container_name: parish_cassandra
+    ports:
+      - "9042:9042"
+      - "7000:7000"
+    environment:
+      - CASSANDRA_CLUSTER_NAME=ParishCluster
+      - CASSANDRA_DC=datacenter1
+      - CASSANDRA_RACK=rack1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      - CASSANDRA_NUM_TOKENS=128
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+      - ./backend/src/database/schema.cql:/docker-entrypoint-initdb.d/schema.cql
+    networks:
+      - parish_network
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Node.js Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: parish_backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CASSANDRA_HOST=cassandra
+      - CASSANDRA_DATACENTER=datacenter1
+      - ALLOWED_ORIGINS=http://localhost:3000,https://parishrecord.app
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    networks:
+      - parish_network
+    volumes:
+      - ./backend/logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: parish_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - backend
+    networks:
+      - parish_network
+    restart: unless-stopped
+
+  # Redis for Caching (Optional)
+  redis:
+    image: redis:7-alpine
+    container_name: parish_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - parish_network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+volumes:
+  cassandra_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  parish_network:
+    driver: bridge

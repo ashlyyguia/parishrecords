@@ -1,0 +1,303 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/user.dart';
+import '../services/auth_service.dart';
+
+class AuthState {
+  final AppUser? user;
+  final bool isLoading;
+  final String? error;
+  final bool isAuthenticated;
+
+  const AuthState({
+    this.user,
+    this.isLoading = false,
+    this.error,
+    this.isAuthenticated = false,
+  });
+
+  AuthState copyWith({
+    AppUser? user,
+    bool? isLoading,
+    String? error,
+    bool? isAuthenticated,
+  }) {
+    return AuthState(
+      user: user ?? this.user,
+      isLoading: isLoading ?? this.isLoading,
+      error: error,
+      isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+    );
+  }
+}
+
+class AuthNotifier extends StateNotifier<AuthState> {
+  final AuthService _authService;
+  StreamSubscription<User?>? _authStateSubscription;
+
+  AuthNotifier(this._authService) : super(const AuthState()) {
+    _init();
+  }
+
+  void _init() {
+    // Listen to auth state changes
+    _authStateSubscription = _authService.authStateChanges.listen((user) async {
+      if (user == null) {
+        state = const AuthState(isAuthenticated: false);
+        return;
+      }
+
+      // Get user data from Firestore
+      try {
+        state = state.copyWith(isLoading: true);
+        final appUser = await _authService.getUserData(user.uid);
+        
+        if (appUser != null) {
+          state = AuthState(
+            user: appUser,
+            isAuthenticated: true,
+            isLoading: false,
+          );
+        } else {
+          // Create user document if it doesn't exist
+          final newUser = AppUser(
+            id: user.uid,
+            email: user.email ?? '',
+            displayName: user.displayName ?? user.email?.split('@').first ?? 'User',
+            photoURL: user.photoURL,
+            createdAt: DateTime.now(),
+            lastLogin: DateTime.now(),
+            emailVerified: user.emailVerified,
+            role: 'user',
+          );
+          
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set(newUser.toMap());
+              
+          state = AuthState(
+            user: newUser,
+            isAuthenticated: true,
+            isLoading: false,
+          );
+        }
+      } catch (e) {
+        debugPrint('Error in auth state changes: $e');
+        state = state.copyWith(
+          error: 'Failed to load user data',
+          isLoading: false,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _authStateSubscription?.cancel();
+    super.dispose();
+  }
+
+  // Sign in with email and password
+  Future<void> signInWithEmailAndPassword(String email, String password) async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      await _authService.signInWithEmailAndPassword(email, password);
+    } on FirebaseAuthException catch (e) {
+      state = state.copyWith(
+        error: _handleAuthError(e),
+        isLoading: false,
+      );
+      rethrow;
+    } catch (e) {
+      state = state.copyWith(
+        error: 'An unknown error occurred',
+        isLoading: false,
+      );
+      rethrow;
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  // Register with email and password
+  Future<void> registerWithEmailAndPassword(
+    String email, 
+    String password, 
+    String displayName,
+  ) async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      await _authService.registerWithEmailAndPassword(email, password, displayName);
+    } on FirebaseAuthException catch (e) {
+      state = state.copyWith(
+        error: _handleAuthError(e),
+        isLoading: false,
+      );
+      rethrow;
+    } catch (e) {
+      state = state.copyWith(
+        error: 'An unknown error occurred',
+        isLoading: false,
+      );
+      rethrow;
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  // Sign in with Google
+  Future<void> signInWithGoogle() async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      await _authService.signInWithGoogle();
+    } on FirebaseAuthException catch (e) {
+      state = state.copyWith(
+        error: _handleAuthError(e),
+        isLoading: false,
+      );
+      rethrow;
+    } catch (e) {
+      state = state.copyWith(
+        error: 'Failed to sign in with Google',
+        isLoading: false,
+      );
+      rethrow;
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  // Sign out
+  Future<void> signOut() async {
+    try {
+      state = state.copyWith(isLoading: true);
+      await _authService.signOut();
+      state = const AuthState();
+    } catch (e) {
+      state = state.copyWith(
+        error: 'Failed to sign out',
+        isLoading: false,
+      );
+      rethrow;
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  // Reset password
+  Future<void> resetPassword(String email) async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      await _authService.sendPasswordResetEmail(email);
+    } on FirebaseAuthException catch (e) {
+      state = state.copyWith(
+        error: _handleAuthError(e),
+        isLoading: false,
+      );
+      rethrow;
+    } catch (e) {
+      state = state.copyWith(
+        error: 'Failed to send password reset email',
+        isLoading: false,
+      );
+      rethrow;
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  // Update user profile
+  Future<void> updateProfile({
+    required String uid,
+    String? displayName,
+    String? photoURL,
+  }) async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      
+      await _authService.updateProfile(
+        uid: uid,
+        displayName: displayName,
+        photoURL: photoURL,
+      );
+      
+      // Update local state
+      if (state.user != null) {
+        final updatedUser = state.user!.copyWith(
+          displayName: displayName ?? state.user!.displayName,
+          photoURL: photoURL ?? state.user!.photoURL,
+        );
+        
+        state = state.copyWith(
+          user: updatedUser,
+          isLoading: false,
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(
+        error: 'Failed to update profile',
+        isLoading: false,
+      );
+      rethrow;
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  // Delete account
+  Future<void> deleteAccount() async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      await _authService.deleteAccount();
+      state = const AuthState();
+    } catch (e) {
+      state = state.copyWith(
+        error: 'Failed to delete account',
+        isLoading: false,
+      );
+      rethrow;
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  // Helper method to handle auth errors
+  String _handleAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'user-not-found':
+        return 'No user found with this email.';
+      case 'wrong-password':
+        return 'Incorrect password.';
+      case 'email-already-in-use':
+        return 'An account already exists with this email.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'weak-password':
+        return 'The password provided is too weak.';
+      case 'user-disabled':
+        return 'This account has been disabled.';
+      case 'too-many-requests':
+        return 'Too many requests. Please try again later.';
+      case 'operation-not-allowed':
+        return 'This operation is not allowed. Please contact support.';
+      case 'requires-recent-login':
+        return 'Please log in again to perform this operation.';
+      default:
+        return e.message ?? 'An error occurred. Please try again.';
+    }
+  }
+}
+
+// Provider
+final authServiceProvider = Provider<AuthService>((ref) {
+  return AuthService();
+});
+
+final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return AuthNotifier(authService);
+});
