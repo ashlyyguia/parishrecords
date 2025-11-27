@@ -10,6 +10,7 @@ class LocalStorageService {
   static const syncQueueBox = 'sync_queue_box';
   static const requestsBox = 'requests_box';
   static const auditsBox = 'audits_box';
+  static const scannedDocumentsBox = 'scanned_documents_box';
   static bool _initialized = false;
 
   static Future<void> init() async {
@@ -29,6 +30,7 @@ class LocalStorageService {
         syncQueueBox,
         requestsBox,
         auditsBox,
+        scannedDocumentsBox,
       ];
       
       // Open each box with error handling
@@ -84,6 +86,7 @@ class LocalStorageService {
       if (Hive.isBoxOpen(syncQueueBox)) await Hive.box(syncQueueBox).clear();
       if (Hive.isBoxOpen(requestsBox)) await Hive.box(requestsBox).clear();
       if (Hive.isBoxOpen(auditsBox)) await Hive.box(auditsBox).clear();
+      if (Hive.isBoxOpen(scannedDocumentsBox)) await Hive.box(scannedDocumentsBox).clear();
       developer.log('🧹 All Hive boxes cleared successfully');
     } catch (e) {
       developer.log('❌ Error clearing Hive boxes: $e');
@@ -101,6 +104,7 @@ class LocalStorageService {
         syncQueueBox,
         requestsBox,
         auditsBox,
+        scannedDocumentsBox,
       ];
       
       for (final boxName in boxes) {
