@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS records_by_type (
   date DATE,
   place TEXT,
   certificate_status TEXT,
+  notes TEXT,
   created_at TIMESTAMP,
   PRIMARY KEY (type, created_at, id)
 ) WITH CLUSTERING ORDER BY (created_at DESC, id ASC);
@@ -181,7 +182,7 @@ CREATE TABLE IF NOT EXISTS death_request (
   processed_at TIMESTAMP,
   processed_by TEXT,
   notification_sent BOOLEAN,
-  PRIMARY KEY (parish_id, id)
+  PRIMARY KEY (id)
 );
  
 -- Certificate requests (staff & admin)

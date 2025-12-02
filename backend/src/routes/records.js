@@ -242,15 +242,21 @@ router.post('/', async (req, res) => {
     // (supports both legacy `metadata.recordId` and current `meta.recordId`).
     let recordId = null;
     let parsedNotes = null;
+    let staffName = null;
     if (notes) {
       try {
         parsedNotes = JSON.parse(notes.toString());
         if (parsedNotes) {
-          if (parsedNotes.metadata && parsedNotes.metadata.recordId) {
-            recordId = parsedNotes.metadata.recordId.toString();
-          } else if (parsedNotes.meta && parsedNotes.meta.recordId) {
-            recordId = parsedNotes.meta.recordId.toString();
+          const metaSection = parsedNotes.metadata || parsedNotes.meta || {};
+          if (metaSection.recordId) {
+            recordId = metaSection.recordId.toString();
           }
+          // Prefer a human-friendly staff / preparer name from the notes metadata
+          staffName =
+            metaSection.staffName ||
+            metaSection.preparedBy ||
+            metaSection.staff ||
+            null;
         }
       } catch (_) {
         // ignore JSON parse errors, we'll generate an ID below
@@ -268,6 +274,14 @@ router.post('/', async (req, res) => {
     const recordName = (text || 'Unnamed Record').toString();
     const recordNotes = notes ? notes.toString() : null;
 
+    // Derive createdBy from notes metadata when available, falling back to
+    // authenticated user information and finally a generic label.
+    const createdBy =
+      (staffName && staffName.toString()) ||
+      (req.user &&
+        (req.user.displayName || req.user.email || req.user.userId || req.user.uid)) ||
+      'staff';
+
     // Insert into specific record type table based on normalized recordType.
     // Even if the frontend does not send separate *Data payloads, we can
     // derive most fields from the rich notes JSON created by the Flutter forms.
@@ -277,13 +291,13 @@ router.post('/', async (req, res) => {
     const deathData = req.body.deathData || (parsedNotes && parsedNotes.deathData) || {};
 
     if (recordType === 'baptism') {
-      await insertBaptismRecord(recordId, baptismData, parishId, recordNotes, certificateStatus);
+      await insertBaptismRecord(recordId, baptismData, parishId, recordNotes, certificateStatus, createdBy);
     } else if (recordType === 'marriage') {
-      await insertMarriageRecord(recordId, marriageData, parishId, recordNotes, certificateStatus);
+      await insertMarriageRecord(recordId, marriageData, parishId, recordNotes, certificateStatus, createdBy);
     } else if (recordType === 'confirmation') {
-      await insertConfirmationRecord(recordId, confirmationData, parishId, recordNotes, certificateStatus);
+      await insertConfirmationRecord(recordId, confirmationData, parishId, recordNotes, certificateStatus, createdBy);
     } else if (recordType === 'death' || recordType === 'funeral') {
-      await insertDeathRecord(recordId, deathData, parishId, recordNotes, certificateStatus);
+      await insertDeathRecord(recordId, deathData, parishId, recordNotes, certificateStatus, createdBy);
     }
 
     // Audit: Sacrament record added
@@ -504,7 +518,7 @@ function parseDateSafe(value) {
 }
 
 // Helper functions for specific record types (aligned with revised schema)
-async function insertBaptismRecord(recordId, data, parishId, recordNotes, certificateStatus) {
+async function insertBaptismRecord(recordId, data, parishId, recordNotes, certificateStatus, createdBy) {
   const {
     registryNo, bookNo, pageNo, lineNo, childName,
     dateOfBirth, placeOfBirth, fatherName, motherName,
@@ -515,6 +529,9 @@ async function insertBaptismRecord(recordId, data, parishId, recordNotes, certif
   const now = new Date();
   const recordDate = parseDateSafe(dateOfBaptism) || parseDateSafe(dateOfBirth) || now;
   const place = placeOfBaptism || placeOfBirth || null;
+  const createdBySafe =
+    (createdBy && createdBy.toString()) ||
+    'staff';
 
   await cassandraClient.execute(
     `INSERT INTO baptism_records 
@@ -538,7 +555,7 @@ async function insertBaptismRecord(recordId, data, parishId, recordNotes, certif
       place,
       now,
       now,
-      null,
+      createdBySafe,
       bookNo,
       pageNo,
       lineNo,
@@ -559,7 +576,7 @@ async function insertBaptismRecord(recordId, data, parishId, recordNotes, certif
   );
 }
 
-async function insertMarriageRecord(recordId, data, parishId, recordNotes, certificateStatus) {
+async function insertMarriageRecord(recordId, data, parishId, recordNotes, certificateStatus, createdBy) {
   let dateOfMarriage = null;
   let placeOfMarriage = null;
   let officiantName = null;
@@ -631,6 +648,9 @@ async function insertMarriageRecord(recordId, data, parishId, recordNotes, certi
       : groomName || brideName || 'Marriage Record';
 
   const normalizedStatus = (certificateStatus || 'pending').toString();
+  const createdBySafe =
+    (createdBy && createdBy.toString()) ||
+    'staff';
 
   await cassandraClient.execute(
     `INSERT INTO marriage_records 
@@ -654,7 +674,7 @@ async function insertMarriageRecord(recordId, data, parishId, recordNotes, certi
       remarks,
       now,
       now,
-      null,
+      createdBySafe,
       bookNo,
       pageNo,
       lineNo,
@@ -674,7 +694,7 @@ async function insertMarriageRecord(recordId, data, parishId, recordNotes, certi
   );
 }
 
-async function insertConfirmationRecord(recordId, data, parishId, recordNotes, certificateStatus) {
+async function insertConfirmationRecord(recordId, data, parishId, recordNotes, certificateStatus, createdBy) {
   let confirmedName = null;
   let dateOfConfirmation = null;
   let placeOfConfirmation = null;
@@ -740,6 +760,9 @@ async function insertConfirmationRecord(recordId, data, parishId, recordNotes, c
   const place = placeOfConfirmation || null;
   const displayName = confirmedName || 'Confirmation Record';
   const normalizedStatus = (certificateStatus || 'pending').toString();
+  const createdBySafe =
+    (createdBy && createdBy.toString()) ||
+    'staff';
 
   await cassandraClient.execute(
     `INSERT INTO confirmation_records 
@@ -761,7 +784,7 @@ async function insertConfirmationRecord(recordId, data, parishId, recordNotes, c
       remarks,
       now,
       now,
-      null,
+      createdBySafe,
       bookNo,
       pageNo,
       lineNo,
@@ -781,7 +804,7 @@ async function insertConfirmationRecord(recordId, data, parishId, recordNotes, c
   );
 }
 
-async function insertDeathRecord(recordId, data, parishId, recordNotes, certificateStatus) {
+async function insertDeathRecord(recordId, data, parishId, recordNotes, certificateStatus, createdBy) {
   let registryNo = null;
   let deceasedName = null;
   let gender = null;
@@ -863,6 +886,9 @@ async function insertDeathRecord(recordId, data, parishId, recordNotes, certific
   const place = placeOfDeath || burialPlace || null;
   const displayName = deceasedName || 'Death Record';
   const normalizedStatus = (certificateStatus || 'pending').toString();
+   const createdBySafe =
+    (createdBy && createdBy.toString()) ||
+    'staff';
 
   await cassandraClient.execute(
     `INSERT INTO death_records 
@@ -892,7 +918,7 @@ async function insertDeathRecord(recordId, data, parishId, recordNotes, certific
       ministerName,
       now,
       now,
-      null,
+      createdBySafe,
       bookNo,
       pageNo,
       lineNo,
