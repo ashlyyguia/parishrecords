@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
@@ -74,14 +73,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       final email = _emailCtrl.text.trim();
       final password = _passwordCtrl.text.trim();
 
-      await ref.read(authProvider.notifier).login(email, password);
+      final (success, message) = await ref
+          .read(authProvider.notifier)
+          .login(email, password);
+
+      if (!success) {
+        if (mounted) {
+          setState(() {
+            _error = message;
+          });
+        }
+        return;
+      }
 
       if (mounted) {
         // Check if user is admin and redirect accordingly
         final authState = ref.read(authProvider);
         final userEmail = email.toLowerCase();
-        final isAdmin = userEmail == 'admin@gmail.com' || authState.user?.role == 'admin';
-        
+        final isAdmin =
+            userEmail == 'admin@gmail.com' || authState.user?.role == 'admin';
+
         if (isAdmin) {
           context.go('/admin/overview');
         } else {
@@ -447,16 +458,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         // Forgot Password
         TextButton(
           onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Forgot password feature coming soon'),
-                backgroundColor: colorScheme.inverseSurface,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            );
+            context.push('/forgot-password');
           },
           child: Text(
             'Forgot your password?',
@@ -500,42 +502,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
         const SizedBox(height: 20),
 
-        // Temporary Admin Access Button (Development Only)
-        if (kDebugMode) ...[
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: () {
-                // Direct admin access for testing
-                context.go('/admin/overview');
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.admin_panel_settings, size: 18),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      'TEMP: Access Admin Dashboard',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-
         // Register with Invite Button
         SizedBox(
           width: double.infinity,
@@ -556,7 +522,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
-                    'Register with Invite Code',
+                    'Create an Account',
                     style: TextStyle(fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis,
                   ),

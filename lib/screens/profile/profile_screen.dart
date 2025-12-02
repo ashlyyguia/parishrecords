@@ -19,6 +19,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _notifEmail = false;
   bool _notifPush = false;
   String? _avatarPath;
+  bool _isOnline = true;
+  bool _checkingOnline = false;
+
+  void _refreshOnlineStatus() async {
+    if (_checkingOnline) return;
+
+    setState(() {
+      _checkingOnline = true;
+    });
+
+    bool isOnline = false;
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      isOnline = false;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _isOnline = isOnline;
+      _checkingOnline = false;
+    });
+  }
 
   @override
   void initState() {
@@ -27,11 +52,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _notifEmail = box.get('notif_email', defaultValue: true) as bool;
     _notifPush = box.get('notif_push', defaultValue: true) as bool;
     _avatarPath = box.get('profile_image_path') as String?;
+    _refreshOnlineStatus();
   }
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
+    final email = user?.email ?? '';
     return Scaffold(
       appBar: AppBar(title: const Text('Profile & Settings')),
       body: ListView(
@@ -94,15 +121,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        user != null 
-                          ? user.displayName ?? user.email.split('@').first
-                          : 'User',
+                        user != null
+                            ? user.displayName ?? user.email.split('@').first
+                            : 'User',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
+                      if (email.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          email,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.7),
+                              ),
+                        ),
+                      ],
                       const SizedBox(height: 6),
                       Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
                         children: [
                           Chip(label: Text(_capitalize(user?.role ?? ''))),
+                          if (user?.emailVerified == true)
+                            Chip(
+                              avatar: const Icon(
+                                Icons.verified,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                              label: const Text('Verified email'),
+                              backgroundColor: Colors.green,
+                              labelStyle: const TextStyle(color: Colors.white),
+                            ),
                         ],
                       ),
                     ],
@@ -115,31 +167,50 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF1F0),
+              color: _isOnline
+                  ? const Color(0xFFE6F4EA)
+                  : const Color(0xFFFFF1F0),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFE6E8EF)),
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.do_not_disturb_on_total_silence,
-                  color: Colors.redAccent,
+                Icon(
+                  _isOnline
+                      ? Icons.cloud_done_outlined
+                      : Icons.do_not_disturb_on_total_silence,
+                  color: _isOnline ? Colors.green : Colors.redAccent,
                 ),
                 const SizedBox(width: 10),
-                const Expanded(child: Text('You are currently offline')),
+                Expanded(
+                  child: Text(
+                    _checkingOnline
+                        ? 'Checking connection...'
+                        : _isOnline
+                        ? 'You are online and connected to the server'
+                        : 'You are currently offline. Changes will sync when connection is restored.',
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.redAccent,
+                    color: _isOnline ? Colors.green : Colors.redAccent,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
-                    'Offline',
-                    style: TextStyle(color: Colors.white),
+                  child: Text(
+                    _isOnline ? 'Online' : 'Offline',
+                    style: const TextStyle(color: Colors.white),
                   ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh status',
+                  onPressed: _checkingOnline ? null : _refreshOnlineStatus,
                 ),
               ],
             ),
@@ -276,27 +347,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       email: user.email,
                       password: oldCtrl.text,
                     );
-                    
+
                     // Re-authenticate user
                     await fb.FirebaseAuth.instance.currentUser!
                         .reauthenticateWithCredential(credential);
-                    
+
                     // Update password
-                    if (newCtrl.text.isNotEmpty && 
+                    if (newCtrl.text.isNotEmpty &&
                         newCtrl.text == confirmCtrl.text) {
                       await fb.FirebaseAuth.instance.currentUser!
                           .updatePassword(newCtrl.text);
                       if (ctx.mounted) {
                         ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(content: Text('Password updated successfully')),
+                          const SnackBar(
+                            content: Text('Password updated successfully'),
+                          ),
                         );
                         Navigator.pop(ctx, true);
                       }
                     } else {
-                      setState(() => err = 'Passwords do not match or are empty');
+                      setState(
+                        () => err = 'Passwords do not match or are empty',
+                      );
                     }
                   } on fb.FirebaseAuthException catch (e) {
-                    setState(() => err = e.message ?? 'Failed to update password');
+                    setState(
+                      () => err = e.message ?? 'Failed to update password',
+                    );
                   } catch (e) {
                     setState(() => err = 'An error occurred');
                   }

@@ -5,16 +5,16 @@ Write-Host "Initializing Parish Record Database..." -ForegroundColor Green
 
 # Create the keyspace and tables
 $cqlScript = @"
--- Create keyspace
-CREATE KEYSPACE IF NOT EXISTS parish_records 
+-- Create keyspace used by Cloud Functions (functions/src/api.ts)
+CREATE KEYSPACE IF NOT EXISTS parish
 WITH REPLICATION = {
     'class': 'SimpleStrategy',
     'replication_factor': 1
 };
 
-USE parish_records;
+USE parish;
 
--- Users table
+-- Users table (generic, for potential future use)
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY,
     email TEXT,
@@ -25,114 +25,81 @@ CREATE TABLE IF NOT EXISTS users (
     email_verified BOOLEAN
 );
 
--- Parish records table
-CREATE TABLE IF NOT EXISTS records (
-    id UUID PRIMARY KEY,
-    type TEXT,
-    name TEXT,
-    date_of_event DATE,
-    place_of_event TEXT,
-    notes TEXT,
-    certificate_status TEXT,
-    created_by UUID,
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP
-);
-
+-- Core sacramental records used by /api/records
 -- Baptism records
+DROP TABLE IF EXISTS baptism_records;
 CREATE TABLE IF NOT EXISTS baptism_records (
-    id UUID PRIMARY KEY,
-    registry_no TEXT,
-    book_no TEXT,
-    page_no TEXT,
-    line_no TEXT,
-    child_name TEXT,
-    child_gender TEXT,
-    date_of_birth DATE,
-    place_of_birth TEXT,
-    father_name TEXT,
-    mother_name TEXT,
-    godfather_name TEXT,
-    godmother_name TEXT,
-    minister_name TEXT,
-    date_of_baptism DATE,
-    place_of_baptism TEXT,
-    certificate_issued BOOLEAN,
-    created_by UUID,
-    created_at TIMESTAMP
-);
+    parish_id TEXT,
+    baptism_date TIMESTAMP,
+    record_id UUID,
+    person_name TEXT,
+    birthdate DATE,
+    parents TEXT,
+    scanned_document_url TEXT,
+    ocr_text TEXT,
+    created_by TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY ((parish_id), baptism_date, record_id)
+) WITH CLUSTERING ORDER BY (baptism_date DESC, record_id DESC);
 
 -- Marriage records
+DROP TABLE IF EXISTS marriage_records;
 CREATE TABLE IF NOT EXISTS marriage_records (
-    id UUID PRIMARY KEY,
-    registry_no TEXT,
+    parish_id TEXT,
+    marriage_date TIMESTAMP,
+    record_id UUID,
     groom_name TEXT,
     bride_name TEXT,
-    date_of_marriage DATE,
-    place_of_marriage TEXT,
-    witness1_name TEXT,
-    witness2_name TEXT,
-    minister_name TEXT,
-    certificate_issued BOOLEAN,
-    created_by UUID,
-    created_at TIMESTAMP
-);
+    witness_names LIST<TEXT>,
+    scanned_document_url TEXT,
+    ocr_text TEXT,
+    created_by TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY ((parish_id), marriage_date, record_id)
+) WITH CLUSTERING ORDER BY (marriage_date DESC, record_id DESC);
 
 -- Confirmation records
+DROP TABLE IF EXISTS confirmation_records;
 CREATE TABLE IF NOT EXISTS confirmation_records (
-    id UUID PRIMARY KEY,
-    registry_no TEXT,
-    confirmed_name TEXT,
-    date_of_confirmation DATE,
-    place_of_confirmation TEXT,
-    sponsor_name TEXT,
-    minister_name TEXT,
-    certificate_issued BOOLEAN,
-    created_by UUID,
-    created_at TIMESTAMP
-);
-
--- Death records
-CREATE TABLE IF NOT EXISTS death_records (
-    id UUID PRIMARY KEY,
-    registry_no TEXT,
-    deceased_name TEXT,
-    date_of_death DATE,
-    place_of_death TEXT,
-    cause_of_death TEXT,
-    age_at_death INT,
-    burial_date DATE,
-    burial_place TEXT,
-    certificate_issued BOOLEAN,
-    created_by UUID,
-    created_at TIMESTAMP
-);
-
--- Certificate requests
-CREATE TABLE IF NOT EXISTS certificate_requests (
-    id UUID PRIMARY KEY,
-    record_type TEXT,
+    parish_id TEXT,
+    confirmation_date TIMESTAMP,
     record_id UUID,
+    person_name TEXT,
+    sponsor_names LIST<TEXT>,
+    scanned_document_url TEXT,
+    ocr_text TEXT,
+    created_by TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY ((parish_id), confirmation_date, record_id)
+) WITH CLUSTERING ORDER BY (confirmation_date DESC, record_id DESC);
+
+-- Certificate requests used by /api/requests
+DROP TABLE IF EXISTS certificate_requests;
+CREATE TABLE IF NOT EXISTS certificate_requests (
+    parish_id TEXT,
+    request_id UUID,
+    record_id UUID,
+    request_type TEXT,
     requester_name TEXT,
-    requester_contact TEXT,
-    purpose TEXT,
     status TEXT,
     requested_at TIMESTAMP,
     processed_at TIMESTAMP,
-    processed_by UUID
-);
+    processed_by TEXT,
+    notification_sent BOOLEAN,
+    PRIMARY KEY ((parish_id), request_id)
+) WITH CLUSTERING ORDER BY (request_id DESC);
 
--- Audit log
-CREATE TABLE IF NOT EXISTS audit_log (
-    id UUID PRIMARY KEY,
-    user_id UUID,
+-- User audit log used by /api/admin/logs
+DROP TABLE IF EXISTS user_audit_log;
+CREATE TABLE IF NOT EXISTS user_audit_log (
+    parish_id TEXT,
+    action_time TIMESTAMP,
+    user_id TEXT,
+    target_record_id UUID,
     action TEXT,
-    table_name TEXT,
-    record_id UUID,
-    old_values TEXT,
-    new_values TEXT,
-    timestamp TIMESTAMP
-);
+    details TEXT,
+    PRIMARY KEY ((parish_id), action_time, user_id, target_record_id)
+) WITH CLUSTERING ORDER BY (action_time DESC);
 "@
 
 # Write CQL script to temp file

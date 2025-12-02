@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
-import '../../../services/local_storage.dart';
 import '../../../services/export_service.dart';
+import '../../../services/admin_repository.dart';
 
 class AdminBackupPage extends StatefulWidget {
   const AdminBackupPage({super.key});
@@ -12,22 +11,49 @@ class AdminBackupPage extends StatefulWidget {
 
 class _AdminBackupPageState extends State<AdminBackupPage> {
   String _dataType = 'All Records';
+  String _dateRange = 'All Time';
   final List<_HistoryItem> _history = [];
   bool _busy = false;
+  final AdminRepository _adminRepo = AdminRepository();
 
-  List<Map<String, dynamic>> _collectRecords() {
-    final box = Hive.box(LocalStorageService.recordsBox);
-    final values = box.values.toList();
-    final List<Map<String, dynamic>> items = [];
-    for (final v in values) {
-      if (v is Map) {
-        final m = Map<String, dynamic>.from(v);
-        if (_dataType != 'All Records') {
-          if ((m['type'] ?? '').toString().toLowerCase() != _dataType.toLowerCase()) continue;
-        }
-        items.add(m);
-      }
+  int _dateRangeDays() {
+    switch (_dateRange) {
+      case 'Today':
+        return 1;
+      case 'Last 7 Days':
+        return 7;
+      case 'Last 30 Days':
+        return 30;
+      default:
+        return 3650;
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchRecords() async {
+    final records = await _adminRepo.listRecent(
+      limit: 1000,
+      days: _dateRangeDays(),
+    );
+    final List<Map<String, dynamic>> items = [];
+
+    for (final r in records) {
+      if (_dataType != 'All Records') {
+        if (r.type.name.toLowerCase() != _dataType.toLowerCase()) {
+          continue;
+        }
+      }
+      items.add({
+        'id': r.id,
+        'type': r.type.name,
+        'name': r.name,
+        'date': r.date.toIso8601String(),
+        'imagePath': r.imagePath,
+        'parish': r.parish,
+        'notes': r.notes,
+        'certificateStatus': r.certificateStatus.name,
+      });
+    }
+
     return items;
   }
 
@@ -49,7 +75,7 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
   Future<void> _doExport(bool csv) async {
     setState(() => _busy = true);
     try {
-      final items = _collectRecords();
+      final items = await _fetchRecords();
       final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
       final base = _dataType.replaceAll(' ', '_').toLowerCase();
       if (csv) {
@@ -58,7 +84,40 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
       } else {
         await ExportService.exportJson('export_${base}_$ts.json', items);
       }
-      setState(() => _history.insert(0, _HistoryItem(kind: csv ? 'CSV' : 'JSON', count: items.length, when: DateTime.now())));
+      setState(
+        () => _history.insert(
+          0,
+          _HistoryItem(
+            kind: csv ? 'CSV' : 'JSON',
+            count: items.length,
+            when: DateTime.now(),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _doExportPdf() async {
+    setState(() => _busy = true);
+    try {
+      final items = await _fetchRecords();
+      final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final base = _dataType.replaceAll(' ', '_').toLowerCase();
+      final subtitle = '$_dataType • $_dateRange';
+      await ExportService.exportPdf(
+        'report_${base}_$ts.pdf',
+        items,
+        title: 'Parish Records Report',
+        subtitle: subtitle,
+      );
+      setState(
+        () => _history.insert(
+          0,
+          _HistoryItem(kind: 'PDF', count: items.length, when: DateTime.now()),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -66,7 +125,10 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final viewportWidth = MediaQuery.of(context).size.width;
+    final bool isPhoneLayout = viewportWidth < 800;
+
+    Widget content = Padding(
       padding: const EdgeInsets.all(16.0),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -79,7 +141,10 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Data Backup and Export', style: Theme.of(context).textTheme.headlineSmall),
+                  Text(
+                    'Data Backup and Export',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
                   const SizedBox(height: 12),
                   Wrap(
                     crossAxisAlignment: WrapCrossAlignment.center,
@@ -90,28 +155,76 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
                       DropdownButton<String>(
                         value: _dataType,
                         items: const [
-                          DropdownMenuItem(value: 'All Records', child: Text('All Records')),
-                          DropdownMenuItem(value: 'baptism', child: Text('Baptism')),
-                          DropdownMenuItem(value: 'marriage', child: Text('Marriage')),
-                          DropdownMenuItem(value: 'funeral', child: Text('Funeral')),
-                          DropdownMenuItem(value: 'confirmation', child: Text('Confirmation')),
+                          DropdownMenuItem(
+                            value: 'All Records',
+                            child: Text('All Records'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'baptism',
+                            child: Text('Baptism'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'marriage',
+                            child: Text('Marriage'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'funeral',
+                            child: Text('Funeral'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'confirmation',
+                            child: Text('Confirmation'),
+                          ),
                         ],
-                        onChanged: (v) => setState(() => _dataType = v ?? 'All Records'),
+                        onChanged: (v) =>
+                            setState(() => _dataType = v ?? 'All Records'),
+                      ),
+                      const Text('Date Range:'),
+                      DropdownButton<String>(
+                        value: _dateRange,
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'All Time',
+                            child: Text('All Time'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Today',
+                            child: Text('Today'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Last 7 Days',
+                            child: Text('Last 7 Days'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Last 30 Days',
+                            child: Text('Last 30 Days'),
+                          ),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _dateRange = v ?? 'All Time'),
                       ),
                       FilledButton.icon(
                         onPressed: _busy ? null : () => _doExport(true),
                         icon: const Icon(Icons.table_chart),
-                        label: const Text('Export CSV'),
+                        label: const Text('Download Excel (CSV)'),
                       ),
                       OutlinedButton.icon(
                         onPressed: _busy ? null : () => _doExport(false),
                         icon: const Icon(Icons.data_object),
-                        label: const Text('Export JSON'),
+                        label: const Text('Download Backup (JSON)'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : _doExportPdf,
+                        icon: const Icon(Icons.picture_as_pdf),
+                        label: const Text('Download Report (PDF)'),
                       ),
                     ],
                   ),
                   const SizedBox(height: 24),
-                  Text('Export History', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Export History',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const Divider(),
                   // Use fixed height on narrow screens to avoid Expanded in unconstrained Card
                   if (isNarrow)
@@ -121,12 +234,15 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
                           ? const Center(child: Text('No exports yet'))
                           : ListView.separated(
                               itemCount: _history.length,
-                              separatorBuilder: (_, __) => const Divider(height: 0),
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 0),
                               itemBuilder: (_, i) {
                                 final h = _history[i];
                                 return ListTile(
                                   leading: const Icon(Icons.history),
-                                  title: Text('${h.kind} export • ${h.count} items'),
+                                  title: Text(
+                                    '${h.kind} export • ${h.count} items',
+                                  ),
                                   subtitle: Text(h.when.toLocal().toString()),
                                 );
                               },
@@ -138,12 +254,15 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
                           ? const Center(child: Text('No exports yet'))
                           : ListView.separated(
                               itemCount: _history.length,
-                              separatorBuilder: (_, __) => const Divider(height: 0),
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 0),
                               itemBuilder: (_, i) {
                                 final h = _history[i];
                                 return ListTile(
                                   leading: const Icon(Icons.history),
-                                  title: Text('${h.kind} export • ${h.count} items'),
+                                  title: Text(
+                                    '${h.kind} export • ${h.count} items',
+                                  ),
                                   subtitle: Text(h.when.toLocal().toString()),
                                 );
                               },
@@ -154,46 +273,22 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
             ),
           );
 
-          Widget side = Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Cloud Backup Settings', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  SwitchListTile(
-                    value: false,
-                    onChanged: (_) {},
-                    title: const Text('Automatic Backups'),
-                    subtitle: const Text('This is a local-only app demo. Cloud controls are placeholders.'),
-                  ),
-                ],
-              ),
-            ),
-          );
-
           if (isNarrow) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                main,
-                SizedBox(height: gap),
-                side,
-              ],
-            );
+            return main;
           }
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: main),
-              SizedBox(width: gap),
-              SizedBox(width: 360, child: side),
-            ],
+            children: [Expanded(child: main)],
           );
         },
       ),
     );
+
+    if (isPhoneLayout) {
+      return SingleChildScrollView(child: content);
+    }
+
+    return content;
   }
 }
 

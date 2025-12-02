@@ -3,6 +3,8 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const cassandraClient = require('../database/cassandra');
+const emailService = require('../services/email');
+const { logAudit } = require('../utils/audit');
 
 const router = express.Router();
 
@@ -37,6 +39,15 @@ router.post('/register', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
+
+    // Audit: Account Created
+    await logAudit(req, {
+      userId: userId,
+      action: 'Account Created',
+      resourceType: 'user',
+      resourceId: userId,
+      newValues: { email, displayName, role },
+    });
 
     res.status(201).json({
       message: 'User created successfully',
@@ -82,6 +93,15 @@ router.post('/login', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
+
+    // Audit: User Login
+    await logAudit(req, {
+      userId: user.id,
+      action: 'User Login',
+      resourceType: 'user',
+      resourceId: user.id,
+      newValues: { email: user.email },
+    });
 
     res.json({
       message: 'Login successful',
@@ -143,6 +163,24 @@ router.get('/me', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user' });
+  }
+});
+
+// Send 6-digit verification code email
+router.post('/send-code', async (req, res) => {
+  try {
+    const { email, code } = req.body || {};
+
+    if (!email || !code) {
+      return res.status(400).json({ error: 'Email and code are required' });
+    }
+
+    await emailService.sendVerificationCodeEmail(email.toString(), code.toString());
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Send verification code error:', error);
+    res.status(500).json({ error: 'Failed to send verification code' });
   }
 });
 

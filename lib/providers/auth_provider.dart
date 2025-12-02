@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:parishrecord/models/user.dart';
 import '../services/auth_service.dart';
+import '../services/audit_service.dart';
 
 class AuthState {
   final AppUser? user;
@@ -23,7 +24,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> _init() async {
     // Listen to auth state changes
     _authStateSubscription = _authService.authStateChanges.listen((user) async {
+      final previousUser = state.user;
+
       if (user == null) {
+        if (previousUser != null) {
+          try {
+            await AuditService.log(
+              action: 'logout',
+              userId: previousUser.id,
+              details: 'User ${previousUser.email} logged out',
+            );
+          } catch (_) {}
+        }
         state = const AuthState(user: null, initialized: true);
         return;
       }
@@ -31,16 +43,33 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // Get user data from Firestore
       try {
         final idTokenResult = await user.getIdTokenResult(true);
-        final isAdmin = (idTokenResult.claims?['admin'] == true) || (user.email?.toLowerCase() == 'admin@gmail.com');
+        final isAdmin =
+            (idTokenResult.claims?['admin'] == true) ||
+            (user.email?.toLowerCase() == 'admin@gmail.com');
         final appUser = await _authService.getUserData(user.uid);
         if (appUser != null) {
-          state = AuthState(user: appUser.copyWith(role: isAdmin ? 'admin' : 'staff'), initialized: true);
+          final updatedUser = appUser.copyWith(
+            role: isAdmin ? 'admin' : 'staff',
+          );
+          state = AuthState(user: updatedUser, initialized: true);
+          if (previousUser == null || previousUser.id != updatedUser.id) {
+            try {
+              await AuditService.log(
+                action: 'login',
+                userId: updatedUser.id,
+                details: 'User ${updatedUser.email} logged in',
+              );
+            } catch (_) {}
+          }
           // Auto-sync status fields each time auth changes
-          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-            'lastLogin': FieldValue.serverTimestamp(),
-            'emailVerified': user.emailVerified,
-            'role': isAdmin ? 'admin' : 'staff',
-          }, SetOptions(merge: true));
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+                'lastLogin': FieldValue.serverTimestamp(),
+                'emailVerified': user.emailVerified,
+                'role': isAdmin ? 'admin' : 'staff',
+              }, SetOptions(merge: true));
         } else {
           // Create user document if it doesn't exist
           final email = user.email ?? '';
@@ -54,8 +83,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
             emailVerified: user.emailVerified,
             role: role,
           );
-          await FirebaseFirestore.instance.collection('users').doc(user.uid).set(newUser.toMap(), SetOptions(merge: true));
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set(newUser.toMap(), SetOptions(merge: true));
           state = AuthState(user: newUser, initialized: true);
+          if (previousUser == null || previousUser.id != newUser.id) {
+            try {
+              await AuditService.log(
+                action: 'login',
+                userId: newUser.id,
+                details: 'User ${newUser.email} logged in',
+              );
+            } catch (_) {}
+          }
         }
       } catch (e) {
         debugPrint('Error in auth state changes: $e');
@@ -81,9 +122,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   // Register with email and password
   Future<void> registerWithEmailAndPassword(
-      String email, String password, String displayName) async {
+    String email,
+    String password,
+    String displayName,
+  ) async {
     try {
-      await _authService.registerWithEmailAndPassword(email, password, displayName);
+      await _authService.registerWithEmailAndPassword(
+        email,
+        password,
+        displayName,
+      );
     } on FirebaseAuthException catch (e) {
       throw _handleAuthError(e);
     }
@@ -138,19 +186,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (email.isEmpty || password.isEmpty) {
       return (false, 'Please enter both email and password');
     }
-    
+
     try {
       final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
-      
+
       // The auth state listener will handle the state update
       if (cred.user != null) {
         return (true, 'Login successful');
       }
       return (false, 'Login failed. Please try again.');
-      
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed';
       switch (e.code) {
@@ -182,7 +229,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = const AuthState(initialized: true);
   }
 
-
   /// Reloads the current user from Firebase Auth
   Future<void> reloadUser() async {
     try {
@@ -191,7 +237,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (currentUser != null) {
         final email = currentUser.email ?? currentUser.uid;
         final idTokenResult = await currentUser.getIdTokenResult(true);
-        final role = (idTokenResult.claims?['admin'] == true) ? 'admin' : 'staff';
+        final role = (idTokenResult.claims?['admin'] == true)
+            ? 'admin'
+            : 'staff';
         final appUser = AppUser(
           id: currentUser.uid,
           email: email,

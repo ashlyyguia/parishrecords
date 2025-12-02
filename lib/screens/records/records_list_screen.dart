@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +15,10 @@ class RecordsListScreen extends ConsumerStatefulWidget {
 
 class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
   final _searchCtrl = TextEditingController();
+  RecordType? _selectedType;
+  CertificateStatus? _selectedStatus;
+  String? _selectedParish;
+  DateTimeRange? _dateRange;
 
   @override
   void dispose() {
@@ -21,12 +26,112 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
     super.dispose();
   }
 
+  bool _isCertificateRequest(ParishRecord record) {
+    final notes = record.notes;
+    if (notes == null || notes.isEmpty) return false;
+    try {
+      final decoded = json.decode(notes);
+      if (decoded is! Map<String, dynamic>) return false;
+      final type =
+          (decoded['requestType'] as String?) ??
+          (decoded['request_type'] as String?);
+      return type == 'certificate_request';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _openNewRecordWithOcr() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Scan New Record'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'baptism'),
+            child: const Text('Baptism (OCR)'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'marriage'),
+            child: const Text('Marriage (OCR)'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'confirmation'),
+            child: const Text('Confirmation (OCR)'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'death'),
+            child: const Text('Death (OCR)'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && mounted) {
+      switch (result) {
+        case 'baptism':
+          await context.push('/records/new/baptism', extra: 'ocr');
+          break;
+        case 'marriage':
+          await context.push('/records/new/marriage', extra: 'ocr');
+          break;
+        case 'confirmation':
+          await context.push('/records/new/confirmation', extra: 'ocr');
+          break;
+        case 'death':
+          await context.push('/records/new/death', extra: 'ocr');
+          break;
+      }
+    }
+  }
+
   List<ParishRecord> _filteredRecords(List<ParishRecord> records) {
-    if (_searchCtrl.text.isEmpty) return records;
-    final query = _searchCtrl.text.toLowerCase();
-    return records.where((r) =>
-        r.name.toLowerCase().contains(query) ||
-        r.type.name.toLowerCase().contains(query)).toList();
+    final query = _searchCtrl.text.trim().toLowerCase();
+
+    return records.where((r) {
+      // Type filter
+      if (_selectedType != null && r.type != _selectedType) {
+        return false;
+      }
+
+      // Certificate status filter
+      if (_selectedStatus != null && r.certificateStatus != _selectedStatus) {
+        return false;
+      }
+
+      // Parish filter
+      if (_selectedParish != null && _selectedParish!.isNotEmpty) {
+        final parish = (r.parish ?? '').toLowerCase();
+        if (parish != _selectedParish!.toLowerCase()) {
+          return false;
+        }
+      }
+
+      // Date range filter
+      if (_dateRange != null) {
+        final d = r.date;
+        if (d.isBefore(_dateRange!.start) || d.isAfter(_dateRange!.end)) {
+          return false;
+        }
+      }
+
+      // Text search: name, type, parish, raw notes (OCR / JSON)
+      if (query.isNotEmpty) {
+        final name = r.name.toLowerCase();
+        final type = r.type.name.toLowerCase();
+        final parish = (r.parish ?? '').toLowerCase();
+        final notes = (r.notes ?? '').toLowerCase();
+
+        if (!name.contains(query) &&
+            !type.contains(query) &&
+            !parish.contains(query) &&
+            !notes.contains(query)) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
   }
 
   Future<void> _openNewRecord() async {
@@ -51,15 +156,6 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
             onPressed: () => Navigator.pop(ctx, 'death'),
             child: const Text('Death'),
           ),
-          const Divider(),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'certificate_request'),
-            child: const Text('Certificate Request'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'enhanced_baptism'),
-            child: const Text('Enhanced Baptism Form'),
-          ),
         ],
       ),
     );
@@ -78,12 +174,6 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
         case 'death':
           await context.push('/records/new/death');
           break;
-        case 'certificate_request':
-          await context.push('/records/certificate-request');
-          break;
-        case 'enhanced_baptism':
-          await context.push('/records/enhanced-baptism');
-          break;
       }
     }
   }
@@ -94,7 +184,18 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final df = DateFormat.yMd();
-    
+
+    // Build distinct parish list for filter dropdown
+    final parishes = <String>{};
+    for (final r in records) {
+      final p = r.parish;
+      if (p != null && p.trim().isNotEmpty) {
+        parishes.add(p.trim());
+      }
+    }
+
+    final filteredRecords = _filteredRecords(records);
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: CustomScrollView(
@@ -130,6 +231,28 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
             ),
             actions: [
               Container(
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: colorScheme.tertiary,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colorScheme.tertiary.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: IconButton(
+                  onPressed: _openNewRecordWithOcr,
+                  icon: Icon(
+                    Icons.document_scanner_outlined,
+                    color: colorScheme.onPrimary,
+                  ),
+                  tooltip: 'Add Record with OCR',
+                ),
+              ),
+              Container(
                 margin: const EdgeInsets.only(right: 16),
                 decoration: BoxDecoration(
                   color: colorScheme.primary,
@@ -144,16 +267,13 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                 ),
                 child: IconButton(
                   onPressed: _openNewRecord,
-                  icon: Icon(
-                    Icons.add_rounded,
-                    color: colorScheme.onPrimary,
-                  ),
+                  icon: Icon(Icons.add_rounded, color: colorScheme.onPrimary),
                   tooltip: 'Add New Record',
                 ),
               ),
             ],
           ),
-          
+
           // Search Section
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -173,62 +293,168 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                     ),
                   ],
                 ),
-                child: TextField(
-                  controller: _searchCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'Search records...',
-                    hintText: 'Enter name, type, or date',
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      color: colorScheme.primary,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _searchCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Search records...',
+                        hintText: 'Enter name, parish, or notes',
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: colorScheme.primary,
+                        ),
+                        suffixIcon: _searchCtrl.text.isNotEmpty
+                            ? IconButton(
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() {});
+                                },
+                                icon: Icon(
+                                  Icons.clear_rounded,
+                                  color: colorScheme.onSurface.withValues(
+                                    alpha: 0.6,
+                                  ),
+                                ),
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: colorScheme.surface,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
+                      ),
+                      onChanged: (value) => setState(() {}),
                     ),
-                    suffixIcon: _searchCtrl.text.isNotEmpty
-                        ? IconButton(
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() {});
-                            },
-                            icon: Icon(
-                              Icons.clear_rounded,
-                              color: colorScheme.onSurface.withValues(alpha: 0.6),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        // Type filter
+                        DropdownButton<RecordType?>(
+                          value: _selectedType,
+                          hint: const Text('All types'),
+                          onChanged: (value) {
+                            setState(() => _selectedType = value);
+                          },
+                          items: [
+                            const DropdownMenuItem<RecordType?>(
+                              value: null,
+                              child: Text('All types'),
                             ),
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
+                            ...RecordType.values.map(
+                              (t) => DropdownMenuItem<RecordType?>(
+                                value: t,
+                                child: Text(_capitalize(t.name)),
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Certificate status filter
+                        DropdownButton<CertificateStatus?>(
+                          value: _selectedStatus,
+                          hint: const Text('Any status'),
+                          onChanged: (value) {
+                            setState(() => _selectedStatus = value);
+                          },
+                          items: const [
+                            DropdownMenuItem<CertificateStatus?>(
+                              value: null,
+                              child: Text('Any status'),
+                            ),
+                            DropdownMenuItem<CertificateStatus?>(
+                              value: CertificateStatus.pending,
+                              child: Text('Pending'),
+                            ),
+                            DropdownMenuItem<CertificateStatus?>(
+                              value: CertificateStatus.approved,
+                              child: Text('Approved'),
+                            ),
+                            DropdownMenuItem<CertificateStatus?>(
+                              value: CertificateStatus.rejected,
+                              child: Text('Rejected'),
+                            ),
+                          ],
+                        ),
+                        // Parish filter
+                        if (parishes.isNotEmpty)
+                          DropdownButton<String?>(
+                            value: _selectedParish,
+                            hint: const Text('All parishes'),
+                            onChanged: (value) {
+                              setState(() => _selectedParish = value);
+                            },
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('All parishes'),
+                              ),
+                              ...parishes.map(
+                                (p) => DropdownMenuItem<String?>(
+                                  value: p,
+                                  child: Text(p),
+                                ),
+                              ),
+                            ],
+                          ),
+                        // Date range filter
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final now = DateTime.now();
+                            final initialStart =
+                                _dateRange?.start ??
+                                DateTime(now.year, now.month, 1);
+                            final initialEnd =
+                                _dateRange?.end ??
+                                now.add(const Duration(days: 1));
+                            final picked = await showDateRangePicker(
+                              context: context,
+                              firstDate: DateTime(1900),
+                              lastDate: DateTime(now.year + 1),
+                              initialDateRange: DateTimeRange(
+                                start: initialStart,
+                                end: initialEnd,
+                              ),
+                            );
+                            if (picked != null) {
+                              setState(() => _dateRange = picked);
+                            }
+                          },
+                          icon: const Icon(Icons.calendar_today, size: 16),
+                          label: Text(
+                            _dateRange == null
+                                ? 'Any date'
+                                : '${df.format(_dateRange!.start)} - ${df.format(_dateRange!.end)}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                    filled: true,
-                    fillColor: colorScheme.surface,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 16,
-                    ),
-                  ),
-                  onChanged: (value) => setState(() {}),
+                  ],
                 ),
               ),
             ),
           ),
-          
+
           // Records List
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
             sliver: records.isEmpty
-                ? SliverFillRemaining(
-                    child: _buildEmptyState(colorScheme),
-                  )
+                ? SliverFillRemaining(child: _buildEmptyState(colorScheme))
                 : SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final filteredRecords = _filteredRecords(records);
-                        if (index >= filteredRecords.length) return null;
-                        
-                        final record = filteredRecords[index];
-                        return _buildRecordCard(record, colorScheme, df);
-                      },
-                      childCount: _filteredRecords(records).length,
-                    ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      if (index >= filteredRecords.length) return null;
+
+                      final record = filteredRecords[index];
+                      return _buildRecordCard(record, colorScheme, df);
+                    }, childCount: filteredRecords.length),
                   ),
           ),
         ],
@@ -289,15 +515,19 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
     );
   }
 
-  Widget _buildRecordCard(ParishRecord record, ColorScheme colorScheme, DateFormat df) {
+  Widget _buildRecordCard(
+    ParishRecord record,
+    ColorScheme colorScheme,
+    DateFormat df,
+  ) {
+    final isSyncing = record.id.startsWith('tmp_');
+    final isCertificateRequest = _isCertificateRequest(record);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Card(
         elevation: 2,
         shadowColor: colorScheme.shadow.withValues(alpha: 0.1),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: InkWell(
           onTap: () => context.push('/records/${record.id}'),
           borderRadius: BorderRadius.circular(16),
@@ -309,7 +539,9 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _getRecordTypeColor(record.type).withValues(alpha: 0.1),
+                    color: _getRecordTypeColor(
+                      record.type,
+                    ).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -318,9 +550,9 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                     size: 24,
                   ),
                 ),
-                
+
                 const SizedBox(width: 16),
-                
+
                 // Record Details
                 Expanded(
                   child: Column(
@@ -354,104 +586,89 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                     ],
                   ),
                 ),
-                
-                // Status Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(record.certificateStatus).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    record.certificateStatus.name.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: _getStatusColor(record.certificateStatus),
-                    ),
-                  ),
-                ),
-                
-                const SizedBox(width: 8),
-                
-                // Actions Menu
-                PopupMenuButton<String>(
-                  onSelected: (v) async {
-                    if (v == 'scan') {
-                      await context.push('/records/${record.id}/scan');
-                    } else if (v == 'verify') {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('Verify & submit feature coming soon'),
-                          backgroundColor: colorScheme.inverseSurface,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+
+                // Status Badge (only for certificate requests)
+                if (isCertificateRequest)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(
+                            record.certificateStatus,
+                          ).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          record.certificateStatus.name.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: _getStatusColor(record.certificateStatus),
                           ),
                         ),
-                      );
-                    } else if (v == 'issue') {
-                      if (record.certificateStatus == CertificateStatus.approved) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('Certificate issued successfully'),
-                            backgroundColor: Colors.green,
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                      ),
+                      if (isSyncing)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Syncing…',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
                             ),
                           ),
-                        );
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('Certificate must be approved by admin first'),
-                            backgroundColor: Colors.orange,
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        );
-                      }
-                    }
-                  },
-                  icon: Icon(
-                    Icons.more_vert_rounded,
-                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                    ],
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: 'scan',
-                      child: Row(
-                        children: [
-                          Icon(Icons.document_scanner_outlined, size: 18, color: colorScheme.primary),
-                          const SizedBox(width: 12),
-                          const Text('Scan Certificate (OCR)'),
-                        ],
+
+                const SizedBox(width: 8),
+
+                // Actions: View details & Edit
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'View details',
+                      onPressed: () => context.push('/records/${record.id}'),
+                      icon: Icon(
+                        Icons.visibility_outlined,
+                        color: colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                     ),
-                    PopupMenuItem(
-                      value: 'verify',
-                      child: Row(
-                        children: [
-                          Icon(Icons.verified_outlined, size: 18, color: colorScheme.secondary),
-                          const SizedBox(width: 12),
-                          const Text('Verify & Submit'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'issue',
-                      child: Row(
-                        children: [
-                          Icon(Icons.print_outlined, size: 18, color: colorScheme.tertiary),
-                          const SizedBox(width: 12),
-                          const Text('Issue Certificate'),
-                        ],
+                    IconButton(
+                      tooltip: 'Edit record',
+                      onPressed: () {
+                        switch (record.type) {
+                          case RecordType.baptism:
+                            context.push('/records/new/baptism', extra: record);
+                            break;
+                          case RecordType.marriage:
+                            context.push(
+                              '/records/new/marriage',
+                              extra: record,
+                            );
+                            break;
+                          case RecordType.confirmation:
+                            context.push(
+                              '/records/new/confirmation',
+                              extra: record,
+                            );
+                            break;
+                          case RecordType.funeral:
+                            context.push('/records/new/death', extra: record);
+                            break;
+                        }
+                      },
+                      icon: Icon(
+                        Icons.edit_outlined,
+                        color: colorScheme.primary,
                       ),
                     ),
                   ],
@@ -501,5 +718,6 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
     }
   }
 
-  String _capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+  String _capitalize(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 }

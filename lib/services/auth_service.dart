@@ -14,7 +14,9 @@ class AuthService {
 
   // Sign in with email and password
   Future<UserCredential> signInWithEmailAndPassword(
-      String email, String password) async {
+    String email,
+    String password,
+  ) async {
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
@@ -28,16 +30,19 @@ class AuthService {
 
   // Register with email and password
   Future<UserCredential> registerWithEmailAndPassword(
-      String email, String password, String displayName) async {
+    String email,
+    String password,
+    String displayName,
+  ) async {
     try {
-      UserCredential userCredential =
-          await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      UserCredential userCredential = await _auth
+          .createUserWithEmailAndPassword(email: email, password: password);
 
       // Update user display name
       await userCredential.user?.updateDisplayName(displayName);
+
+      // Send verification email to the new user
+      // await userCredential.user?.sendEmailVerification();
 
       // Create user document in Firestore
       await _createUserDocument(userCredential.user!, displayName);
@@ -72,8 +77,10 @@ class AuthService {
   // Get user data
   Future<AppUser?> getUserData(String uid) async {
     try {
-      DocumentSnapshot doc =
-          await _firestore.collection('users').doc(uid).get();
+      DocumentSnapshot doc = await _firestore
+          .collection('users')
+          .doc(uid)
+          .get();
       if (doc.exists) {
         return AppUser.fromMap(doc.data() as Map<String, dynamic>);
       }

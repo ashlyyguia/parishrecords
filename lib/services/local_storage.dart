@@ -10,7 +10,6 @@ class LocalStorageService {
   static const syncQueueBox = 'sync_queue_box';
   static const requestsBox = 'requests_box';
   static const auditsBox = 'audits_box';
-  static const scannedDocumentsBox = 'scanned_documents_box';
   static bool _initialized = false;
 
   static Future<void> init() async {
@@ -19,7 +18,7 @@ class LocalStorageService {
         await Hive.initFlutter();
         _initialized = true;
       }
-      
+
       // List of all boxes to initialize
       final boxes = [
         usersBox,
@@ -30,14 +29,13 @@ class LocalStorageService {
         syncQueueBox,
         requestsBox,
         auditsBox,
-        scannedDocumentsBox,
       ];
-      
+
       // Open each box with error handling
       for (final boxName in boxes) {
         await _openBoxSafely(boxName);
       }
-      
+
       developer.log('✅ All Hive boxes initialized successfully');
     } catch (e) {
       developer.log('❌ Error initializing Hive: $e');
@@ -53,14 +51,15 @@ class LocalStorageService {
       }
     } catch (e) {
       developer.log('⚠️ Error opening box $boxName: $e');
-      
+
       // If it's a lock error, try to recover
-      if (e.toString().contains('lock failed') || e.toString().contains('locked')) {
+      if (e.toString().contains('lock failed') ||
+          e.toString().contains('locked')) {
         developer.log('🔄 Attempting to recover from lock error for $boxName');
-        
+
         // Wait a bit and try again
         await Future.delayed(const Duration(milliseconds: 500));
-        
+
         try {
           if (!Hive.isBoxOpen(boxName)) {
             await Hive.openBox(boxName);
@@ -78,15 +77,30 @@ class LocalStorageService {
 
   static Future<void> clearAll() async {
     try {
-      if (Hive.isBoxOpen(usersBox)) await Hive.box(usersBox).clear();
-      if (Hive.isBoxOpen(recordsBox)) await Hive.box(recordsBox).clear();
-      if (Hive.isBoxOpen(notificationsBox)) await Hive.box(notificationsBox).clear();
-      if (Hive.isBoxOpen(logsBox)) await Hive.box(logsBox).clear();
-      if (Hive.isBoxOpen(settingsBox)) await Hive.box(settingsBox).clear();
-      if (Hive.isBoxOpen(syncQueueBox)) await Hive.box(syncQueueBox).clear();
-      if (Hive.isBoxOpen(requestsBox)) await Hive.box(requestsBox).clear();
-      if (Hive.isBoxOpen(auditsBox)) await Hive.box(auditsBox).clear();
-      if (Hive.isBoxOpen(scannedDocumentsBox)) await Hive.box(scannedDocumentsBox).clear();
+      if (Hive.isBoxOpen(usersBox)) {
+        await Hive.box(usersBox).clear();
+      }
+      if (Hive.isBoxOpen(recordsBox)) {
+        await Hive.box(recordsBox).clear();
+      }
+      if (Hive.isBoxOpen(notificationsBox)) {
+        await Hive.box(notificationsBox).clear();
+      }
+      if (Hive.isBoxOpen(logsBox)) {
+        await Hive.box(logsBox).clear();
+      }
+      if (Hive.isBoxOpen(settingsBox)) {
+        await Hive.box(settingsBox).clear();
+      }
+      if (Hive.isBoxOpen(syncQueueBox)) {
+        await Hive.box(syncQueueBox).clear();
+      }
+      if (Hive.isBoxOpen(requestsBox)) {
+        await Hive.box(requestsBox).clear();
+      }
+      if (Hive.isBoxOpen(auditsBox)) {
+        await Hive.box(auditsBox).clear();
+      }
       developer.log('🧹 All Hive boxes cleared successfully');
     } catch (e) {
       developer.log('❌ Error clearing Hive boxes: $e');
@@ -104,16 +118,15 @@ class LocalStorageService {
         syncQueueBox,
         requestsBox,
         auditsBox,
-        scannedDocumentsBox,
       ];
-      
+
       for (final boxName in boxes) {
         if (Hive.isBoxOpen(boxName)) {
           await Hive.box(boxName).close();
           developer.log('📦 Closed Hive box: $boxName');
         }
       }
-      
+
       developer.log('✅ All Hive boxes closed successfully');
     } catch (e) {
       developer.log('❌ Error closing Hive boxes: $e');

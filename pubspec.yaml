@@ -41,17 +41,16 @@ dependencies:
   path_provider: ^2.1.1
   http: ^1.2.2
   image_picker: ^1.0.7
-  google_mlkit_text_recognition: ^0.15.0
-  google_mlkit_commons: ^0.11.0
   fl_chart: ^0.68.0
   shared_preferences: ^2.2.2
   intl: ^0.20.2
   csv: ^5.1.1
   universal_html: ^2.2.4
   uuid: ^4.2.1
-  image: ^4.2.0
   pdf: ^3.10.7
   printing: ^5.12.0
+  camera: ^0.11.0+2
+  google_mlkit_text_recognition: ^0.13.0
   
   # Firebase (web-compatible versions)
   firebase_core: ^4.2.0

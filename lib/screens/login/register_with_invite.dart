@@ -7,7 +7,8 @@ class RegisterWithInviteScreen extends StatefulWidget {
   const RegisterWithInviteScreen({super.key});
 
   @override
-  State<RegisterWithInviteScreen> createState() => _RegisterWithInviteScreenState();
+  State<RegisterWithInviteScreen> createState() =>
+      _RegisterWithInviteScreenState();
 }
 
 class _RegisterWithInviteScreenState extends State<RegisterWithInviteScreen> {
@@ -42,7 +43,9 @@ class _RegisterWithInviteScreenState extends State<RegisterWithInviteScreen> {
     final token = _tokenCtrl.text.trim();
 
     if (email.isEmpty || password.isEmpty || token.isEmpty) {
-      setState(() => _error = 'Please fill in email, password, and invite token');
+      setState(
+        () => _error = 'Please fill in email, password, and invite token',
+      );
       return;
     }
 
@@ -53,7 +56,9 @@ class _RegisterWithInviteScreenState extends State<RegisterWithInviteScreen> {
 
     try {
       // Validate invite exists and is valid
-      final inviteRef = FirebaseFirestore.instance.collection('invites').doc(token);
+      final inviteRef = FirebaseFirestore.instance
+          .collection('invites')
+          .doc(token);
       final inviteSnap = await inviteRef.get();
       if (!inviteSnap.exists) {
         setState(() => _error = 'Invalid invite token');
@@ -81,6 +86,7 @@ class _RegisterWithInviteScreenState extends State<RegisterWithInviteScreen> {
         email: email,
         password: password,
       );
+      // await cred.user?.sendEmailVerification();
       final uid = cred.user!.uid;
 
       // Create user profile with inviteToken (validated by rules)
@@ -109,7 +115,11 @@ class _RegisterWithInviteScreenState extends State<RegisterWithInviteScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Registration successful. You can sign in now.')),
+        const SnackBar(
+          content: Text(
+            'Registration successful. A verification email has been sent. Please check your inbox.',
+          ),
+        ),
       );
       Navigator.of(context).pop();
     } on FirebaseAuthException catch (e) {
@@ -148,7 +158,9 @@ class _RegisterWithInviteScreenState extends State<RegisterWithInviteScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _tokenCtrl,
-                    decoration: const InputDecoration(labelText: 'Invite token'),
+                    decoration: const InputDecoration(
+                      labelText: 'Invite token',
+                    ),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 8),
@@ -158,7 +170,11 @@ class _RegisterWithInviteScreenState extends State<RegisterWithInviteScreen> {
                   FilledButton(
                     onPressed: _loading ? null : _register,
                     child: _loading
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Text('Create Account'),
                   ),
                 ],

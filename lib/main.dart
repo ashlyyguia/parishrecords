@@ -6,28 +6,21 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'providers/auth_provider.dart';
-// Removed theme mode provider usage; app uses a single light theme
 import 'services/local_storage.dart';
-import 'services/sync_service.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'services/push_service.dart';
-import 'services/local_notifications_service.dart';
 import 'screens/login/login_screen.dart';
 import 'screens/dashboard/enhanced_dashboard_screen.dart';
 import 'screens/shell/bottom_nav_shell.dart';
 import 'screens/records/records_list_screen.dart';
+import 'screens/records/certificate_requests_list_screen.dart';
 import 'screens/records/record_detail_screen.dart';
-import 'screens/ocr/ocr_capture_screen.dart';
-import 'screens/notifications/notifications_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'screens/admin/admin_shell.dart';
-import 'screens/admin/pages/activity_page.dart';
 import 'screens/admin/pages/overview_page.dart';
 import 'screens/admin/pages/users_page.dart';
 import 'screens/admin/pages/analytics_page.dart';
 import 'screens/admin/pages/records_page.dart';
-import 'screens/admin/pages/notifications_page.dart';
 import 'screens/admin/pages/backup_page.dart';
 import 'screens/admin/pages/settings_page.dart';
 import 'screens/admin/pages/certificates_page.dart';
@@ -37,27 +30,39 @@ import 'screens/records/confirmation_form_screen.dart';
 import 'screens/records/death_form_screen.dart';
 import 'screens/records/enhanced_baptism_form_screen.dart';
 import 'screens/records/certificate_request_form_screen.dart';
-import 'screens/records/ocr_scan_screen.dart';
 import 'firebase_options.dart';
-import 'screens/login/register_with_invite.dart';
+import 'screens/login/register_screen.dart';
+import 'screens/login/verify_code_screen.dart';
+import 'screens/login/forgot_password_screen.dart';
+import 'models/record.dart';
+
+bool get _isCrashlyticsSupported {
+  if (kIsWeb) return false;
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.android:
+    case TargetPlatform.iOS:
+    case TargetPlatform.macOS:
+      return true;
+    default:
+      return false;
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await LocalStorageService.init();
-  await PushService.init();
-  await LocalNotificationsService.init();
-  // Start offline sync orchestrator
-  SyncService.start();
 
-  // Crashlytics: handle uncaught errors to avoid killing the process in dev
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-  PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-    return true; // prevent crash loop
-  };
-  if (!kReleaseMode) {
-    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(false);
+  // Crashlytics: only enable on supported platforms (mobile / macOS)
+  if (_isCrashlyticsSupported) {
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true; // prevent crash loop
+    };
+    if (!kReleaseMode) {
+      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(false);
+    }
   }
 
   runZonedGuarded(
@@ -66,7 +71,9 @@ Future<void> main() async {
     },
     (error, stack) {
       // Report non-Flutter errors
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      if (_isCrashlyticsSupported) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      }
     },
   );
 }
@@ -197,7 +204,15 @@ class MyApp extends ConsumerWidget {
         ),
         GoRoute(
           path: '/register',
-          builder: (context, state) => const RegisterWithInviteScreen(),
+          builder: (context, state) => const RegisterScreen(),
+        ),
+        GoRoute(
+          path: '/verify-code',
+          builder: (context, state) => const VerifyCodeScreen(),
+        ),
+        GoRoute(
+          path: '/forgot-password',
+          builder: (context, state) => const ForgotPasswordScreen(),
         ),
         ShellRoute(
           builder: (context, state, child) =>
@@ -212,28 +227,62 @@ class MyApp extends ConsumerWidget {
               builder: (context, state) => const RecordsListScreen(),
             ),
             GoRoute(
+              path: '/records/certificates',
+              builder: (context, state) =>
+                  const CertificateRequestsListScreen(),
+            ),
+            GoRoute(
               path: '/records/new',
               builder: (context, state) => const RecordFormScreen(),
             ),
             GoRoute(
               path: '/records/new/baptism',
-              builder: (context, state) => const EnhancedBaptismFormScreen(),
+              builder: (context, state) {
+                final extra = state.extra;
+                return EnhancedBaptismFormScreen(
+                  existing: extra is ParishRecord ? extra : null,
+                  startWithOcr: extra is String && extra == 'ocr',
+                );
+              },
             ),
             GoRoute(
               path: '/records/new/marriage',
-              builder: (context, state) => const MarriageFormScreen(),
+              builder: (context, state) {
+                final extra = state.extra;
+                return MarriageFormScreen(
+                  existing: extra is ParishRecord ? extra : null,
+                  startWithOcr: extra is String && extra == 'ocr',
+                );
+              },
             ),
             GoRoute(
               path: '/records/new/confirmation',
-              builder: (context, state) => const ConfirmationFormScreen(),
+              builder: (context, state) {
+                final extra = state.extra;
+                return ConfirmationFormScreen(
+                  existing: extra is ParishRecord ? extra : null,
+                  startWithOcr: extra is String && extra == 'ocr',
+                );
+              },
             ),
             GoRoute(
               path: '/records/new/death',
-              builder: (context, state) => const DeathFormScreen(),
+              builder: (context, state) {
+                final extra = state.extra;
+                return DeathFormScreen(
+                  existing: extra is ParishRecord ? extra : null,
+                  startWithOcr: extra is String && extra == 'ocr',
+                );
+              },
             ),
             GoRoute(
               path: '/records/enhanced-baptism',
-              builder: (context, state) => const EnhancedBaptismFormScreen(),
+              builder: (context, state) {
+                final extra = state.extra;
+                return EnhancedBaptismFormScreen(
+                  existing: extra is ParishRecord ? extra : null,
+                );
+              },
             ),
             GoRoute(
               path: '/records/certificate-request',
@@ -246,26 +295,12 @@ class MyApp extends ConsumerWidget {
               ),
             ),
             GoRoute(
-              path: '/records/:id/scan',
-              builder: (context, state) => OCRScanScreen(
-                recordId: state.pathParameters['id'] ?? '',
-              ),
-            ),
-            GoRoute(
               path: '/records/:id/edit',
               builder: (context, state) {
                 // The edit screen will receive an existing record via state.extra when navigated from list
                 final existing = state.extra;
                 return RecordFormScreen(existing: existing as dynamic);
               },
-            ),
-            GoRoute(
-              path: '/ocr',
-              builder: (context, state) => const OcrCaptureScreen(),
-            ),
-            GoRoute(
-              path: '/notifications',
-              builder: (context, state) => const NotificationsScreen(),
             ),
             GoRoute(
               path: '/profile',
@@ -279,7 +314,8 @@ class MyApp extends ConsumerWidget {
           redirect: (context, state) => '/admin/overview',
         ),
         ShellRoute(
-          builder: (context, state, child) => _AdminGate(child: AdminShell(child: child)),
+          builder: (context, state, child) =>
+              _AdminGate(child: AdminShell(child: child)),
           routes: [
             GoRoute(
               path: '/admin/overview',
@@ -294,12 +330,14 @@ class MyApp extends ConsumerWidget {
               builder: (context, state) => const AdminAnalyticsPage(),
             ),
             GoRoute(
-              path: '/admin/activity',
-              builder: (context, state) => const AdminActivityPage(),
-            ),
-            GoRoute(
               path: '/admin/records',
               builder: (context, state) => const AdminRecordsPage(),
+            ),
+            GoRoute(
+              path: '/admin/records/:id',
+              builder: (context, state) => RecordDetailScreen(
+                recordId: state.pathParameters['id'] ?? '',
+              ),
             ),
             GoRoute(
               path: '/admin/certificates',
@@ -307,23 +345,43 @@ class MyApp extends ConsumerWidget {
             ),
             GoRoute(
               path: '/admin/records/new/baptism',
-              builder: (context, state) => const EnhancedBaptismFormScreen(),
+              builder: (context, state) {
+                final extra = state.extra;
+                return EnhancedBaptismFormScreen(
+                  existing: extra is ParishRecord ? extra : null,
+                  fromAdmin: true,
+                );
+              },
             ),
             GoRoute(
               path: '/admin/records/new/marriage',
-              builder: (context, state) => const MarriageFormScreen(),
+              builder: (context, state) {
+                final extra = state.extra;
+                return MarriageFormScreen(
+                  existing: extra is ParishRecord ? extra : null,
+                  fromAdmin: true,
+                );
+              },
             ),
             GoRoute(
               path: '/admin/records/new/confirmation',
-              builder: (context, state) => const ConfirmationFormScreen(),
+              builder: (context, state) {
+                final extra = state.extra;
+                return ConfirmationFormScreen(
+                  existing: extra is ParishRecord ? extra : null,
+                  fromAdmin: true,
+                );
+              },
             ),
             GoRoute(
               path: '/admin/records/new/death',
-              builder: (context, state) => const DeathFormScreen(),
-            ),
-            GoRoute(
-              path: '/admin/notifications',
-              builder: (context, state) => const AdminNotificationsPage(),
+              builder: (context, state) {
+                final extra = state.extra;
+                return DeathFormScreen(
+                  existing: extra is ParishRecord ? extra : null,
+                  fromAdmin: true,
+                );
+              },
             ),
             GoRoute(
               path: '/admin/backup',
@@ -363,7 +421,7 @@ class _AdminGate extends ConsumerWidget {
     final email = (auth.user!.email).toLowerCase();
     final isEmailAdmin = email == 'admin@gmail.com';
     final isRoleAdmin = auth.user!.role == 'admin';
-    
+
     // Debug logging (development only)
     if (kDebugMode) {
       debugPrint('Admin Access Check:');
@@ -372,14 +430,18 @@ class _AdminGate extends ConsumerWidget {
       debugPrint('Is Email Admin: $isEmailAdmin');
       debugPrint('Is Role Admin: $isRoleAdmin');
     }
-    
+
     if (!(isRoleAdmin || isEmailAdmin)) {
       return Scaffold(
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.admin_panel_settings, size: 64, color: Colors.red),
+              const Icon(
+                Icons.admin_panel_settings,
+                size: 64,
+                color: Colors.red,
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Access Restricted',

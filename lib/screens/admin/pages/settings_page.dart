@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../services/admin_repository.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AdminSettingsPage extends StatefulWidget {
   const AdminSettingsPage({super.key});
@@ -15,6 +15,8 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
   bool _notify = true;
   bool _autoBackup = false;
   final _logSearch = TextEditingController();
+  DateTime? _logFrom;
+  DateTime? _logTo;
   bool _loading = true;
   final _adminRepo = AdminRepository();
 
@@ -39,14 +41,26 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
   }
 
   Future<void> _save() async {
-    await _adminRepo.saveSettings(
-      language: _language,
-      timezone: _timezone,
-      notify: _notify,
-      autoBackup: _autoBackup,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings saved')));
+    try {
+      await _adminRepo.saveSettings(
+        language: _language,
+        timezone: _timezone,
+        notify: _notify,
+        autoBackup: _autoBackup,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Settings saved')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save settings: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 
@@ -57,7 +71,10 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
       padding: const EdgeInsets.all(16.0),
       child: ListView(
         children: [
-          Text('Application Settings & Audit Logs', style: Theme.of(context).textTheme.headlineSmall),
+          Text(
+            'Application Settings & Audit Logs',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
           const SizedBox(height: 16),
           Card(
             child: Padding(
@@ -65,7 +82,10 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('General Settings', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'General Settings',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const SizedBox(height: 12),
                   if (_loading) const LinearProgressIndicator(),
                   _SettingRow(
@@ -88,10 +108,28 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
                       onChanged: (v) => setState(() => _timezone = v ?? 'UTC'),
                     ),
                   ),
-                  _SettingRow(label: 'Enable Notifications', child: Switch(value: _notify, onChanged: (v) => setState(() => _notify = v))),
-                  _SettingRow(label: 'Auto Backups', child: Switch(value: _autoBackup, onChanged: (v) => setState(() => _autoBackup = v))),
+                  _SettingRow(
+                    label: 'Enable Notifications',
+                    child: Switch(
+                      value: _notify,
+                      onChanged: (v) => setState(() => _notify = v),
+                    ),
+                  ),
+                  _SettingRow(
+                    label: 'Auto Backups',
+                    child: Switch(
+                      value: _autoBackup,
+                      onChanged: (v) => setState(() => _autoBackup = v),
+                    ),
+                  ),
                   const SizedBox(height: 12),
-                  Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: _save, child: const Text('Save Changes'))),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton(
+                      onPressed: _save,
+                      child: const Text('Save Changes'),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -103,46 +141,221 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Audit Logs', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Audit Logs',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _logSearch,
-                    decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search logs'),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Search logs',
+                    ),
                     onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.calendar_today_outlined),
+                          label: Text(
+                            _logFrom == null
+                                ? 'From: All'
+                                : 'From: ${DateFormat('yMMMd').format(_logFrom!)}',
+                          ),
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _logFrom ?? DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null && mounted) {
+                              setState(() {
+                                _logFrom = DateTime(
+                                  picked.year,
+                                  picked.month,
+                                  picked.day,
+                                );
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.calendar_today_outlined),
+                          label: Text(
+                            _logTo == null
+                                ? 'To: Today'
+                                : 'To: ${DateFormat('yMMMd').format(_logTo!)}',
+                          ),
+                          onPressed: () async {
+                            final initial = _logTo ?? DateTime.now();
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: initial,
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null && mounted) {
+                              setState(() {
+                                _logTo = DateTime(
+                                  picked.year,
+                                  picked.month,
+                                  picked.day,
+                                  23,
+                                  59,
+                                  59,
+                                );
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   SizedBox(
                     height: 360,
-                    child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: FirebaseFirestore.instance
-                          .collection('logs')
-                          .orderBy('timestamp', descending: true)
-                          .limit(200)
-                          .snapshots(),
+                    child: FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _adminRepo.getLogs(limit: 200, days: 365),
                       builder: (context, snap) {
-                        final docs = snap.data?.docs ?? const [];
-                        final list = docs.map((d) {
-                          final m = d.data();
-                          return {
-                            'action': (m['action'] ?? '').toString(),
-                            'details': (m['details'] ?? '').toString(),
-                            'timestamp': (m['timestamp'] ?? '').toString(),
-                          };
-                        }).where((m) {
-                          if (queryText.isEmpty) return true;
-                          return m.values.any((v) => v.toString().toLowerCase().contains(queryText));
-                        }).toList();
-                        if (list.isEmpty) return const Center(child: Text('No logs'));
+                        if (snap.connectionState == ConnectionState.waiting) {
+                          return const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          );
+                        }
+                        if (snap.hasError) {
+                          // If something goes wrong reading logs, show as empty
+                          return const Center(child: Text('No logs'));
+                        }
+
+                        // Normalize date range: if both are set and From > To, swap them
+                        DateTime? from = _logFrom;
+                        DateTime? to = _logTo;
+                        if (from != null && to != null && from.isAfter(to)) {
+                          final tmp = from;
+                          from = to;
+                          to = tmp;
+                        }
+
+                        final raw = snap.data ?? const <Map<String, dynamic>>[];
+                        final list = raw
+                            .map((m) {
+                              final tsRaw = m['action_time'] ?? m['timestamp'];
+                              final dt = DateTime.tryParse(
+                                tsRaw?.toString() ?? '',
+                              );
+                              final action = (m['action'] ?? '').toString();
+                              final details = (m['details'] ?? '').toString();
+
+                              // Try to extract email from details like "User someone@mail.com logged in"
+                              String email = '';
+                              final emailMatch = RegExp(
+                                r'User\s+([^\s]+)\s+logged',
+                              ).firstMatch(details);
+                              if (emailMatch != null) {
+                                email = emailMatch.group(1) ?? '';
+                              }
+
+                              final time = dt != null
+                                  ? DateFormat('H:mm').format(dt)
+                                  : '';
+
+                              final dateLabel = dt != null
+                                  ? DateFormat('yMMMd').format(dt)
+                                  : '';
+
+                              final userName = email.isNotEmpty
+                                  ? email.split('@').first
+                                  : 'User';
+
+                              final title = action == 'login'
+                                  ? userName
+                                  : action == 'logout'
+                                  ? userName
+                                  : action.replaceAll('_', ' ');
+
+                              final status = action == 'login'
+                                  ? 'Logged in'
+                                  : action == 'logout'
+                                  ? 'Logged out'
+                                  : details;
+
+                              return {
+                                'action': action,
+                                'title': title,
+                                'details': details,
+                                'email': email,
+                                'time': time,
+                                'dateLabel': dateLabel,
+                                'userName': userName,
+                                'status': status,
+                                'timestamp': dt,
+                              };
+                            })
+                            .where((m) {
+                              final dt = m['timestamp'] as DateTime?;
+                              if (from != null &&
+                                  (dt == null || dt.isBefore(from))) {
+                                return false;
+                              }
+                              if (to != null &&
+                                  (dt == null || dt.isAfter(to))) {
+                                return false;
+                              }
+                              if (queryText.isEmpty) return true;
+                              return m.values.any(
+                                (v) => v.toString().toLowerCase().contains(
+                                  queryText,
+                                ),
+                              );
+                            })
+                            .toList();
+                        if (list.isEmpty) {
+                          return const Center(child: Text('No logs'));
+                        }
                         return ListView.separated(
                           itemCount: list.length,
                           separatorBuilder: (_, __) => const Divider(height: 0),
                           itemBuilder: (_, i) {
                             final m = list[i];
+                            final title = (m['title'] ?? 'User').toString();
+                            final email = (m['email'] ?? '').toString();
+                            final time = (m['time'] ?? '').toString();
+                            final status = (m['status'] ?? '').toString();
                             return ListTile(
                               leading: const Icon(Icons.history),
-                              title: Text(m['action'] ?? 'Action'),
-                              subtitle: Text(m['details'] ?? ''),
-                              trailing: Text(m['timestamp'] ?? ''),
+                              title: Text(title),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(email, overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          status,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${m['dateLabel'] ?? ''} $time',
+                                        textAlign: TextAlign.right,
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             );
                           },
                         );
@@ -189,7 +402,9 @@ class _SettingRow extends StatelessWidget {
             children: [
               SizedBox(width: 200, child: Text(label)),
               const SizedBox(width: 12),
-              Expanded(child: Align(alignment: Alignment.centerLeft, child: child)),
+              Expanded(
+                child: Align(alignment: Alignment.centerLeft, child: child),
+              ),
             ],
           ),
         );

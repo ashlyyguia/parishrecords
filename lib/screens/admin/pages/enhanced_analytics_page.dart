@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../../providers/records_provider.dart';
+import '../../../models/record.dart';
 
 class EnhancedAnalyticsPage extends ConsumerStatefulWidget {
   const EnhancedAnalyticsPage({super.key});
 
   @override
-  ConsumerState<EnhancedAnalyticsPage> createState() => _EnhancedAnalyticsPageState();
+  ConsumerState<EnhancedAnalyticsPage> createState() =>
+      _EnhancedAnalyticsPageState();
 }
 
 class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
@@ -42,10 +44,10 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
           children: [
             // Header with Period Selector
             _buildHeader(theme, colorScheme),
-            
+
             // Tab Bar
             _buildTabBar(colorScheme),
-            
+
             // Tab Content
             Expanded(
               child: TabBarView(
@@ -124,31 +126,44 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
             decoration: BoxDecoration(
               color: colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+              border: Border.all(
+                color: colorScheme.outline.withValues(alpha: 0.2),
+              ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: _periods.map((period) {
-                final isSelected = period == _selectedPeriod;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedPeriod = period),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected ? colorScheme.primary : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      period,
-                      style: TextStyle(
-                        color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                        fontSize: 12,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _periods.map((period) {
+                  final isSelected = period == _selectedPeriod;
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedPeriod = period),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? colorScheme.primary
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        period,
+                        style: TextStyle(
+                          color: isSelected
+                              ? colorScheme.onPrimary
+                              : colorScheme.onSurface,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
-                  ),
-                );
-              }).toList(),
+                  );
+                }).toList(),
+              ),
             ),
           ),
         ],
@@ -175,17 +190,48 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildOverviewTab(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildOverviewTab(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     final totalRecords = records.length;
-    final pendingCertificates = records.where((r) => 
-      r is Map && (r['certificateStatus'] == 0 || r['certificateStatus'] == 'pending')).length;
-    final approvedCertificates = records.where((r) => 
-      r is Map && (r['certificateStatus'] == 1 || r['certificateStatus'] == 'approved')).length;
+
+    int pendingCertificates = 0;
+    int approvedCertificates = 0;
+    for (final r in records) {
+      if (r is ParishRecord) {
+        switch (r.certificateStatus) {
+          case CertificateStatus.pending:
+            pendingCertificates++;
+            break;
+          case CertificateStatus.approved:
+            approvedCertificates++;
+            break;
+          case CertificateStatus.rejected:
+            // ignore here; only pending/approved shown in overview metrics
+            break;
+        }
+      } else if (r is Map) {
+        final status = r['certificateStatus'];
+        if (status == 0 || status == 'pending') {
+          pendingCertificates++;
+        } else if (status == 1 || status == 'approved') {
+          approvedCertificates++;
+        }
+      }
+    }
     final thisMonth = records.where((r) {
-      if (r is! Map) return false;
-      final date = r['date'];
-      if (date == null) return false;
-      final recordDate = DateTime.tryParse(date.toString());
+      DateTime? recordDate;
+      if (r is ParishRecord) {
+        recordDate = r.date;
+      } else if (r is Map) {
+        final date = r['date'];
+        if (date == null) return false;
+        recordDate = DateTime.tryParse(date.toString());
+      } else {
+        return false;
+      }
       if (recordDate == null) return false;
       final now = DateTime.now();
       return recordDate.year == now.year && recordDate.month == now.month;
@@ -198,19 +244,39 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
         children: [
           // Key Metrics Cards
           _buildMetricsGrid([
-            _MetricData('Total Records', totalRecords.toString(), Icons.folder_copy, Colors.blue),
-            _MetricData('This Month', thisMonth.toString(), Icons.calendar_today, Colors.green),
-            _MetricData('Pending Certificates', pendingCertificates.toString(), Icons.pending, Colors.orange),
-            _MetricData('Approved Certificates', approvedCertificates.toString(), Icons.verified, Colors.teal),
+            _MetricData(
+              'Total Records',
+              totalRecords.toString(),
+              Icons.folder_copy,
+              Colors.blue,
+            ),
+            _MetricData(
+              'This Month',
+              thisMonth.toString(),
+              Icons.calendar_today,
+              Colors.green,
+            ),
+            _MetricData(
+              'Pending Certificates',
+              pendingCertificates.toString(),
+              Icons.pending,
+              Colors.orange,
+            ),
+            _MetricData(
+              'Approved Certificates',
+              approvedCertificates.toString(),
+              Icons.verified,
+              Colors.teal,
+            ),
           ], colorScheme),
-          
+
           const SizedBox(height: 24),
-          
+
           // Record Types Distribution
           _buildRecordTypesChart(records, theme, colorScheme),
-          
+
           const SizedBox(height: 24),
-          
+
           // Recent Activity
           _buildRecentActivity(records, theme, colorScheme),
         ],
@@ -218,7 +284,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildRecordsTab(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildRecordsTab(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -226,14 +296,14 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
         children: [
           // Records by Type
           _buildRecordsByTypeChart(records, theme, colorScheme),
-          
+
           const SizedBox(height: 24),
-          
+
           // Monthly Records Trend
           _buildMonthlyTrendChart(records, theme, colorScheme),
-          
+
           const SizedBox(height: 24),
-          
+
           // Records Summary Table
           _buildRecordsSummaryTable(records, theme, colorScheme),
         ],
@@ -241,7 +311,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildCertificatesTab(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildCertificatesTab(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -249,14 +323,9 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
         children: [
           // Certificate Status Distribution
           _buildCertificateStatusChart(records, theme, colorScheme),
-          
+
           const SizedBox(height: 24),
-          
-          // Certificate Processing Time
-          _buildProcessingTimeChart(records, theme, colorScheme),
-          
-          const SizedBox(height: 24),
-          
+
           // Certificate Metrics
           _buildCertificateMetrics(records, theme, colorScheme),
         ],
@@ -264,7 +333,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildTrendsTab(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildTrendsTab(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -272,14 +345,14 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
         children: [
           // Growth Trend
           _buildGrowthTrendChart(records, theme, colorScheme),
-          
+
           const SizedBox(height: 24),
-          
+
           // Seasonal Analysis
           _buildSeasonalAnalysis(records, theme, colorScheme),
-          
+
           const SizedBox(height: 24),
-          
+
           // Performance Insights
           _buildPerformanceInsights(records, theme, colorScheme),
         ],
@@ -295,14 +368,17 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
         crossAxisCount: 2,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
-        childAspectRatio: 1.5,
+        // Slightly taller cards to prevent vertical overflow on small screens
+        childAspectRatio: 1.25,
       ),
       itemCount: metrics.length,
       itemBuilder: (context, index) {
         final metric = metrics[index];
         return Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -330,7 +406,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                         color: metric.color.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Icon(Icons.trending_up, color: metric.color, size: 16),
+                      child: Icon(
+                        Icons.trending_up,
+                        color: metric.color,
+                        size: 16,
+                      ),
                     ),
                   ],
                 ),
@@ -364,10 +444,17 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildRecordTypesChart(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildRecordTypesChart(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     final recordTypes = <String, int>{};
     for (final record in records) {
-      if (record is Map) {
+      if (record is ParishRecord) {
+        final type = record.type.value;
+        recordTypes[type] = (recordTypes[type] ?? 0) + 1;
+      } else if (record is Map) {
         final type = record['type']?.toString() ?? 'Unknown';
         recordTypes[type] = (recordTypes[type] ?? 0) + 1;
       }
@@ -409,7 +496,9 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                             Colors.purple,
                             Colors.red,
                           ];
-                          final colorIndex = recordTypes.keys.toList().indexOf(entry.key);
+                          final colorIndex = recordTypes.keys.toList().indexOf(
+                            entry.key,
+                          );
                           return PieChartSectionData(
                             value: entry.value.toDouble(),
                             title: '${entry.key}\n${entry.value}',
@@ -433,15 +522,13 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildRecentActivity(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
-    final recentRecords = records
-        .where((r) => r is Map && r['date'] != null)
-        .toList()
-        ..sort((a, b) {
-          final dateA = DateTime.tryParse(a['date'].toString()) ?? DateTime(1970);
-          final dateB = DateTime.tryParse(b['date'].toString()) ?? DateTime(1970);
-          return dateB.compareTo(dateA);
-        });
+  Widget _buildRecentActivity(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    final recentRecords = records.whereType<ParishRecord>().toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
 
     return Card(
       elevation: 2,
@@ -459,12 +546,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
             ),
             const SizedBox(height: 16),
             ...recentRecords.take(5).map<Widget>((record) {
-              final name = record['name']?.toString() ?? 'Unknown';
-              final type = record['type']?.toString() ?? 'Unknown';
-              final date = DateTime.tryParse(record['date']?.toString() ?? '');
-              final formattedDate = date != null 
-                  ? DateFormat('MMM dd, yyyy').format(date)
-                  : 'Unknown date';
+              final name = record.name;
+              final type = record.type.value;
+              final formattedDate = DateFormat(
+                'MMM dd, yyyy',
+              ).format(record.date);
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -499,7 +585,9 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                           Text(
                             '$type • $formattedDate',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
                             ),
                           ),
                         ],
@@ -518,10 +606,17 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
   // Additional chart building methods would go here...
   // For brevity, I'll include placeholder methods
 
-  Widget _buildRecordsByTypeChart(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildRecordsByTypeChart(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     final recordTypes = <String, int>{};
     for (final record in records) {
-      if (record is Map) {
+      if (record is ParishRecord) {
+        final type = record.type.name;
+        recordTypes[type] = (recordTypes[type] ?? 0) + 1;
+      } else if (record is Map) {
         final type = record['type']?.toString() ?? 'Unknown';
         recordTypes[type] = (recordTypes[type] ?? 0) + 1;
       }
@@ -537,7 +632,9 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
           children: [
             Text(
               'Records by Type',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 20),
             SizedBox(
@@ -546,14 +643,19 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                   ? Center(
                       child: Text(
                         'No data available',
-                        style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.5)),
+                        style: TextStyle(
+                          color: colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
                       ),
                     )
                   : BarChart(
                       BarChartData(
                         alignment: BarChartAlignment.spaceAround,
-                        maxY: recordTypes.values.isNotEmpty 
-                            ? recordTypes.values.reduce((a, b) => a > b ? a : b).toDouble() * 1.2
+                        maxY: recordTypes.values.isNotEmpty
+                            ? recordTypes.values
+                                      .reduce((a, b) => a > b ? a : b)
+                                      .toDouble() *
+                                  1.2
                             : 10,
                         barTouchData: BarTouchData(enabled: false),
                         titlesData: FlTitlesData(
@@ -563,7 +665,8 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                               showTitles: true,
                               getTitlesWidget: (value, meta) {
                                 final types = recordTypes.keys.toList();
-                                if (value.toInt() >= 0 && value.toInt() < types.length) {
+                                if (value.toInt() >= 0 &&
+                                    value.toInt() < types.length) {
                                   return Padding(
                                     padding: const EdgeInsets.only(top: 8),
                                     child: Text(
@@ -582,13 +685,25 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                               reservedSize: 40,
                             ),
                           ),
-                          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          topTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                          rightTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
                         ),
                         borderData: FlBorderData(show: false),
                         barGroups: recordTypes.entries.map((entry) {
-                          final index = recordTypes.keys.toList().indexOf(entry.key);
-                          final colors = [Colors.blue, Colors.green, Colors.orange, Colors.purple, Colors.red];
+                          final index = recordTypes.keys.toList().indexOf(
+                            entry.key,
+                          );
+                          final colors = [
+                            Colors.blue,
+                            Colors.green,
+                            Colors.orange,
+                            Colors.purple,
+                            Colors.red,
+                          ];
                           return BarChartGroupData(
                             x: index,
                             barRods: [
@@ -596,7 +711,9 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                                 toY: entry.value.toDouble(),
                                 color: colors[index % colors.length],
                                 width: 20,
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(4),
+                                ),
                               ),
                             ],
                           );
@@ -610,25 +727,32 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildMonthlyTrendChart(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildMonthlyTrendChart(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     final monthlyData = <String, int>{};
     final now = DateTime.now();
-    
+
     // Initialize last 6 months
     for (int i = 5; i >= 0; i--) {
       final month = DateTime(now.year, now.month - i, 1);
       final monthKey = DateFormat('MMM yyyy').format(month);
       monthlyData[monthKey] = 0;
     }
-    
+
     // Count records by month
     for (final record in records) {
-      if (record is Map && record['date'] != null) {
-        final date = DateTime.tryParse(record['date'].toString());
-        if (date != null && date.isAfter(DateTime(now.year, now.month - 5, 1))) {
-          final monthKey = DateFormat('MMM yyyy').format(date);
-          monthlyData[monthKey] = (monthlyData[monthKey] ?? 0) + 1;
-        }
+      DateTime? date;
+      if (record is ParishRecord) {
+        date = record.date;
+      } else if (record is Map && record['date'] != null) {
+        date = DateTime.tryParse(record['date'].toString());
+      }
+      if (date != null && date.isAfter(DateTime(now.year, now.month - 5, 1))) {
+        final monthKey = DateFormat('MMM yyyy').format(date);
+        monthlyData[monthKey] = (monthlyData[monthKey] ?? 0) + 1;
       }
     }
 
@@ -642,7 +766,9 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
           children: [
             Text(
               'Monthly Trend (Last 6 Months)',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 20),
             SizedBox(
@@ -669,8 +795,12 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                   ),
                   titlesData: FlTitlesData(
                     show: true,
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
@@ -678,12 +808,15 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                         interval: 1,
                         getTitlesWidget: (value, meta) {
                           final months = monthlyData.keys.toList();
-                          if (value.toInt() >= 0 && value.toInt() < months.length) {
+                          if (value.toInt() >= 0 &&
+                              value.toInt() < months.length) {
                             final month = months[value.toInt()];
                             return SideTitleWidget(
                               axisSide: meta.axisSide,
                               child: Text(
-                                month.split(' ')[0], // Show only month abbreviation
+                                month.split(
+                                  ' ',
+                                )[0], // Show only month abbreviation
                                 style: const TextStyle(fontSize: 10),
                               ),
                             );
@@ -697,7 +830,10 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                         showTitles: true,
                         interval: 1,
                         getTitlesWidget: (value, meta) {
-                          return Text(value.toInt().toString(), style: const TextStyle(fontSize: 10));
+                          return Text(
+                            value.toInt().toString(),
+                            style: const TextStyle(fontSize: 10),
+                          );
                         },
                         reservedSize: 42,
                       ),
@@ -705,26 +841,30 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                   ),
                   borderData: FlBorderData(
                     show: true,
-                    border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+                    border: Border.all(
+                      color: colorScheme.outline.withValues(alpha: 0.2),
+                    ),
                   ),
                   minX: 0,
                   maxX: (monthlyData.length - 1).toDouble(),
                   minY: 0,
-                  maxY: monthlyData.values.isNotEmpty 
-                      ? monthlyData.values.reduce((a, b) => a > b ? a : b).toDouble() * 1.2
+                  maxY: monthlyData.values.isNotEmpty
+                      ? monthlyData.values
+                                .reduce((a, b) => a > b ? a : b)
+                                .toDouble() *
+                            1.2
                       : 10,
                   lineBarsData: [
                     LineChartBarData(
                       spots: monthlyData.entries.map((entry) {
-                        final index = monthlyData.keys.toList().indexOf(entry.key);
+                        final index = monthlyData.keys.toList().indexOf(
+                          entry.key,
+                        );
                         return FlSpot(index.toDouble(), entry.value.toDouble());
                       }).toList(),
                       isCurved: true,
                       gradient: LinearGradient(
-                        colors: [
-                          colorScheme.primary,
-                          colorScheme.secondary,
-                        ],
+                        colors: [colorScheme.primary, colorScheme.secondary],
                       ),
                       barWidth: 3,
                       isStrokeCapRound: true,
@@ -761,7 +901,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildRecordsSummaryTable(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildRecordsSummaryTable(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -772,12 +916,16 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
           children: [
             Text(
               'Records Summary',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               'Detailed breakdown of all record types and their statistics',
-              style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.7)),
+              style: TextStyle(
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
             ),
           ],
         ),
@@ -785,7 +933,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildCertificateStatusChart(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildCertificateStatusChart(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     final statusCounts = <String, int>{
       'Pending': 0,
       'Approved': 0,
@@ -793,7 +945,19 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     };
 
     for (final record in records) {
-      if (record is Map) {
+      if (record is ParishRecord) {
+        switch (record.certificateStatus) {
+          case CertificateStatus.pending:
+            statusCounts['Pending'] = statusCounts['Pending']! + 1;
+            break;
+          case CertificateStatus.approved:
+            statusCounts['Approved'] = statusCounts['Approved']! + 1;
+            break;
+          case CertificateStatus.rejected:
+            statusCounts['Rejected'] = statusCounts['Rejected']! + 1;
+            break;
+        }
+      } else if (record is Map) {
         final status = record['certificateStatus'];
         if (status == 0 || status == 'pending') {
           statusCounts['Pending'] = statusCounts['Pending']! + 1;
@@ -817,7 +981,9 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
           children: [
             Text(
               'Certificate Status Distribution',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 20),
             Row(
@@ -830,7 +996,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                         ? Center(
                             child: Text(
                               'No certificates found',
-                              style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.5)),
+                              style: TextStyle(
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.5,
+                                ),
+                              ),
                             ),
                           )
                         : PieChart(
@@ -838,7 +1008,8 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                               sections: [
                                 PieChartSectionData(
                                   value: statusCounts['Pending']!.toDouble(),
-                                  title: '${((statusCounts['Pending']! / total) * 100).toInt()}%',
+                                  title:
+                                      '${((statusCounts['Pending']! / total) * 100).toInt()}%',
                                   color: Colors.orange,
                                   radius: 60,
                                   titleStyle: const TextStyle(
@@ -849,7 +1020,8 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                                 ),
                                 PieChartSectionData(
                                   value: statusCounts['Approved']!.toDouble(),
-                                  title: '${((statusCounts['Approved']! / total) * 100).toInt()}%',
+                                  title:
+                                      '${((statusCounts['Approved']! / total) * 100).toInt()}%',
                                   color: Colors.green,
                                   radius: 60,
                                   titleStyle: const TextStyle(
@@ -860,7 +1032,8 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                                 ),
                                 PieChartSectionData(
                                   value: statusCounts['Rejected']!.toDouble(),
-                                  title: '${((statusCounts['Rejected']! / total) * 100).toInt()}%',
+                                  title:
+                                      '${((statusCounts['Rejected']! / total) * 100).toInt()}%',
                                   color: Colors.red,
                                   radius: 60,
                                   titleStyle: const TextStyle(
@@ -880,11 +1053,26 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildLegendItem('Pending', Colors.orange, statusCounts['Pending']!, theme),
+                      _buildLegendItem(
+                        'Pending',
+                        Colors.orange,
+                        statusCounts['Pending']!,
+                        theme,
+                      ),
                       const SizedBox(height: 8),
-                      _buildLegendItem('Approved', Colors.green, statusCounts['Approved']!, theme),
+                      _buildLegendItem(
+                        'Approved',
+                        Colors.green,
+                        statusCounts['Approved']!,
+                        theme,
+                      ),
                       const SizedBox(height: 8),
-                      _buildLegendItem('Rejected', Colors.red, statusCounts['Rejected']!, theme),
+                      _buildLegendItem(
+                        'Rejected',
+                        Colors.red,
+                        statusCounts['Rejected']!,
+                        theme,
+                      ),
                       const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -898,7 +1086,9 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                             Text(
                               'Total',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurface.withValues(alpha: 0.7),
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.7,
+                                ),
                               ),
                             ),
                             Text(
@@ -922,7 +1112,12 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildLegendItem(String label, Color color, int count, ThemeData theme) {
+  Widget _buildLegendItem(
+    String label,
+    Color color,
+    int count,
+    ThemeData theme,
+  ) {
     return Row(
       children: [
         Container(
@@ -938,10 +1133,7 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: theme.textTheme.bodySmall,
-              ),
+              Text(label, style: theme.textTheme.bodySmall),
               Text(
                 count.toString(),
                 style: theme.textTheme.bodyMedium?.copyWith(
@@ -955,36 +1147,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildProcessingTimeChart(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Average Processing Time',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 200,
-              child: Center(
-                child: Text(
-                  'Chart showing certificate processing times',
-                  style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.5)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCertificateMetrics(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildCertificateMetrics(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -995,12 +1162,16 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
           children: [
             Text(
               'Certificate Metrics',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               'Key performance indicators for certificate processing',
-              style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.7)),
+              style: TextStyle(
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
             ),
           ],
         ),
@@ -1008,7 +1179,37 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildGrowthTrendChart(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildGrowthTrendChart(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    // Reuse the same logic as the Monthly Trend chart to show
+    // a real growth trend line over the last 6 months.
+    final monthlyData = <String, int>{};
+    final now = DateTime.now();
+
+    // Initialize last 6 months
+    for (int i = 5; i >= 0; i--) {
+      final month = DateTime(now.year, now.month - i, 1);
+      final monthKey = DateFormat('MMM yyyy').format(month);
+      monthlyData[monthKey] = 0;
+    }
+
+    // Count records by month
+    for (final record in records) {
+      DateTime? date;
+      if (record is ParishRecord) {
+        date = record.date;
+      } else if (record is Map && record['date'] != null) {
+        date = DateTime.tryParse(record['date'].toString());
+      }
+      if (date != null && date.isAfter(DateTime(now.year, now.month - 5, 1))) {
+        final monthKey = DateFormat('MMM yyyy').format(date);
+        monthlyData[monthKey] = (monthlyData[monthKey] ?? 0) + 1;
+      }
+    }
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1018,16 +1219,131 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Growth Trend Analysis',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              'Growth Trend Analysis (Last 6 Months)',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 20),
             SizedBox(
               height: 200,
-              child: Center(
-                child: Text(
-                  'Growth trend over time',
-                  style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.5)),
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: true,
+                    horizontalInterval: 1,
+                    verticalInterval: 1,
+                    getDrawingHorizontalLine: (value) {
+                      return FlLine(
+                        color: colorScheme.outline.withValues(alpha: 0.2),
+                        strokeWidth: 1,
+                      );
+                    },
+                    getDrawingVerticalLine: (value) {
+                      return FlLine(
+                        color: colorScheme.outline.withValues(alpha: 0.2),
+                        strokeWidth: 1,
+                      );
+                    },
+                  ),
+                  titlesData: FlTitlesData(
+                    show: true,
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 30,
+                        interval: 1,
+                        getTitlesWidget: (value, meta) {
+                          final months = monthlyData.keys.toList();
+                          if (value.toInt() >= 0 &&
+                              value.toInt() < months.length) {
+                            final month = months[value.toInt()];
+                            return SideTitleWidget(
+                              axisSide: meta.axisSide,
+                              child: Text(
+                                month.split(' ')[0],
+                                style: const TextStyle(fontSize: 10),
+                              ),
+                            );
+                          }
+                          return const Text('');
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            value.toInt().toString(),
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        },
+                        reservedSize: 42,
+                      ),
+                    ),
+                  ),
+                  borderData: FlBorderData(
+                    show: true,
+                    border: Border.all(
+                      color: colorScheme.outline.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  minX: 0,
+                  maxX: (monthlyData.length - 1).toDouble(),
+                  minY: 0,
+                  maxY: monthlyData.values.isNotEmpty
+                      ? monthlyData.values
+                                .reduce((a, b) => a > b ? a : b)
+                                .toDouble() *
+                            1.2
+                      : 10,
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: monthlyData.entries.map((entry) {
+                        final index = monthlyData.keys.toList().indexOf(
+                          entry.key,
+                        );
+                        return FlSpot(index.toDouble(), entry.value.toDouble());
+                      }).toList(),
+                      isCurved: true,
+                      gradient: LinearGradient(
+                        colors: [colorScheme.primary, colorScheme.secondary],
+                      ),
+                      barWidth: 3,
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) {
+                          return FlDotCirclePainter(
+                            radius: 4,
+                            color: colorScheme.primary,
+                            strokeWidth: 2,
+                            strokeColor: colorScheme.surface,
+                          );
+                        },
+                      ),
+                      belowBarData: BarAreaData(
+                        show: true,
+                        gradient: LinearGradient(
+                          colors: [
+                            colorScheme.primary.withValues(alpha: 0.3),
+                            colorScheme.primary.withValues(alpha: 0.1),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1037,7 +1353,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildSeasonalAnalysis(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildSeasonalAnalysis(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1048,12 +1368,16 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
           children: [
             Text(
               'Seasonal Analysis',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               'Patterns and trends by season and month',
-              style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.7)),
+              style: TextStyle(
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
             ),
           ],
         ),
@@ -1061,7 +1385,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     );
   }
 
-  Widget _buildPerformanceInsights(List<dynamic> records, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildPerformanceInsights(
+    List<dynamic> records,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1072,12 +1400,16 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
           children: [
             Text(
               'Performance Insights',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               'AI-powered insights and recommendations',
-              style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.7)),
+              style: TextStyle(
+                color: colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
             ),
           ],
         ),

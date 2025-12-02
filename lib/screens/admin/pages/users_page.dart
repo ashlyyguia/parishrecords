@@ -1,6 +1,9 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../utils/responsive.dart';
 
 class AdminUsersPage extends ConsumerStatefulWidget {
   const AdminUsersPage({super.key});
@@ -25,17 +28,13 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
           children: [
             // Header
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: context.padAll(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(
-                        Icons.people,
-                        size: 32,
-                        color: colorScheme.primary,
-                      ),
+                      Icon(Icons.people, size: 32, color: colorScheme.primary),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
@@ -43,38 +42,49 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                           style: theme.textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: colorScheme.onSurface,
+                            fontSize: context.rf(
+                              theme.textTheme.headlineSmall?.fontSize ?? 20,
+                            ),
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: context.rf(8)),
                   Text(
                     'Manage user accounts and permissions',
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  
+                  SizedBox(height: context.rf(24)),
+
                   // Search Bar
                   TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'Search users...',
-                      prefixIcon: Icon(Icons.search, color: colorScheme.primary),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: colorScheme.primary,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(color: colorScheme.outline),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.5)),
+                        borderSide: BorderSide(
+                          color: colorScheme.outline.withValues(alpha: 0.5),
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: colorScheme.primary, width: 2),
+                        borderSide: BorderSide(
+                          color: colorScheme.primary,
+                          width: 2,
+                        ),
                       ),
                       filled: true,
                       fillColor: colorScheme.surface,
@@ -92,7 +102,9 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
             // Users List
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('users').snapshots(),
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -121,37 +133,11 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                           Text(
                             snapshot.error.toString(),
                             style: TextStyle(
-                              color: colorScheme.onSurface.withValues(alpha: 0.7),
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                             textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: () async {
-                              // Try to create admin user document
-                              try {
-                                await FirebaseFirestore.instance.collection('users').doc('admin-temp').set({
-                                  'email': 'admin@gmail.com',
-                                  'displayName': 'Administrator',
-                                  'role': 'admin',
-                                  'createdAt': FieldValue.serverTimestamp(),
-                                  'lastLogin': FieldValue.serverTimestamp(),
-                                  'emailVerified': true,
-                                });
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Admin user created! Try refreshing.')),
-                                  );
-                                }
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Error: $e')),
-                                  );
-                                }
-                              }
-                            },
-                            child: const Text('Create Admin User'),
                           ),
                         ],
                       ),
@@ -161,9 +147,14 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                   final users = snapshot.data?.docs ?? [];
                   final filteredUsers = users.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
-                    final email = (data['email'] ?? '').toString().toLowerCase();
-                    final displayName = (data['displayName'] ?? '').toString().toLowerCase();
-                    return email.contains(_searchQuery) || displayName.contains(_searchQuery);
+                    final email = (data['email'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    final displayName = (data['displayName'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    return email.contains(_searchQuery) ||
+                        displayName.contains(_searchQuery);
                   }).toList();
 
                   if (filteredUsers.isEmpty) {
@@ -178,11 +169,15 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            _searchQuery.isEmpty ? 'No users found' : 'No users match your search',
+                            _searchQuery.isEmpty
+                                ? 'No users found'
+                                : 'No users match your search',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
-                              color: colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
                             ),
                           ),
                         ],
@@ -215,7 +210,11 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
     );
   }
 
-  Widget _buildUserCard(String userId, Map<String, dynamic> data, ColorScheme colorScheme) {
+  Widget _buildUserCard(
+    String userId,
+    Map<String, dynamic> data,
+    ColorScheme colorScheme,
+  ) {
     final email = data['email'] ?? 'No email';
     final displayName = data['displayName'] ?? 'No name';
     final role = data['role'] ?? 'staff';
@@ -235,10 +234,7 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
               children: [
                 CircleAvatar(
                   backgroundColor: _getRoleColor(role).withValues(alpha: 0.1),
-                  child: Icon(
-                    _getRoleIcon(role),
-                    color: _getRoleColor(role),
-                  ),
+                  child: Icon(_getRoleIcon(role), color: _getRoleColor(role)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -263,7 +259,10 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: _getRoleColor(role).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
@@ -296,7 +295,10 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                         children: [
                           Icon(Icons.delete, color: Colors.red),
                           SizedBox(width: 8),
-                          Text('Delete User', style: TextStyle(color: Colors.red)),
+                          Text(
+                            'Delete User',
+                            style: TextStyle(color: Colors.red),
+                          ),
                         ],
                       ),
                     ),
@@ -372,7 +374,7 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
 
   String _formatTimestamp(dynamic timestamp) {
     if (timestamp == null) return 'Never';
-    
+
     DateTime date;
     if (timestamp is Timestamp) {
       date = timestamp.toDate();
@@ -384,7 +386,7 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
 
     final now = DateTime.now();
     final difference = now.difference(date);
-    
+
     if (difference.inDays > 0) {
       return '${difference.inDays}d ago';
     } else if (difference.inHours > 0) {
@@ -394,7 +396,11 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
     }
   }
 
-  void _handleUserAction(String action, String userId, Map<String, dynamic> userData) {
+  void _handleUserAction(
+    String action,
+    String userId,
+    Map<String, dynamic> userData,
+  ) {
     switch (action) {
       case 'edit_role':
         _showChangeRoleDialog(userId, userData['role'] ?? 'staff');
@@ -407,7 +413,7 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
 
   void _showChangeRoleDialog(String userId, String currentRole) {
     String selectedRole = currentRole;
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -416,33 +422,40 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ...['admin', 'staff', 'volunteer'].map((role) => ListTile(
-                leading: Radio<String>(
-                  value: role,
-                  groupValue: selectedRole,
-                  onChanged: (value) => setState(() => selectedRole = value!),
-                ),
-                title: Text(role[0].toUpperCase() + role.substring(1)),
-                onTap: () => setState(() => selectedRole = role),
-              )),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: ['admin', 'staff', 'volunteer'].map((role) {
+                  final isSelected = selectedRole == role;
+                  return ChoiceChip(
+                    label: Text(role[0].toUpperCase() + role.substring(1)),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      if (selected) {
+                        setState(() => selectedRole = role);
+                      }
+                    },
+                  );
+                }).toList(),
+              ),
             ],
           ),
           actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(userId)
-                  .update({'role': selectedRole});
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const Text('Update'),
-          ),
-        ],
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(userId)
+                    .update({'role': selectedRole});
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text('Update'),
+            ),
+          ],
         ),
       ),
     );
@@ -475,14 +488,14 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
     );
   }
 
-  void _showAddUserDialog(BuildContext context, ColorScheme colorScheme) {
+  void _showAddUserDialog(BuildContext parentContext, ColorScheme colorScheme) {
     final emailController = TextEditingController();
     final nameController = TextEditingController();
     String selectedRole = 'staff';
 
     showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
+      context: parentContext,
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Add New User'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -520,20 +533,43 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () async {
-              if (emailController.text.isNotEmpty && nameController.text.isNotEmpty) {
+              final email = emailController.text.trim();
+              final name = nameController.text.trim();
+
+              if (email.isEmpty || name.isEmpty) {
+                ScaffoldMessenger.of(parentContext).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter both email and display name.'),
+                  ),
+                );
+                return;
+              }
+
+              try {
                 await FirebaseFirestore.instance.collection('users').add({
-                  'email': emailController.text.trim(),
-                  'displayName': nameController.text.trim(),
+                  'email': email,
+                  'displayName': name,
                   'role': selectedRole,
                   'createdAt': FieldValue.serverTimestamp(),
                   'emailVerified': false,
                 });
-                if (context.mounted) Navigator.pop(context);
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                ScaffoldMessenger.of(parentContext).showSnackBar(
+                  const SnackBar(content: Text('User added successfully.')),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(parentContext).showSnackBar(
+                  SnackBar(content: Text('Failed to add user: $e')),
+                );
               }
             },
             child: const Text('Add User'),

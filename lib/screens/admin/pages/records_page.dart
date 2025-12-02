@@ -1,14 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
-import 'package:csv/csv.dart';
 import 'package:intl/intl.dart';
 import '../../../models/record.dart';
 import '../../../services/records_repository.dart';
 import '../../../services/admin_repository.dart';
-import '../../../services/export_service.dart';
 
 class AdminRecordsPage extends StatefulWidget {
   const AdminRecordsPage({super.key});
@@ -19,11 +18,9 @@ class AdminRecordsPage extends StatefulWidget {
 
 class _AdminRecordsPageState extends State<AdminRecordsPage> {
   final _searchCtrl = TextEditingController();
-  String _type = 'all';
-  bool _desc = true;
+  String _selectedType = 'baptism';
+  final bool _desc = true;
   final _uuid = const Uuid();
-  final Set<String> _selected = <String>{};
-  String _parish = 'all';
   DateTime? _from;
   DateTime? _to;
   final _repo = RecordsRepository();
@@ -35,6 +32,7 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
   @override
   void initState() {
     super.initState();
+    _loadFromBackend();
     _timer = Timer.periodic(
       const Duration(seconds: 5),
       (_) => _loadFromBackend(),
@@ -60,36 +58,60 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
             child: const Text('Confirmation Record Entry'),
           ),
           SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'death'),
+            onPressed: () => Navigator.pop(
+              ctx,
+              'funeral',
+            ), // Changed from 'death' to 'funeral'
             child: const Text('Death / Burial Record Entry'),
           ),
         ],
       ),
     );
     if (!mounted || type == null) return;
+
+    String? route;
     switch (type) {
       case 'baptism':
-        context.go('/admin/records/new/baptism');
+        route = '/admin/records/new/baptism';
         break;
       case 'marriage':
-        context.go('/admin/records/new/marriage');
+        route = '/admin/records/new/marriage';
         break;
       case 'confirmation':
-        context.go('/admin/records/new/confirmation');
+        route = '/admin/records/new/confirmation';
         break;
-      case 'death':
-        context.go('/admin/records/new/death');
+      case 'funeral': // Changed from 'death' to 'funeral'
+        route =
+            '/admin/records/new/death'; // Keep route as 'death' if that's what your router expects
         break;
+    }
+
+    if (route != null) {
+      final saved = await context.push(route);
+      if (saved == true && mounted) {
+        await _loadFromBackend();
+      }
     }
   }
 
   Future<void> _loadFromBackend() async {
     try {
-      // Use the regular records repository that includes local storage
-      final list = await _repo.list();
-      if (mounted) setState(() => _records = list);
+      // First try the main records repository
+      final primary = await _repo.list();
+      if (primary.isNotEmpty) {
+        if (mounted) setState(() => _records = primary);
+        developer.log(
+          'Admin loaded ${primary.length} records',
+          name: 'AdminRecordsPage',
+        );
+        return;
+      }
+
+      // If primary returned 0 records, also try the admin repo
+      final fallback = await _adminRepo.listRecent(limit: 100, days: 365);
+      if (mounted) setState(() => _records = fallback);
       developer.log(
-        'Admin loaded ${list.length} records',
+        'Admin primary list returned 0, loaded ${fallback.length} records from admin repo',
         name: 'AdminRecordsPage',
       );
     } catch (e) {
@@ -112,45 +134,115 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     }
   }
 
-  void _toggleSelectAll(List<Map<String, dynamic>> items) {
-    setState(() {
-      if (_selected.length == items.length && items.isNotEmpty) {
-        _selected.clear();
-      } else {
-        _selected
-          ..clear()
-          ..addAll(
-            items
-                .map((e) => e['id']?.toString() ?? '')
-                .where((id) => id.isNotEmpty),
-          );
-      }
-    });
+  void _openRecordForm(ParishRecord rec) {
+    String route;
+    switch (rec.type) {
+      case RecordType.baptism:
+        route = '/admin/records/new/baptism';
+        break;
+      case RecordType.marriage:
+        route = '/admin/records/new/marriage';
+        break;
+      case RecordType.confirmation:
+        route = '/admin/records/new/confirmation';
+        break;
+      case RecordType.funeral:
+        route = '/admin/records/new/death';
+        break;
+    }
+
+    context.push(route, extra: rec);
+  }
+
+  // Helper method to convert RecordType to string
+  String _getRecordTypeString(RecordType type) {
+    switch (type) {
+      case RecordType.baptism:
+        return 'baptism';
+      case RecordType.marriage:
+        return 'marriage';
+      case RecordType.confirmation:
+        return 'confirmation';
+      case RecordType.funeral:
+        return 'funeral';
+    }
   }
 
   List<Map<String, dynamic>> _load() {
-    // Transform Firestore records to the map structure the UI expects
-    final items = _records
-        .map(
-          (r) => {
-            'id': r.id,
-            'name': r.name,
-            'type': r.type.name,
-            'typeIndex': r.type.index,
-            'date': r.date.toIso8601String(),
-            'parish': r.parish,
-            'notes': r.notes,
-          },
-        )
-        .toList();
-    // filter
+    // Transform backend records to the map structure the UI expects
+    final items = _records.map((r) {
+      final base = <String, dynamic>{
+        'id': r.id,
+        'name': r.name,
+        'type': _getRecordTypeString(
+          r.type,
+        ), // Use helper method instead of .name
+        'typeIndex': r.type.index,
+        'date': r.date.toIso8601String(),
+        'parish': r.parish,
+        'notes': r.notes,
+        'record': r,
+      };
+
+      final notesStr = r.notes;
+      if (notesStr != null && notesStr.isNotEmpty) {
+        try {
+          final decoded = json.decode(notesStr) as Map<String, dynamic>;
+          switch (r.type) {
+            case RecordType.baptism:
+              final registry =
+                  (decoded['registry'] as Map<String, dynamic>?) ?? {};
+              base['bookNo'] = registry['bookNo']?.toString();
+              base['pageNo'] = registry['pageNo']?.toString();
+              base['lineNo'] = registry['lineNo']?.toString();
+              break;
+            case RecordType.marriage:
+              final groom = (decoded['groom'] as Map<String, dynamic>?) ?? {};
+              final bride = (decoded['bride'] as Map<String, dynamic>?) ?? {};
+              final meta = (decoded['meta'] as Map<String, dynamic>?) ?? {};
+              base['groomName'] = groom['fullName']?.toString();
+              base['brideName'] = bride['fullName']?.toString();
+              base['bookNo'] = meta['bookNo']?.toString();
+              base['pageNo'] = meta['pageNo']?.toString();
+              base['lineNo'] = meta['lineNo']?.toString();
+              break;
+            case RecordType.confirmation:
+              final confirmand =
+                  (decoded['confirmand'] as Map<String, dynamic>?) ?? {};
+              final sponsor =
+                  (decoded['sponsor'] as Map<String, dynamic>?) ?? {};
+              final meta = (decoded['meta'] as Map<String, dynamic>?) ?? {};
+              base['confirmandName'] = confirmand['fullName']?.toString();
+              base['sponsorName'] = sponsor['fullName']?.toString();
+              base['bookNo'] = meta['bookNo']?.toString();
+              base['pageNo'] = meta['pageNo']?.toString();
+              base['lineNo'] = meta['lineNo']?.toString();
+              break;
+            case RecordType.funeral:
+              final deceased =
+                  (decoded['deceased'] as Map<String, dynamic>?) ?? {};
+              final burial = (decoded['burial'] as Map<String, dynamic>?) ?? {};
+              final meta = (decoded['meta'] as Map<String, dynamic>?) ?? {};
+              base['deceasedName'] = deceased['fullName']?.toString() ?? r.name;
+              base['dateOfDeath'] = deceased['dateOfDeath']?.toString();
+              base['dateOfBurial'] = burial['date']?.toString();
+              base['bookNo'] = meta['bookNo']?.toString();
+              base['pageNo'] = meta['pageNo']?.toString();
+              base['lineNo'] = meta['lineNo']?.toString();
+              break;
+          }
+        } catch (_) {
+          // Ignore JSON errors; fall back to base fields only
+        }
+      }
+
+      return base;
+    }).toList();
+    // filter by type, parish, search, and date
     final q = _searchCtrl.text.trim().toLowerCase();
     Iterable<Map<String, dynamic>> it = items;
-    if (_type != 'all') {
-      it = it.where((m) => (m['type'] ?? '').toString() == _type);
-    }
-    if (_parish != 'all') {
-      it = it.where((m) => (m['parish'] ?? '').toString() == _parish);
+    if (_selectedType.isNotEmpty) {
+      it = it.where((m) => (m['type'] ?? '').toString() == _selectedType);
     }
     if (q.isNotEmpty) {
       it = it.where(
@@ -185,64 +277,6 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
       return _desc ? -cmp : cmp;
     });
     return list;
-  }
-
-  Future<void> _bulkDelete() async {
-    if (_selected.isEmpty) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete selected?'),
-        content: Text('This will delete ${_selected.length} record(s).'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    for (final id in _selected) {
-      await _adminRepo.delete(id);
-    }
-    setState(() => _selected.clear());
-  }
-
-  Future<void> _bulkExport(bool csv) async {
-    if (_selected.isEmpty) return;
-    final items = <Map<String, dynamic>>[];
-    final current = _load();
-    for (final id in _selected) {
-      final m = current.firstWhere(
-        (e) => (e['id']?.toString() ?? '') == id,
-        orElse: () => {},
-      );
-      if (m.isNotEmpty) items.add(m);
-    }
-    if (items.isEmpty) return;
-    final base =
-        'selected_${DateTime.now().toIso8601String().replaceAll(':', '-')}'
-            .replaceAll(' ', '_');
-    if (csv) {
-      // Build headers dynamically
-      final headers = <String>{};
-      for (final m in items) {
-        headers.addAll(m.keys.map((e) => e.toString()));
-      }
-      final cols = headers.toList();
-      final rows = <List<dynamic>>[cols];
-      for (final m in items) {
-        rows.add(cols.map((k) => m[k]).toList());
-      }
-      await ExportService.exportCsv('records_$base.csv', rows);
-    } else {
-      await ExportService.exportJson('records_$base.json', items);
-    }
   }
 
   Future<void> _upsert({Map<String, dynamic>? existing}) async {
@@ -417,105 +451,34 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     }
   }
 
-  Future<void> _importCsvDialog() async {
-    final ctrl = TextEditingController();
-    int imported = 0;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Import CSV'),
-        content: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Paste CSV with headers: id(optional), name, type, date(YYYY-MM-DD)',
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: ctrl,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'id,name,type,date',
-                ),
-                minLines: 8,
-                maxLines: 12,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Import'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
+  Future<void> _delete(String key) async {
     try {
-      final rows = const CsvToListConverter(
-        eol: '\n',
-      ).convert(ctrl.text.trim());
-      if (rows.isEmpty) return;
-      final headers = rows.first.map((e) => e.toString().trim()).toList();
-      final idxName = headers.indexOf('name');
-      final idxType = headers.indexOf('type');
-      final idxDate = headers.indexOf('date');
-      for (int i = 1; i < rows.length; i++) {
-        final r = rows[i];
-        if (r.isEmpty) continue;
-        final name = idxName >= 0 && idxName < r.length
-            ? r[idxName].toString().trim()
-            : '';
-        final type = idxType >= 0 && idxType < r.length
-            ? r[idxType].toString().trim().toLowerCase()
-            : '';
-        final dateStr = idxDate >= 0 && idxDate < r.length
-            ? r[idxDate].toString().trim()
-            : '';
-        if (name.isEmpty) continue;
-        if (!(type == 'baptism' ||
-            type == 'marriage' ||
-            type == 'funeral' ||
-            type == 'confirmation')) {
-          continue;
-        }
-        DateTime? d = DateTime.tryParse(dateStr);
-        d ??= DateTime.now();
-        await _repo.add(
-          _strToType(type),
-          name,
-          DateTime(d.year, d.month, d.day),
-        );
-        imported++;
-      }
-      if (mounted) setState(() {});
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Imported $imported records.')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
-      }
+      await _repo.delete(key);
+    } catch (_) {
+      await _adminRepo.delete(key);
+    }
+    if (mounted) {
+      await _loadFromBackend();
     }
   }
 
-  Future<void> _delete(String key) async {
-    await _adminRepo.delete(key);
-    setState(() {});
+  Widget _buildTypeButton(BuildContext context, String type, String label) {
+    final isSelected = _selectedType == type;
+    return FilledButton.tonal(
+      onPressed: () {
+        if (_selectedType == type) return;
+        setState(() {
+          _selectedType = type;
+        });
+      },
+      style: FilledButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        backgroundColor: isSelected
+            ? Theme.of(context).colorScheme.primaryContainer
+            : null,
+      ),
+      child: Text(label),
+    );
   }
 
   @override
@@ -529,13 +492,6 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
   @override
   Widget build(BuildContext context) {
     final items = _load();
-    final df = DateFormat.yMMMd();
-    final parishSet = <String>{};
-    for (final m in items) {
-      final p = (m['parish'] ?? '').toString();
-      if (p.isNotEmpty) parishSet.add(p);
-    }
-    final parishOptions = ['all', ...parishSet.toList()..sort()];
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -553,12 +509,12 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                   padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final isNarrow = constraints.maxWidth < 700;
+                      final isNarrow = constraints.maxWidth < 600;
                       final gap = isNarrow ? 8.0 : 12.0;
                       return Wrap(
                         crossAxisAlignment: WrapCrossAlignment.center,
-                        runSpacing: gap,
                         spacing: gap,
+                        runSpacing: gap,
                         children: [
                           SizedBox(
                             width: isNarrow ? constraints.maxWidth : 360,
@@ -572,225 +528,97 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                             ),
                           ),
                           FilledButton.icon(
-                            onPressed: _loadFromBackend,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Refresh'),
+                            onPressed: _openNewRecord,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Record'),
                           ),
-                          Text(
-                            'Records: ${items.length}',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                          // Filters group scrollable horizontally when space is tight
-                          ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: isNarrow
-                                  ? constraints.maxWidth
-                                  : constraints.maxWidth - 600,
-                            ),
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
-                                  DropdownButton<String>(
-                                    value: _type,
-                                    items: const [
-                                      DropdownMenuItem(
-                                        value: 'all',
-                                        child: Text('All types'),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 'baptism',
-                                        child: Text('Baptism'),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 'marriage',
-                                        child: Text('Marriage'),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 'funeral',
-                                        child: Text('Funeral'),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 'confirmation',
-                                        child: Text('Confirmation'),
-                                      ),
-                                    ],
-                                    onChanged: (v) =>
-                                        setState(() => _type = v ?? 'all'),
-                                  ),
-                                  SizedBox(width: gap),
-                                  DropdownButton<String>(
-                                    value: _parish,
-                                    items: [
-                                      for (final p in parishOptions)
-                                        DropdownMenuItem(
-                                          value: p,
-                                          child: Text(
-                                            p == 'all' ? 'All parishes' : p,
-                                          ),
-                                        ),
-                                    ],
-                                    onChanged: (v) =>
-                                        setState(() => _parish = v ?? 'all'),
-                                  ),
-                                  SizedBox(width: gap),
-                                  OutlinedButton.icon(
-                                    onPressed: () async {
-                                      final picked = await showDatePicker(
-                                        context: context,
-                                        initialDate: _from ?? DateTime.now(),
-                                        firstDate: DateTime(1900),
-                                        lastDate: DateTime(2100),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: _from ?? DateTime.now(),
+                                    firstDate: DateTime(1900),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (picked != null) {
+                                    setState(() {
+                                      _from = DateTime(
+                                        picked.year,
+                                        picked.month,
+                                        picked.day,
                                       );
-                                      if (picked != null) {
-                                        setState(() => _from = picked);
-                                      }
-                                    },
-                                    icon: const Icon(
-                                      Icons.calendar_today_outlined,
-                                    ),
-                                    label: Text(
-                                      _from == null
-                                          ? 'From'
-                                          : df.format(_from!),
-                                    ),
-                                  ),
-                                  SizedBox(width: isNarrow ? 6 : 8),
-                                  OutlinedButton.icon(
-                                    onPressed: () async {
-                                      final picked = await showDatePicker(
-                                        context: context,
-                                        initialDate: _to ?? DateTime.now(),
-                                        firstDate: DateTime(1900),
-                                        lastDate: DateTime(2100),
-                                      );
-                                      if (picked != null) {
-                                        setState(() => _to = picked);
-                                      }
-                                    },
-                                    icon: const Icon(
-                                      Icons.calendar_month_outlined,
-                                    ),
-                                    label: Text(
-                                      _to == null ? 'To' : df.format(_to!),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Clear dates',
-                                    onPressed: (_from == null && _to == null)
-                                        ? null
-                                        : () => setState(() {
-                                            _from = null;
-                                            _to = null;
-                                          }),
-                                    icon: const Icon(Icons.clear),
-                                  ),
-                                  SizedBox(width: gap),
-                                  IconButton(
-                                    tooltip: _desc
-                                        ? 'Sort: Newest first'
-                                        : 'Sort: Oldest first',
-                                    onPressed: () =>
-                                        setState(() => _desc = !_desc),
-                                    icon: Icon(
-                                      _desc ? Icons.sort : Icons.sort_by_alpha,
-                                    ),
-                                  ),
-                                  SizedBox(width: isNarrow ? 6 : 8),
-                                  OutlinedButton.icon(
-                                    onPressed: _selected.isEmpty
-                                        ? null
-                                        : _bulkDelete,
-                                    icon: const Icon(
-                                      Icons.delete_sweep_outlined,
-                                    ),
-                                    label: Text('Delete (${_selected.length})'),
-                                  ),
-                                  SizedBox(width: isNarrow ? 6 : 8),
-                                  OutlinedButton.icon(
-                                    onPressed: _selected.isEmpty
-                                        ? null
-                                        : () => _bulkExport(true),
-                                    icon: const Icon(Icons.table_chart),
-                                    label: const Text('Export CSV'),
-                                  ),
-                                  SizedBox(width: isNarrow ? 6 : 8),
-                                  OutlinedButton.icon(
-                                    onPressed: _selected.isEmpty
-                                        ? null
-                                        : () => _bulkExport(false),
-                                    icon: const Icon(Icons.data_object),
-                                    label: const Text('Export JSON'),
-                                  ),
-                                  SizedBox(width: gap),
-                                  Checkbox(
-                                    value:
-                                        _selected.isNotEmpty &&
-                                        _selected.length == items.length,
-                                    onChanged: (v) {
-                                      setState(() {
-                                        if (v == true) {
-                                          _selected
-                                            ..clear()
-                                            ..addAll(
-                                              items
-                                                  .map(
-                                                    (e) =>
-                                                        e['id']?.toString() ??
-                                                        '',
-                                                  )
-                                                  .where((id) => id.isNotEmpty),
-                                            );
-                                        } else {
-                                          _selected.clear();
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  const Text('All'),
-                                  SizedBox(width: gap),
-                                  FilledButton.icon(
-                                    onPressed: _openNewRecord,
-                                    icon: const Icon(Icons.add),
-                                    label: const Text('Add Record'),
-                                  ),
-                                  SizedBox(width: isNarrow ? 6 : 8),
-                                  OutlinedButton.icon(
-                                    onPressed: _importCsvDialog,
-                                    icon: const Icon(
-                                      Icons.file_upload_outlined,
-                                    ),
-                                    label: const Text('Import CSV'),
-                                  ),
-                                ],
+                                    });
+                                  }
+                                },
+                                icon: const Icon(Icons.calendar_today),
+                                label: Text(
+                                  _from == null
+                                      ? 'From date'
+                                      : 'From: ${DateFormat.yMMMd().format(_from!)}',
+                                ),
                               ),
-                            ),
-                          ),
-                          Tooltip(
-                            message:
-                                _selected.length == items.length &&
-                                    items.isNotEmpty
-                                ? 'Unselect all'
-                                : 'Select all',
-                            child: IconButton(
-                              onPressed: items.isEmpty
-                                  ? null
-                                  : () => _toggleSelectAll(items),
-                              icon: const Icon(Icons.select_all),
-                            ),
-                          ),
-                          Tooltip(
-                            message: 'Delete selected',
-                            child: IconButton(
-                              onPressed: _selected.isEmpty ? null : _bulkDelete,
-                              icon: const Icon(Icons.delete_sweep_outlined),
-                            ),
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: _to ?? _from ?? DateTime.now(),
+                                    firstDate: DateTime(1900),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (picked != null) {
+                                    setState(() {
+                                      _to = DateTime(
+                                        picked.year,
+                                        picked.month,
+                                        picked.day,
+                                      );
+                                    });
+                                  }
+                                },
+                                icon: const Icon(Icons.calendar_month),
+                                label: Text(
+                                  _to == null
+                                      ? 'To date'
+                                      : 'To: ${DateFormat.yMMMd().format(_to!)}',
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Clear date filter',
+                                onPressed: () {
+                                  if (_from == null && _to == null) return;
+                                  setState(() {
+                                    _from = null;
+                                    _to = null;
+                                  });
+                                },
+                                icon: const Icon(Icons.clear),
+                              ),
+                            ],
                           ),
                         ],
                       );
                     },
                   ),
                 ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      _buildTypeButton(context, 'baptism', 'Baptism'),
+                      _buildTypeButton(context, 'marriage', 'Marriage'),
+                      _buildTypeButton(context, 'confirmation', 'Confirmation'),
+                      _buildTypeButton(context, 'funeral', 'Death / Burial'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
                 const Divider(height: 0),
                 Expanded(
                   child: LayoutBuilder(
@@ -798,116 +626,124 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                       if (items.isEmpty) {
                         return const Center(child: Text('No records'));
                       }
-                      final w = constraints.maxWidth;
-                      int cols = 1;
-                      if (w >= 1200) {
-                        cols = 4;
-                      } else if (w >= 900) {
-                        cols = 3;
-                      } else if (w >= 600) {
-                        cols = 2;
-                      }
-                      return GridView.builder(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: cols,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 4,
-                          childAspectRatio: 3.8,
-                        ),
-                        itemCount: items.length,
-                        itemBuilder: (_, i) {
-                          final m = items[i];
-                          final key = m['id']?.toString() ?? '';
-                          final id = key;
-                          final selected = _selected.contains(id);
-                          final type = (m['type'] ?? '').toString();
-                          final parish = (m['parish'] ?? '').toString();
-                          final date = (m['date'] ?? '').toString();
-                          final parts = <String>[];
-                          if (type.isNotEmpty) parts.add(type);
-                          if (parish.isNotEmpty) parts.add(parish);
-                          if (date.isNotEmpty) parts.add(date);
-                          final subtitle = parts.join(' · ');
-                          return Card(
-                            elevation: 0,
-                            child: ListTile(
-                              leading: Checkbox(
-                                value: selected,
-                                onChanged: (v) {
-                                  setState(() {
-                                    if (v == true) {
-                                      _selected.add(id);
-                                    } else {
-                                      _selected.remove(id);
-                                    }
-                                  });
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.all(12),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: DataTable(
+                            columns: const [
+                              DataColumn(label: Text('Name')),
+                              DataColumn(label: Text('Date')),
+                              DataColumn(label: Text('Parish')),
+                              DataColumn(label: Text('Actions')),
+                            ],
+                            rows: items.map((m) {
+                              final key = m['id']?.toString() ?? '';
+                              final rawParish = (m['parish'] ?? '').toString();
+                              final parish = rawParish.isEmpty
+                                  ? 'Holy Rosary Parish – Oroquieta City'
+                                  : rawParish;
+                              final dateRaw = (m['date'] ?? '').toString();
+                              DateTime? d = DateTime.tryParse(
+                                dateRaw.isEmpty ? '' : dateRaw,
+                              );
+                              final df = DateFormat.yMMMd();
+                              final dateLabel = d == null
+                                  ? ''
+                                  : df.format(d.toLocal());
+                              final name = (m['name'] ?? 'Untitled').toString();
+                              final rec = m['record'] as ParishRecord?;
+
+                              final cells = <DataCell>[
+                                DataCell(
+                                  Text(name, overflow: TextOverflow.ellipsis),
+                                ),
+                                DataCell(Text(dateLabel)),
+                                DataCell(Text(parish)),
+                              ];
+
+                              cells.add(
+                                DataCell(
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Edit',
+                                        onPressed: () {
+                                          final recLocal =
+                                              m['record'] as ParishRecord?;
+                                          if (recLocal == null) {
+                                            _upsert(existing: m);
+                                            return;
+                                          }
+
+                                          _openRecordForm(recLocal);
+                                        },
+                                        icon: const Icon(Icons.edit_outlined),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Delete',
+                                        onPressed: key.isEmpty
+                                            ? null
+                                            : () async {
+                                                final ok = await showDialog<bool>(
+                                                  context: context,
+                                                  builder: (ctx) => AlertDialog(
+                                                    title: const Text(
+                                                      'Delete record?',
+                                                    ),
+                                                    content: Text(
+                                                      'Are you sure you want to delete "$key"?',
+                                                    ),
+                                                    actions: [
+                                                      TextButton(
+                                                        onPressed: () =>
+                                                            Navigator.pop(
+                                                              ctx,
+                                                              false,
+                                                            ),
+                                                        child: const Text(
+                                                          'Cancel',
+                                                        ),
+                                                      ),
+                                                      FilledButton(
+                                                        onPressed: () =>
+                                                            Navigator.pop(
+                                                              ctx,
+                                                              true,
+                                                            ),
+                                                        child: const Text(
+                                                          'Delete',
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                                if (ok == true) {
+                                                  await _delete(key);
+                                                }
+                                              },
+                                        icon: const Icon(Icons.delete_outline),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+
+                              return DataRow(
+                                cells: cells,
+                                onSelectChanged: (selected) {
+                                  if (selected != true) return;
+                                  if (rec == null) return;
+                                  context.push('/admin/records/${rec.id}');
                                 },
-                              ),
-                              title: Text(
-                                m['name']?.toString() ?? 'Untitled',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: Text(
-                                subtitle,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              trailing: Wrap(
-                                spacing: 4,
-                                children: [
-                                  IconButton(
-                                    tooltip: 'Edit',
-                                    onPressed: () => _upsert(existing: m),
-                                    icon: const Icon(Icons.edit_outlined),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Delete',
-                                    onPressed: key.isEmpty
-                                        ? null
-                                        : () async {
-                                            final ok = await showDialog<bool>(
-                                              context: context,
-                                              builder: (ctx) => AlertDialog(
-                                                title: const Text(
-                                                  'Delete record?',
-                                                ),
-                                                content: Text(
-                                                  'Are you sure you want to delete "$key"?',
-                                                ),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () =>
-                                                        Navigator.pop(
-                                                          ctx,
-                                                          false,
-                                                        ),
-                                                    child: const Text('Cancel'),
-                                                  ),
-                                                  FilledButton(
-                                                    onPressed: () =>
-                                                        Navigator.pop(
-                                                          ctx,
-                                                          true,
-                                                        ),
-                                                    child: const Text('Delete'),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                            if (ok == true) await _delete(id);
-                                          },
-                                    icon: const Icon(Icons.delete_outline),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
+                              );
+                            }).toList(),
+                          ),
+                        ),
                       );
                     },
-                  ),
+                  ), // Added missing closing brace here
                 ),
               ],
             ),
@@ -915,20 +751,5 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
         ],
       ),
     );
-  }
-
-  RecordType _strToType(String s) {
-    switch (s.toLowerCase()) {
-      case 'baptism':
-        return RecordType.baptism;
-      case 'marriage':
-        return RecordType.marriage;
-      case 'funeral':
-        return RecordType.funeral;
-      case 'confirmation':
-        return RecordType.confirmation;
-      default:
-        return RecordType.baptism;
-    }
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 
@@ -129,7 +130,7 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Record added successfully')),
           );
-          Navigator.pop(context, true);
+          context.go('/records');
         }
       } else {
         await ref
@@ -145,7 +146,7 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Record updated successfully')),
           );
-          Navigator.pop(context, true);
+          context.go('/records');
         }
       }
     } catch (e) {

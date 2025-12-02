@@ -1,5 +1,5 @@
--- Parish Records Database Schema for Cassandra
--- This file contains the complete database structure
+-- Parish Records Database Schema for Cassandra (revised)
+-- Keyspace: parish_records
 
 -- Create keyspace
 CREATE KEYSPACE IF NOT EXISTS parish_records
@@ -10,140 +10,197 @@ WITH REPLICATION = {
 
 USE parish_records;
 
--- Records table (main parish records)
-CREATE TABLE IF NOT EXISTS records (
-  id UUID PRIMARY KEY,
-  type TEXT,
-  name TEXT,
-  date DATE,
-  place TEXT,
-  parish TEXT,
-  notes TEXT,
-  certificate_status TEXT,
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP,
-  created_by UUID,
-  registry_number TEXT,
-  book_number TEXT,
-  page_number TEXT,
-  line_number TEXT
-);
-
--- Create indexes for common queries
-CREATE INDEX IF NOT EXISTS records_type_idx ON records (type);
-CREATE INDEX IF NOT EXISTS records_date_idx ON records (date);
-CREATE INDEX IF NOT EXISTS records_parish_idx ON records (parish);
-CREATE INDEX IF NOT EXISTS records_certificate_status_idx ON records (certificate_status);
-CREATE INDEX IF NOT EXISTS records_created_at_idx ON records (created_at);
-
--- Records by type table (for efficient type-based queries)
+-- Records by type (summary across all sacrament tables)
 CREATE TABLE IF NOT EXISTS records_by_type (
   type TEXT,
-  created_at TIMESTAMP,
-  id UUID,
+  parish_id TEXT,
+  id TEXT,
   name TEXT,
   date DATE,
   place TEXT,
-  parish TEXT,
   certificate_status TEXT,
+  created_at TIMESTAMP,
   PRIMARY KEY (type, created_at, id)
 ) WITH CLUSTERING ORDER BY (created_at DESC, id ASC);
 
--- Records by parish table (for parish-specific queries)
-CREATE TABLE IF NOT EXISTS records_by_parish (
-  parish TEXT,
-  created_at TIMESTAMP,
-  id UUID,
-  type TEXT,
+-- Sacrament record tables
+CREATE TABLE IF NOT EXISTS baptism_records (
+  parish_id TEXT,
+  id TEXT,
   name TEXT,
+  gender TEXT,
+  date_of_birth DATE,
+  place_of_birth TEXT,
+  father_name TEXT,
+  mother_name TEXT,
+  godfather_name TEXT,
+  godmother_name TEXT,
+  date_of_baptism DATE,
+  time_of_baptism TEXT,
+  minister_name TEXT,
   date DATE,
   place TEXT,
-  certificate_status TEXT,
-  PRIMARY KEY (parish, created_at, id)
-) WITH CLUSTERING ORDER BY (created_at DESC, id ASC);
-
--- Users table (for authentication and user management)
-CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY,
-  email TEXT,
-  display_name TEXT,
-  role TEXT,
   created_at TIMESTAMP,
-  last_login TIMESTAMP,
-  email_verified BOOLEAN,
-  status TEXT
-);
-
--- Create unique index on email
-CREATE INDEX IF NOT EXISTS users_email_idx ON users (email);
-CREATE INDEX IF NOT EXISTS users_role_idx ON users (role);
-
--- Certificates table (for certificate tracking)
-CREATE TABLE IF NOT EXISTS certificates (
-  id UUID PRIMARY KEY,
-  record_id UUID,
-  certificate_number TEXT,
-  issued_date TIMESTAMP,
-  issued_by UUID,
-  recipient_name TEXT,
-  recipient_email TEXT,
-  purpose TEXT,
-  status TEXT,
-  pdf_path TEXT,
-  created_at TIMESTAMP
-);
-
--- Create indexes for certificates
-CREATE INDEX IF NOT EXISTS certificates_record_id_idx ON certificates (record_id);
-CREATE INDEX IF NOT EXISTS certificates_status_idx ON certificates (status);
-CREATE INDEX IF NOT EXISTS certificates_issued_date_idx ON certificates (issued_date);
-
--- Audit logs table (for tracking changes)
-CREATE TABLE IF NOT EXISTS audit_logs (
-  id UUID PRIMARY KEY,
-  user_id UUID,
-  action TEXT,
-  resource_type TEXT,
-  resource_id UUID,
-  old_values TEXT,
-  new_values TEXT,
-  timestamp TIMESTAMP,
-  ip_address TEXT,
-  user_agent TEXT
-);
-
--- Create indexes for audit logs
-CREATE INDEX IF NOT EXISTS audit_logs_user_id_idx ON audit_logs (user_id);
-CREATE INDEX IF NOT EXISTS audit_logs_timestamp_idx ON audit_logs (timestamp);
-CREATE INDEX IF NOT EXISTS audit_logs_resource_type_idx ON audit_logs (resource_type);
-
--- Settings table (for application configuration)
-CREATE TABLE IF NOT EXISTS settings (
-  key TEXT PRIMARY KEY,
-  value TEXT,
-  description TEXT,
   updated_at TIMESTAMP,
-  updated_by UUID
+  created_by TEXT,
+  book_number TEXT,
+  page_number TEXT,
+  line_number TEXT,
+  PRIMARY KEY (parish_id, id)
 );
 
--- Notifications table (for system notifications)
-CREATE TABLE IF NOT EXISTS notifications (
-  id UUID PRIMARY KEY,
-  user_id UUID,
-  title TEXT,
-  message TEXT,
-  type TEXT,
-  read BOOLEAN,
+CREATE TABLE IF NOT EXISTS marriage_records (
+  parish_id TEXT,
+  id TEXT,
+  groom_name TEXT,
+  bride_name TEXT,
+  date DATE,
+  time_of_marriage TEXT,
+  place TEXT,
+  officiant_name TEXT,
+  groom_age_or_dob TEXT,
+  groom_civil_status TEXT,
+  groom_religion TEXT,
+  groom_address TEXT,
+  witness1_name TEXT,
+  witness2_name TEXT,
+  remarks TEXT,
   created_at TIMESTAMP,
-  expires_at TIMESTAMP
+  updated_at TIMESTAMP,
+  created_by TEXT,
+  registry_number TEXT,
+  book_number TEXT,
+  page_number TEXT,
+  line_number TEXT,
+  PRIMARY KEY (parish_id, id)
 );
 
--- Create indexes for notifications
-CREATE INDEX IF NOT EXISTS notifications_user_id_idx ON notifications (user_id);
-CREATE INDEX IF NOT EXISTS notifications_created_at_idx ON notifications (created_at);
+CREATE TABLE IF NOT EXISTS confirmation_records (
+  parish_id TEXT,
+  id TEXT,
+  name TEXT,
+  age_or_dob TEXT,
+  place_of_birth TEXT,
+  father_name TEXT,
+  mother_name TEXT,
+  address TEXT,
+  sponsor_name TEXT,
+  date DATE,
+  place TEXT,
+  minister_name TEXT,
+  remarks TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  created_by TEXT,
+  registry_number TEXT,
+  book_number TEXT,
+  page_number TEXT,
+  line_number TEXT,
+  PRIMARY KEY (parish_id, id)
+);
 
--- Statistics table (for analytics and reporting)
-CREATE TABLE IF NOT EXISTS statistics (
+CREATE TABLE IF NOT EXISTS death_records (
+  parish_id TEXT,
+  id TEXT,
+  name TEXT,
+  gender TEXT,
+  age_or_dob TEXT,
+  date_of_birth DATE,
+  date DATE,
+  place TEXT,
+  place_of_death TEXT,
+  cause_of_death TEXT,
+  civil_status TEXT,
+  religion TEXT,
+  address TEXT,
+  father_name TEXT,
+  mother_name TEXT,
+  spouse_name TEXT,
+  informant_name TEXT,
+  informant_relation TEXT,
+  burial_date DATE,
+  burial_place TEXT,
+  minister_name TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  created_by TEXT,
+  registry_number TEXT,
+  book_number TEXT,
+  page_number TEXT,
+  line_number TEXT,
+  PRIMARY KEY (parish_id, id)
+);
+
+-- Request tables
+CREATE TABLE IF NOT EXISTS baptism_request (
+  parish_id TEXT,
+  id TEXT,
+  record_id TEXT,
+  requester_name TEXT,
+  status TEXT,
+  requested_at TIMESTAMP,
+  processed_at TIMESTAMP,
+  processed_by TEXT,
+  notification_sent BOOLEAN,
+  PRIMARY KEY (parish_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS marriage_request (
+  parish_id TEXT,
+  id TEXT,
+  record_id TEXT,
+  requester_name TEXT,
+  status TEXT,
+  requested_at TIMESTAMP,
+  processed_at TIMESTAMP,
+  processed_by TEXT,
+  notification_sent BOOLEAN,
+  PRIMARY KEY (parish_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS confirmation_request (
+  parish_id TEXT,
+  id TEXT,
+  record_id TEXT,
+  requester_name TEXT,
+  status TEXT,
+  requested_at TIMESTAMP,
+  processed_at TIMESTAMP,
+  processed_by TEXT,
+  notification_sent BOOLEAN,
+  PRIMARY KEY (parish_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS death_request (
+  parish_id TEXT,
+  id TEXT,
+  record_id TEXT,
+  requester_name TEXT,
+  status TEXT,
+  requested_at TIMESTAMP,
+  processed_at TIMESTAMP,
+  processed_by TEXT,
+  notification_sent BOOLEAN,
+  PRIMARY KEY (parish_id, id)
+);
+ 
+-- Certificate requests (staff & admin)
+CREATE TABLE IF NOT EXISTS certificate_requests (
+  parish_id TEXT,
+  request_id TEXT,
+  record_id TEXT,
+  request_type TEXT,
+  requester_name TEXT,
+  status TEXT,
+  requested_at TIMESTAMP,
+  processed_at TIMESTAMP,
+  processed_by TEXT,
+  notification_sent BOOLEAN,
+  PRIMARY KEY (parish_id, request_id)
+);
+
+-- Analytics
+CREATE TABLE IF NOT EXISTS analytics (
   date DATE,
   metric_type TEXT,
   metric_name TEXT,
@@ -152,49 +209,58 @@ CREATE TABLE IF NOT EXISTS statistics (
   PRIMARY KEY (date, metric_type, metric_name)
 ) WITH CLUSTERING ORDER BY (metric_type ASC, metric_name ASC);
 
--- File attachments table (for document storage references)
-CREATE TABLE IF NOT EXISTS attachments (
-  id UUID PRIMARY KEY,
-  record_id UUID,
+-- Certificate
+CREATE TABLE IF NOT EXISTS certificate (
+  id TEXT PRIMARY KEY,
+  parish_id TEXT,
+  record_type TEXT,
+  record_id TEXT,
+  certificate_number TEXT,
+  issued_date TIMESTAMP,
+  issued_by TEXT,
+  recipient_name TEXT,
+  recipient_email TEXT,
+  purpose TEXT,
+  status TEXT,
+  pdf_path TEXT,
+  created_at TIMESTAMP
+);
+
+-- Audit logs
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  action TEXT,
+  resource_type TEXT,
+  resource_id TEXT,
+  old_values TEXT,
+  new_values TEXT,
+  timestamp TIMESTAMP,
+  ip_address TEXT,
+  user_agent TEXT
+);
+
+-- Attachment
+CREATE TABLE IF NOT EXISTS attachment (
+  id TEXT PRIMARY KEY,
+  record_type TEXT,
+  record_id TEXT,
   filename TEXT,
   file_path TEXT,
   file_size BIGINT,
   mime_type TEXT,
-  uploaded_by UUID,
+  uploaded_by TEXT,
   uploaded_at TIMESTAMP
 );
 
--- Create indexes for attachments
-CREATE INDEX IF NOT EXISTS attachments_record_id_idx ON attachments (record_id);
-
--- Insert default settings
-INSERT INTO settings (key, value, description, updated_at) VALUES 
-('app_name', 'Parish Record System', 'Application name', toTimestamp(now()))
-IF NOT EXISTS;
-
-INSERT INTO settings (key, value, description, updated_at) VALUES 
-('version', '1.0.0', 'Application version', toTimestamp(now()))
-IF NOT EXISTS;
-
-INSERT INTO settings (key, value, description, updated_at) VALUES 
-('timezone', 'UTC', 'Default timezone', toTimestamp(now()))
-IF NOT EXISTS;
-
-INSERT INTO settings (key, value, description, updated_at) VALUES 
-('max_file_size', '10485760', 'Maximum file upload size in bytes (10MB)', toTimestamp(now()))
-IF NOT EXISTS;
-
--- Create materialized views for common queries
-CREATE MATERIALIZED VIEW IF NOT EXISTS records_by_certificate_status AS
-  SELECT id, type, name, date, certificate_status, created_at
-  FROM records
-  WHERE certificate_status IS NOT NULL AND id IS NOT NULL
-  PRIMARY KEY (certificate_status, created_at, id)
-  WITH CLUSTERING ORDER BY (created_at DESC, id ASC);
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS recent_records AS
-  SELECT id, type, name, date, parish, certificate_status, created_at
-  FROM records
-  WHERE created_at IS NOT NULL AND id IS NOT NULL
-  PRIMARY KEY (created_at, id)
-  WITH CLUSTERING ORDER BY (created_at DESC);
+-- Notifications
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  title TEXT,
+  message TEXT,
+  type TEXT,
+  read BOOLEAN,
+  created_at TIMESTAMP,
+  expires_at TIMESTAMP
+);

@@ -1,18 +1,23 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/records_provider.dart';
 import '../../../models/record.dart';
+import '../../../utils/responsive.dart';
 
 class EnhancedAdminOverviewPage extends ConsumerStatefulWidget {
   const EnhancedAdminOverviewPage({super.key});
 
   @override
-  ConsumerState<EnhancedAdminOverviewPage> createState() => _EnhancedAdminOverviewPageState();
+  ConsumerState<EnhancedAdminOverviewPage> createState() =>
+      _EnhancedAdminOverviewPageState();
 }
 
-class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOverviewPage>
+class _EnhancedAdminOverviewPageState
+    extends ConsumerState<EnhancedAdminOverviewPage>
     with TickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -28,11 +33,11 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
-    
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+        );
+
     _animationController.forward();
   }
 
@@ -51,12 +56,21 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
 
     // Calculate statistics
     final totalRecords = records.length;
-    final pendingCertificates = records.where((r) => r.certificateStatus == CertificateStatus.pending).length;
-    final approvedCertificates = records.where((r) => r.certificateStatus == CertificateStatus.approved).length;
-    final baptismRecords = records.where((r) => r.type == RecordType.baptism).length;
-    final marriageRecords = records.where((r) => r.type == RecordType.marriage).length;
-    final confirmationRecords = records.where((r) => r.type == RecordType.confirmation).length;
-    final funeralRecords = records.where((r) => r.type == RecordType.funeral).length;
+    final baptismRecords = records
+        .where((r) => r.type == RecordType.baptism)
+        .length;
+    final marriageRecords = records
+        .where((r) => r.type == RecordType.marriage)
+        .length;
+    final confirmationRecords = records
+        .where((r) => r.type == RecordType.confirmation)
+        .length;
+    final funeralRecords = records
+        .where((r) => r.type == RecordType.funeral)
+        .length;
+    final totalRequests = records
+        .where((record) => _isCertificateRequest(record))
+        .length;
 
     return Scaffold(
       body: Container(
@@ -77,21 +91,24 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
             child: SlideTransition(
               position: _slideAnimation,
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16.0),
+                padding: context.padAll(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Modern Header
-                    _buildModernHeader(theme, colorScheme, auth),
-                    const SizedBox(height: 24),
+                    _buildModernHeader(theme, colorScheme, auth, context),
+                    SizedBox(height: context.rf(24)),
 
                     // Statistics Cards
                     _buildStatisticsGrid(
                       theme,
                       colorScheme,
                       totalRecords,
-                      pendingCertificates,
-                      approvedCertificates,
+                      baptismRecords,
+                      marriageRecords,
+                      confirmationRecords,
+                      funeralRecords,
+                      totalRequests,
                     ),
                     const SizedBox(height: 24),
 
@@ -107,11 +124,8 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
                     const SizedBox(height: 24),
 
                     // Quick Actions
-                    _buildQuickActions(theme, colorScheme),
-                    const SizedBox(height: 24),
-
-                    // Recent Activity
-                    _buildRecentActivity(theme, colorScheme, records),
+                    _buildQuickActions(context, theme, colorScheme),
+                    SizedBox(height: context.rf(24)),
                   ],
                 ),
               ),
@@ -122,12 +136,17 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
     );
   }
 
-  Widget _buildModernHeader(ThemeData theme, ColorScheme colorScheme, dynamic auth) {
+  Widget _buildModernHeader(
+    ThemeData theme,
+    ColorScheme colorScheme,
+    dynamic auth,
+    BuildContext context,
+  ) {
     final now = DateTime.now();
     final hour = now.hour;
     String greeting;
     IconData greetingIcon;
-    
+
     if (hour < 12) {
       greeting = 'Good Morning';
       greetingIcon = Icons.wb_sunny;
@@ -140,10 +159,13 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
     }
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: context.padAll(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.8)],
+          colors: [
+            colorScheme.primary,
+            colorScheme.primary.withValues(alpha: 0.8),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -159,16 +181,12 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: context.padAll(12),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(
-              greetingIcon,
-              size: 28,
-              color: Colors.white,
-            ),
+            child: Icon(greetingIcon, size: 28, color: Colors.white),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -180,17 +198,23 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: Colors.white.withValues(alpha: 0.9),
                     fontWeight: FontWeight.w500,
+                    fontSize: context.rf(
+                      theme.textTheme.titleMedium?.fontSize ?? 16,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: context.rf(4)),
                 Text(
                   auth.user?.displayName ?? 'Administrator',
                   style: theme.textTheme.titleLarge?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
+                    fontSize: context.rf(
+                      theme.textTheme.titleLarge?.fontSize ?? 20,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: context.rf(8)),
                 Text(
                   'Parish Record Management System',
                   style: theme.textTheme.bodyMedium?.copyWith(
@@ -209,8 +233,11 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
     ThemeData theme,
     ColorScheme colorScheme,
     int totalRecords,
-    int pendingCertificates,
-    int approvedCertificates,
+    int baptismRecords,
+    int marriageRecords,
+    int confirmationRecords,
+    int funeralRecords,
+    int totalRequests,
   ) {
     return GridView.count(
       shrinkWrap: true,
@@ -228,24 +255,38 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
           theme,
         ),
         _buildStatCard(
-          'Pending Certificates',
-          pendingCertificates.toString(),
-          Icons.pending_actions,
-          Colors.orange,
+          'Baptism Records',
+          baptismRecords.toString(),
+          Icons.water_drop_outlined,
+          Colors.blue,
           theme,
         ),
         _buildStatCard(
-          'Approved Certificates',
-          approvedCertificates.toString(),
+          'Marriage Records',
+          marriageRecords.toString(),
+          Icons.favorite_outline,
+          Colors.pink,
+          theme,
+        ),
+        _buildStatCard(
+          'Confirmation Records',
+          confirmationRecords.toString(),
           Icons.verified,
-          Colors.green,
+          Colors.purple,
           theme,
         ),
         _buildStatCard(
-          'This Month',
-          '12', // Placeholder
-          Icons.calendar_month,
-          colorScheme.secondary,
+          'Death Records',
+          funeralRecords.toString(),
+          Icons.person_outline,
+          Colors.grey,
+          theme,
+        ),
+        _buildStatCard(
+          'Total Requests',
+          totalRequests.toString(),
+          Icons.request_page_outlined,
+          Colors.orange,
           theme,
         ),
       ],
@@ -287,17 +328,9 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
                   color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 20,
-                ),
+                child: Icon(icon, color: color, size: 20),
               ),
-              Icon(
-                Icons.trending_up,
-                color: Colors.green,
-                size: 16,
-              ),
+              Icon(Icons.trending_up, color: Colors.green, size: 16),
             ],
           ),
           const Spacer(),
@@ -353,16 +386,15 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
         children: [
           Row(
             children: [
-              Icon(
-                Icons.pie_chart,
-                color: colorScheme.primary,
-                size: 24,
-              ),
+              Icon(Icons.pie_chart, color: colorScheme.primary, size: 24),
               const SizedBox(width: 12),
-              Text(
-                'Record Types Distribution',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  'Record Types Distribution',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -371,11 +403,23 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
           Row(
             children: [
               Expanded(
-                child: _buildRecordTypeItem('Baptism', baptism, Icons.child_care, Colors.blue, theme),
+                child: _buildRecordTypeItem(
+                  'Baptism',
+                  baptism,
+                  Icons.child_care,
+                  Colors.blue,
+                  theme,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: _buildRecordTypeItem('Marriage', marriage, Icons.favorite, Colors.pink, theme),
+                child: _buildRecordTypeItem(
+                  'Marriage',
+                  marriage,
+                  Icons.favorite,
+                  Colors.pink,
+                  theme,
+                ),
               ),
             ],
           ),
@@ -383,11 +427,23 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
           Row(
             children: [
               Expanded(
-                child: _buildRecordTypeItem('Confirmation', confirmation, Icons.verified_user, Colors.green, theme),
+                child: _buildRecordTypeItem(
+                  'Confirmation',
+                  confirmation,
+                  Icons.verified_user,
+                  Colors.green,
+                  theme,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: _buildRecordTypeItem('Funeral', funeral, Icons.local_florist, Colors.grey, theme),
+                child: _buildRecordTypeItem(
+                  'Funeral',
+                  funeral,
+                  Icons.local_florist,
+                  Colors.grey,
+                  theme,
+                ),
               ),
             ],
           ),
@@ -396,7 +452,33 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
     );
   }
 
-  Widget _buildRecordTypeItem(String title, int count, IconData icon, Color color, ThemeData theme) {
+  bool _isCertificateRequest(ParishRecord record) {
+    final notes = record.notes;
+    if (notes == null || notes.isEmpty) return false;
+
+    try {
+      final decoded = json.decode(notes);
+      if (decoded is Map<String, dynamic>) {
+        final type =
+            (decoded['requestType'] as String?) ?? decoded['request_type'];
+        if (type == 'certificate_request') {
+          return true;
+        }
+      }
+    } catch (_) {
+      // Ignore JSON errors; fall back to simple string contains check below.
+    }
+
+    return notes.contains('certificate_request');
+  }
+
+  Widget _buildRecordTypeItem(
+    String title,
+    int count,
+    IconData icon,
+    Color color,
+    ThemeData theme,
+  ) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -438,7 +520,11 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
     );
   }
 
-  Widget _buildQuickActions(ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildQuickActions(
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -457,11 +543,7 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
         children: [
           Row(
             children: [
-              Icon(
-                Icons.flash_on,
-                color: colorScheme.primary,
-                size: 24,
-              ),
+              Icon(Icons.flash_on, color: colorScheme.primary, size: 24),
               const SizedBox(width: 12),
               Text(
                 'Quick Actions',
@@ -546,171 +628,5 @@ class _EnhancedAdminOverviewPageState extends ConsumerState<EnhancedAdminOvervie
         ),
       ),
     );
-  }
-
-  Widget _buildRecentActivity(ThemeData theme, ColorScheme colorScheme, List<ParishRecord> records) {
-    final recentRecords = records.take(5).toList();
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: theme.colorScheme.shadow.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.history,
-                color: colorScheme.primary,
-                size: 24,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'Recent Activity',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          if (recentRecords.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.inbox_outlined,
-                      size: 48,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No recent activity',
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            ...recentRecords.map((record) => _buildActivityItem(record, theme)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActivityItem(ParishRecord record, ThemeData theme) {
-    IconData icon;
-    Color color;
-    
-    switch (record.type) {
-      case RecordType.baptism:
-        icon = Icons.child_care;
-        color = Colors.blue;
-        break;
-      case RecordType.marriage:
-        icon = Icons.favorite;
-        color = Colors.pink;
-        break;
-      case RecordType.confirmation:
-        icon = Icons.verified_user;
-        color = Colors.green;
-        break;
-      case RecordType.funeral:
-        icon = Icons.local_florist;
-        color = Colors.grey;
-        break;
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: color, size: 16),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  record.name,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  '${record.type.name.toUpperCase()} • ${_formatDate(record.date)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: _getStatusColor(record.certificateStatus).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              record.certificateStatus.name.toUpperCase(),
-              style: TextStyle(
-                color: _getStatusColor(record.certificateStatus),
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _getStatusColor(CertificateStatus status) {
-    switch (status) {
-      case CertificateStatus.pending:
-        return Colors.orange;
-      case CertificateStatus.approved:
-        return Colors.green;
-      case CertificateStatus.rejected:
-        return Colors.red;
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-    
-    if (difference.inDays == 0) {
-      return 'Today';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
   }
 }

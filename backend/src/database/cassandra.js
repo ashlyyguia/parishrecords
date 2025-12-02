@@ -61,7 +61,21 @@ class CassandraClient {
   }
 
   getState() {
-    return this.client ? this.client.getState() : 'disconnected';
+    if (!this.client) {
+      return 'disconnected';
+    }
+
+    const state = this.client.getState();
+
+    // cassandra-driver state object exposes connected hosts; if there is at least
+    // one connected host we treat the database as connected.
+    const connectedHosts = state.getConnectedHosts
+      ? state.getConnectedHosts()
+      : state.connectedHosts;
+
+    return connectedHosts && connectedHosts.length > 0
+      ? 'connected'
+      : 'disconnected';
   }
 
   async shutdown() {

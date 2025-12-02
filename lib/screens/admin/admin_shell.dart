@@ -10,14 +10,8 @@ class AdminShell extends StatelessWidget {
     _NavItem('Overview', Icons.dashboard_outlined, '/admin/overview'),
     _NavItem('Users', Icons.group_outlined, '/admin/users'),
     _NavItem('Analytics', Icons.insights_outlined, '/admin/analytics'),
-    _NavItem('Activity', Icons.history_outlined, '/admin/activity'),
     _NavItem('Records', Icons.list_alt_outlined, '/admin/records'),
     _NavItem('Certificates', Icons.verified_outlined, '/admin/certificates'),
-    _NavItem(
-      'Notifications',
-      Icons.notifications_outlined,
-      '/admin/notifications',
-    ),
     _NavItem('Backup/Export', Icons.cloud_upload_outlined, '/admin/backup'),
     _NavItem('Settings & Audit', Icons.settings_outlined, '/admin/settings'),
   ];
@@ -131,7 +125,9 @@ class AdminShell extends StatelessWidget {
                       leading: Icon(it.icon),
                       title: Text(it.label),
                       selected: selected,
-                      selectedTileColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+                      selectedTileColor: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.08),
                       onTap: () {
                         Navigator.of(context).pop();
                         if (!location.startsWith(it.route)) {
@@ -156,10 +152,7 @@ class AdminShell extends StatelessWidget {
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: child,
-        ),
+        child: Padding(padding: const EdgeInsets.all(16.0), child: child),
       ),
     );
   }

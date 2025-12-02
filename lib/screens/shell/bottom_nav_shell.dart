@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/notification_provider.dart';
 
 class BottomNavShell extends ConsumerWidget {
   final Widget child;
   const BottomNavShell({super.key, required this.child});
 
-  static const _routes = ['/home', '/records', '/profile'];
+  static const _routes = [
+    '/home',
+    '/records',
+    '/records/certificates',
+    '/profile',
+  ];
 
   int _indexFromLocation(String location) {
+    // Certificates tab should match its more specific routes first
+    if (location.startsWith('/records/certificates') ||
+        location.startsWith('/records/certificate-request')) {
+      return 2;
+    }
     for (int i = 0; i < _routes.length; i++) {
       if (location.startsWith(_routes[i])) return i;
     }
@@ -20,7 +29,6 @@ class BottomNavShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).uri.toString();
     final currentIndex = _indexFromLocation(location);
-    final unread = ref.watch(unreadNotificationsCountProvider);
 
     return Scaffold(
       body: child,
@@ -31,22 +39,25 @@ class BottomNavShell extends ConsumerWidget {
         },
         destinations: [
           NavigationDestination(
-            icon: unread > 0
-                ? Badge(
-                    label: Text(unread > 99 ? '99+' : unread.toString()),
-                    child: const Icon(Icons.dashboard_outlined),
-                  )
-                : const Icon(Icons.dashboard_outlined),
-            selectedIcon: unread > 0
-                ? Badge(
-                    label: Text(unread > 99 ? '99+' : unread.toString()),
-                    child: const Icon(Icons.dashboard),
-                  )
-                : const Icon(Icons.dashboard),
+            icon: const Icon(Icons.dashboard_outlined),
+            selectedIcon: const Icon(Icons.dashboard),
             label: 'Dashboard',
           ),
-          const NavigationDestination(icon: Icon(Icons.folder_copy_outlined), selectedIcon: Icon(Icons.folder_copy), label: 'Records'),
-          const NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Profile'),
+          const NavigationDestination(
+            icon: Icon(Icons.folder_copy_outlined),
+            selectedIcon: Icon(Icons.folder_copy),
+            label: 'Records',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.request_page_outlined),
+            selectedIcon: Icon(Icons.request_page),
+            label: 'Certificates',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
         ],
       ),
     );

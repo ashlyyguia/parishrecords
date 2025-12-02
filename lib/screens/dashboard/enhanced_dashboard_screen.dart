@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,7 +7,6 @@ import 'package:intl/intl.dart';
 import '../../models/record.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/analytics_provider.dart';
-import '../../providers/notification_provider.dart';
 import '../../providers/records_provider.dart';
 
 class EnhancedDashboardScreen extends ConsumerStatefulWidget {
@@ -58,7 +59,6 @@ class _EnhancedDashboardScreenState
     final colorScheme = theme.colorScheme;
     final user = ref.watch(authProvider).user;
     final analytics = ref.watch(analyticsProvider);
-    final notifications = ref.watch(notificationsProvider);
     final records = ref.watch(recordsProvider);
 
     return Scaffold(
@@ -95,44 +95,6 @@ class _EnhancedDashboardScreenState
               ),
             ),
             actions: [
-              // Notifications Badge
-              Stack(
-                children: [
-                  IconButton(
-                    onPressed: () => context.push('/notifications'),
-                    icon: Icon(
-                      Icons.notifications_outlined,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  if (notifications.isNotEmpty)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: colorScheme.error,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 16,
-                          minHeight: 16,
-                        ),
-                        child: Text(
-                          '${notifications.length > 9 ? '9+' : notifications.length}',
-                          style: TextStyle(
-                            color: colorScheme.onError,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-
               // Profile Button
               IconButton(
                 onPressed: () => context.push('/profile'),
@@ -171,7 +133,7 @@ class _EnhancedDashboardScreenState
                         const SizedBox(height: 20),
 
                         // Quick Actions
-                        _buildQuickActions(colorScheme, theme),
+                        _buildQuickActions(context, colorScheme, theme),
 
                         const SizedBox(height: 20),
 
@@ -263,21 +225,25 @@ class _EnhancedDashboardScreenState
     );
   }
 
-  Widget _buildQuickActions(ColorScheme colorScheme, ThemeData theme) {
+  Widget _buildQuickActions(
+    BuildContext context,
+    ColorScheme colorScheme,
+    ThemeData theme,
+  ) {
     final actions = [
       {
         'title': 'Add Record',
         'subtitle': 'Create new parish record',
         'icon': Icons.add_circle_outline,
         'color': colorScheme.primary,
-        'route': '/records',
+        'onTap': () => _openNewRecord(),
       },
       {
-        'title': 'Scan Certificate',
-        'subtitle': 'OCR text extraction',
+        'title': 'Add with OCR',
+        'subtitle': 'Scan document to add',
         'icon': Icons.document_scanner_outlined,
-        'color': colorScheme.secondary,
-        'route': '/ocr',
+        'color': colorScheme.tertiary,
+        'onTap': () => _openNewRecordWithOcr(),
       },
       {
         'title': 'Search Records',
@@ -291,7 +257,7 @@ class _EnhancedDashboardScreenState
         'subtitle': 'Process requests',
         'icon': Icons.request_page_outlined,
         'color': colorScheme.error,
-        'route': '/records',
+        'route': '/records/certificate-request',
       },
     ];
 
@@ -323,7 +289,9 @@ class _EnhancedDashboardScreenState
               subtitle: action['subtitle'] as String,
               icon: action['icon'] as IconData,
               color: action['color'] as Color,
-              onTap: () => context.push(action['route'] as String),
+              onTap:
+                  (action['onTap'] as VoidCallback?) ??
+                  () => context.push(action['route'] as String),
               colorScheme: colorScheme,
             );
           },
@@ -401,35 +369,64 @@ class _EnhancedDashboardScreenState
     // Get real data from records
     final records = ref.watch(recordsProvider);
     final totalRecords = records.length;
-    final thisMonth = records.where((record) {
-      final now = DateTime.now();
-      return record.date.year == now.year && record.date.month == now.month;
-    }).length;
-    final pendingApproval = records.where((record) => 
-      record.certificateStatus == CertificateStatus.pending
-    ).length;
+    final baptismRecords = records
+        .where((record) => record.type == RecordType.baptism)
+        .length;
+    final marriageRecords = records
+        .where((record) => record.type == RecordType.marriage)
+        .length;
+    final confirmationRecords = records
+        .where((record) => record.type == RecordType.confirmation)
+        .length;
+    final deathRecords = records
+        .where((record) => record.type == RecordType.funeral)
+        .length;
+    final totalRequests = records
+        .where((record) => _isCertificateRequest(record))
+        .length;
 
     final stats = [
       {
         'title': 'Total Records',
         'value': totalRecords.toString(),
-        'change': '+12%',
+        'change': '',
         'icon': Icons.folder_outlined,
         'color': colorScheme.primary,
       },
       {
-        'title': 'This Month',
-        'value': thisMonth.toString(),
-        'change': '+5%',
-        'icon': Icons.calendar_today_outlined,
-        'color': colorScheme.secondary,
+        'title': 'Baptism Records',
+        'value': baptismRecords.toString(),
+        'change': '',
+        'icon': Icons.water_drop_outlined,
+        'color': Colors.blue,
       },
       {
-        'title': 'Pending Approval',
-        'value': pendingApproval.toString(),
-        'change': pendingApproval > 0 ? '+${pendingApproval}' : '0',
-        'icon': Icons.pending_outlined,
-        'color': colorScheme.tertiary,
+        'title': 'Marriage Records',
+        'value': marriageRecords.toString(),
+        'change': '',
+        'icon': Icons.favorite_outline,
+        'color': Colors.pink,
+      },
+      {
+        'title': 'Confirmation Records',
+        'value': confirmationRecords.toString(),
+        'change': '',
+        'icon': Icons.verified_outlined,
+        'color': Colors.purple,
+      },
+      {
+        'title': 'Death Records',
+        'value': deathRecords.toString(),
+        'change': '',
+        'icon': Icons.person_outline,
+        'color': Colors.grey,
+      },
+      {
+        'title': 'Total Requests',
+        'value': totalRequests.toString(),
+        'change': '',
+        'icon': Icons.request_page_outlined,
+        'color': Colors.orange,
       },
     ];
 
@@ -445,7 +442,7 @@ class _EnhancedDashboardScreenState
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 100,
+          height: 132,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: stats.length,
@@ -480,13 +477,14 @@ class _EnhancedDashboardScreenState
     required Color color,
     required ColorScheme colorScheme,
   }) {
+    final hasChange = change.trim().isNotEmpty;
     final isPositive = change.startsWith('+');
 
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
@@ -495,26 +493,26 @@ class _EnhancedDashboardScreenState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Icon(icon, color: color, size: 18),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: (isPositive ? Colors.green : Colors.red).withValues(
-                      alpha: 0.1,
+                if (hasChange)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
                     ),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    change,
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                      color: isPositive ? Colors.green : Colors.red,
+                    decoration: BoxDecoration(
+                      color: (isPositive ? Colors.green : Colors.red)
+                          .withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      change,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: isPositive ? Colors.green : Colors.red,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 6),
@@ -530,9 +528,11 @@ class _EnhancedDashboardScreenState
             Text(
               title,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 color: colorScheme.onSurface.withValues(alpha: 0.7),
               ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -546,26 +546,10 @@ class _EnhancedDashboardScreenState
     ThemeData theme,
   ) {
     // Mock recent records - replace with actual data
-    final recentRecords = [
-      {
-        'name': 'Maria Santos',
-        'type': 'Baptism',
-        'date': DateTime.now().subtract(const Duration(days: 1)),
-        'status': 'Pending',
-      },
-      {
-        'name': 'Juan Cruz',
-        'type': 'Marriage',
-        'date': DateTime.now().subtract(const Duration(days: 2)),
-        'status': 'Approved',
-      },
-      {
-        'name': 'Ana Rodriguez',
-        'type': 'Confirmation',
-        'date': DateTime.now().subtract(const Duration(days: 3)),
-        'status': 'Pending',
-      },
-    ];
+    final List<ParishRecord> allRecords =
+        (records as List<ParishRecord>).toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
+    final recentRecords = allRecords.take(3).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -615,54 +599,166 @@ class _EnhancedDashboardScreenState
                 ),
                 leading: CircleAvatar(
                   backgroundColor: _getRecordTypeColor(
-                    record['type'] as String,
+                    record.type.value,
                   ).withValues(alpha: 0.1),
                   child: Icon(
-                    _getRecordTypeIcon(record['type'] as String),
-                    color: _getRecordTypeColor(record['type'] as String),
+                    _getRecordTypeIcon(record.type.value),
+                    color: _getRecordTypeColor(record.type.value),
                     size: 20,
                   ),
                 ),
                 title: Text(
-                  record['name'] as String,
+                  record.name,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: colorScheme.onSurface,
                   ),
                 ),
                 subtitle: Text(
-                  '${record['type']} • ${DateFormat('MMM d, yyyy').format(record['date'] as DateTime)}',
+                  '${toBeginningOfSentenceCase(record.type.value)} • ${DateFormat('MMM d, yyyy').format(record.date)}',
                   style: TextStyle(
                     color: colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(
-                      record['status'] as String,
-                    ).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    record['status'] as String,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: _getStatusColor(record['status'] as String),
-                    ),
-                  ),
-                ),
-                onTap: () => context.push('/records'),
+                trailing: _isCertificateRequest(record)
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(
+                            record.certificateStatus.value,
+                          ).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          record.certificateStatus.value,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _getStatusColor(
+                              record.certificateStatus.value,
+                            ),
+                          ),
+                        ),
+                      )
+                    : null,
+                onTap: () => context.push('/records/${record.id}'),
               );
             },
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _openNewRecordWithOcr() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Scan New Record'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'baptism'),
+            child: const Text('Baptism (OCR)'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'marriage'),
+            child: const Text('Marriage (OCR)'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'confirmation'),
+            child: const Text('Confirmation (OCR)'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'death'),
+            child: const Text('Death (OCR)'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    switch (result) {
+      case 'baptism':
+        await context.push('/records/new/baptism', extra: 'ocr');
+        break;
+      case 'marriage':
+        await context.push('/records/new/marriage', extra: 'ocr');
+        break;
+      case 'confirmation':
+        await context.push('/records/new/confirmation', extra: 'ocr');
+        break;
+      case 'death':
+        await context.push('/records/new/death', extra: 'ocr');
+        break;
+    }
+  }
+
+  Future<void> _openNewRecord() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Add New Record'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'baptism'),
+            child: const Text('Baptism'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'marriage'),
+            child: const Text('Marriage'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'confirmation'),
+            child: const Text('Confirmation'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'death'),
+            child: const Text('Death'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    switch (result) {
+      case 'baptism':
+        await context.push('/records/new/baptism');
+        break;
+      case 'marriage':
+        await context.push('/records/new/marriage');
+        break;
+      case 'confirmation':
+        await context.push('/records/new/confirmation');
+        break;
+      case 'death':
+        await context.push('/records/new/death');
+        break;
+    }
+  }
+
+  bool _isCertificateRequest(ParishRecord record) {
+    final notes = record.notes;
+    if (notes == null || notes.isEmpty) return false;
+
+    try {
+      final decoded = json.decode(notes);
+      if (decoded is Map<String, dynamic>) {
+        final type =
+            (decoded['requestType'] as String?) ?? decoded['request_type'];
+        if (type == 'certificate_request') {
+          return true;
+        }
+      }
+    } catch (_) {
+      // Ignore JSON errors; fall back to simple string contains check below.
+    }
+
+    return notes.contains('certificate_request');
   }
 
   Color _getRecordTypeColor(String type) {
@@ -673,6 +769,7 @@ class _EnhancedDashboardScreenState
         return Colors.pink;
       case 'confirmation':
         return Colors.purple;
+      case 'funeral':
       case 'death':
         return Colors.grey;
       default:
@@ -688,6 +785,7 @@ class _EnhancedDashboardScreenState
         return Icons.favorite_outline;
       case 'confirmation':
         return Icons.verified_outlined;
+      case 'funeral':
       case 'death':
         return Icons.person_outline;
       default:

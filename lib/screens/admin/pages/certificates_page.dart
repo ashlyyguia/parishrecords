@@ -1,130 +1,193 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../providers/records_provider.dart';
-import '../../../models/record.dart';
+import '../../../services/requests_repository.dart';
 
-class AdminCertificatesPage extends ConsumerWidget {
+class AdminCertificatesPage extends ConsumerStatefulWidget {
   const AdminCertificatesPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AdminCertificatesPage> createState() =>
+      _AdminCertificatesPageState();
+}
+
+class _AdminCertificatesPageState extends ConsumerState<AdminCertificatesPage> {
+  late Future<List<Map<String, dynamic>>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = RequestsRepository().list(limit: 200);
+  }
+
+  void _reload() {
+    setState(() {
+      _future = RequestsRepository().list(limit: 200);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final records = ref.watch(recordsProvider);
-
-    final pendingRecords = records.where((r) => r.certificateStatus == CertificateStatus.pending).toList();
-    final approvedRecords = records.where((r) => r.certificateStatus == CertificateStatus.approved).toList();
-    final rejectedRecords = records.where((r) => r.certificateStatus == CertificateStatus.rejected).toList();
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.verified,
-                        size: 32,
-                        color: colorScheme.primary,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Certificate Management',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurface,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Review and approve certificate requests',
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: colorScheme.onSurface.withValues(alpha: 0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+        child: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(
+                child: Text(
+                  'Failed to load certificate requests',
+                  style: TextStyle(color: colorScheme.error),
+                ),
+              );
+            }
 
-                  // Statistics
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatCard(
-                          'Pending',
-                          pendingRecords.length.toString(),
-                          Colors.orange,
-                          colorScheme,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildStatCard(
-                          'Approved',
-                          approvedRecords.length.toString(),
-                          Colors.green,
-                          colorScheme,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildStatCard(
-                          'Rejected',
-                          rejectedRecords.length.toString(),
-                          Colors.red,
-                          colorScheme,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            final rows = snapshot.data ?? const [];
+            final pending = rows
+                .where((r) => (r['status'] ?? 'pending') == 'pending')
+                .toList();
+            final approved = rows
+                .where((r) => (r['status'] ?? '').toString() == 'approved')
+                .toList();
+            final rejected = rows
+                .where((r) => (r['status'] ?? '').toString() == 'rejected')
+                .toList();
 
-            // Tabs
-            Expanded(
-              child: DefaultTabController(
-                length: 3,
-                child: Column(
-                  children: [
-                    TabBar(
-                      labelColor: colorScheme.primary,
-                      unselectedLabelColor: colorScheme.onSurface.withValues(alpha: 0.6),
-                      indicatorColor: colorScheme.primary,
-                      tabs: [
-                        Tab(text: 'Pending (${pendingRecords.length})'),
-                        Tab(text: 'Approved (${approvedRecords.length})'),
-                        Tab(text: 'Rejected (${rejectedRecords.length})'),
-                      ],
-                    ),
-                    Expanded(
-                      child: TabBarView(
+            return Column(
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          _buildRecordsList(pendingRecords, 'pending', ref, colorScheme),
-                          _buildRecordsList(approvedRecords, 'approved', ref, colorScheme),
-                          _buildRecordsList(rejectedRecords, 'rejected', ref, colorScheme),
+                          Icon(
+                            Icons.verified,
+                            size: 32,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Certificate Management',
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.onSurface,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      Text(
+                        'Review and approve certificate requests',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Statistics
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              'Pending',
+                              pending.length.toString(),
+                              Colors.orange,
+                              colorScheme,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildStatCard(
+                              'Approved',
+                              approved.length.toString(),
+                              Colors.green,
+                              colorScheme,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildStatCard(
+                              'Rejected',
+                              rejected.length.toString(),
+                              Colors.red,
+                              colorScheme,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ),
-          ],
+
+                // Tabs
+                Expanded(
+                  child: DefaultTabController(
+                    length: 3,
+                    child: Column(
+                      children: [
+                        TabBar(
+                          isScrollable: true,
+                          labelColor: colorScheme.primary,
+                          unselectedLabelColor: colorScheme.onSurface
+                              .withValues(alpha: 0.6),
+                          indicatorColor: colorScheme.primary,
+                          tabs: [
+                            Tab(text: 'Pending (${pending.length})'),
+                            Tab(text: 'Approved (${approved.length})'),
+                            Tab(text: 'Rejected (${rejected.length})'),
+                          ],
+                        ),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              _buildRequestsList(
+                                pending,
+                                'pending',
+                                colorScheme,
+                              ),
+                              _buildRequestsList(
+                                approved,
+                                'approved',
+                                colorScheme,
+                              ),
+                              _buildRequestsList(
+                                rejected,
+                                'rejected',
+                                colorScheme,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildStatCard(String title, String value, Color color, ColorScheme colorScheme) {
+  Widget _buildStatCard(
+    String title,
+    String value,
+    Color color,
+    ColorScheme colorScheme,
+  ) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -159,8 +222,12 @@ class AdminCertificatesPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildRecordsList(List<dynamic> records, String status, WidgetRef ref, ColorScheme colorScheme) {
-    if (records.isEmpty) {
+  Widget _buildRequestsList(
+    List<Map<String, dynamic>> requests,
+    String status,
+    ColorScheme colorScheme,
+  ) {
+    if (requests.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -186,15 +253,31 @@ class AdminCertificatesPage extends ConsumerWidget {
 
     return ListView.builder(
       padding: const EdgeInsets.all(24),
-      itemCount: records.length,
+      itemCount: requests.length,
       itemBuilder: (context, index) {
-        final record = records[index];
-        return _buildRecordCard(record, status, ref, colorScheme);
+        final request = requests[index];
+        return _buildRequestCard(request, status, colorScheme);
       },
     );
   }
 
-  Widget _buildRecordCard(dynamic record, String status, WidgetRef ref, ColorScheme colorScheme) {
+  Widget _buildRequestCard(
+    Map<String, dynamic> request,
+    String status,
+    ColorScheme colorScheme,
+  ) {
+    final requester = (request['requester_name']?.toString() ?? '').trim();
+    final type = (request['request_type']?.toString() ?? '').toUpperCase();
+    final rawDate = request['requested_at'];
+    String dateLabel = 'Unknown';
+    if (rawDate is String) {
+      final parsed = DateTime.tryParse(rawDate);
+      if (parsed != null) dateLabel = _formatDate(parsed);
+    } else if (rawDate is DateTime) {
+      dateLabel = _formatDate(rawDate);
+    }
+    final requestId = request['request_id']?.toString() ?? '';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
@@ -207,10 +290,12 @@ class AdminCertificatesPage extends ConsumerWidget {
             Row(
               children: [
                 CircleAvatar(
-                  backgroundColor: _getRecordTypeColor(record.type).withValues(alpha: 0.1),
+                  backgroundColor: _getStatusColor(
+                    status,
+                  ).withValues(alpha: 0.1),
                   child: Icon(
-                    _getRecordTypeIcon(record.type),
-                    color: _getRecordTypeColor(record.type),
+                    _getStatusIcon(status),
+                    color: _getStatusColor(status),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -219,14 +304,18 @@ class AdminCertificatesPage extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        record.name ?? 'Unnamed Record',
+                        requester.isEmpty ? 'Certificate Request' : requester,
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 16,
                         ),
                       ),
                       Text(
-                        '${record.type?.toUpperCase()} • ${_formatDate(record.createdAt)}',
+                        [
+                          if (type.isNotEmpty) type,
+                          if (requestId.isNotEmpty) '#$requestId',
+                          dateLabel,
+                        ].where((e) => e.isNotEmpty).join(' • '),
                         style: TextStyle(
                           color: colorScheme.onSurface.withValues(alpha: 0.7),
                           fontSize: 14,
@@ -236,7 +325,10 @@ class AdminCertificatesPage extends ConsumerWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: _getStatusColor(status).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
@@ -252,25 +344,14 @@ class AdminCertificatesPage extends ConsumerWidget {
                 ),
               ],
             ),
-            if (record.notes != null && record.notes!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                record.notes!,
-                style: TextStyle(
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontSize: 14,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
             if (status == 'pending') ...[
               const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () => _updateCertificateStatus(record.id, 'approved', ref),
+                      onPressed: () =>
+                          _updateRequestStatus(request, 'approved'),
                       icon: const Icon(Icons.check, size: 18),
                       label: const Text('Approve'),
                       style: ElevatedButton.styleFrom(
@@ -285,7 +366,8 @@ class AdminCertificatesPage extends ConsumerWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () => _updateCertificateStatus(record.id, 'rejected', ref),
+                      onPressed: () =>
+                          _updateRequestStatus(request, 'rejected'),
                       icon: const Icon(Icons.close, size: 18),
                       label: const Text('Reject'),
                       style: OutlinedButton.styleFrom(
@@ -306,49 +388,16 @@ class AdminCertificatesPage extends ConsumerWidget {
     );
   }
 
-  void _updateCertificateStatus(String recordId, String newStatus, WidgetRef ref) {
-    CertificateStatus status;
-    switch (newStatus) {
-      case 'approved':
-        status = CertificateStatus.approved;
-        break;
-      case 'rejected':
-        status = CertificateStatus.rejected;
-        break;
-      default:
-        status = CertificateStatus.pending;
-    }
-    ref.read(recordsProvider.notifier).updateCertificateStatus(recordId, status);
-  }
+  Future<void> _updateRequestStatus(
+    Map<String, dynamic> request,
+    String newStatus,
+  ) async {
+    final requestId = request['request_id']?.toString();
+    if (requestId == null || requestId.isEmpty) return;
 
-  IconData _getRecordTypeIcon(String? type) {
-    switch (type) {
-      case 'baptism':
-        return Icons.child_care;
-      case 'marriage':
-        return Icons.favorite;
-      case 'confirmation':
-        return Icons.verified_user;
-      case 'death':
-        return Icons.person_outline;
-      default:
-        return Icons.description;
-    }
-  }
-
-  Color _getRecordTypeColor(String? type) {
-    switch (type) {
-      case 'baptism':
-        return Colors.blue;
-      case 'marriage':
-        return Colors.pink;
-      case 'confirmation':
-        return Colors.purple;
-      case 'death':
-        return Colors.grey;
-      default:
-        return Colors.orange;
-    }
+    final repo = RequestsRepository();
+    await repo.updateStatus(requestId, status: newStatus);
+    _reload();
   }
 
   Color _getStatusColor(String status) {
@@ -379,7 +428,7 @@ class AdminCertificatesPage extends ConsumerWidget {
     if (date == null) return 'Unknown';
     final now = DateTime.now();
     final difference = now.difference(date);
-    
+
     if (difference.inDays > 0) {
       return '${difference.inDays}d ago';
     } else if (difference.inHours > 0) {

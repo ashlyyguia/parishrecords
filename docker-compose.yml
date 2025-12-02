@@ -5,9 +5,6 @@ services:
   cassandra:
     image: cassandra:4.1
     container_name: parish_cassandra
-    ports:
-      - "9042:9042"
-      - "7000:7000"
     environment:
       - CASSANDRA_CLUSTER_NAME=ParishCluster
       - CASSANDRA_DC=datacenter1
@@ -40,6 +37,11 @@ services:
       - CASSANDRA_HOST=cassandra
       - CASSANDRA_DATACENTER=datacenter1
       - ALLOWED_ORIGINS=http://localhost:3000,https://parishrecord.app
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=gonzagaprince919@gmail.com
+      - SMTP_PASS=enuargauasppxnhb
+      - SMTP_FROM=Parish Record <gonzagaprince919@gmail.com>
     depends_on:
       cassandra:
         condition: service_healthy
