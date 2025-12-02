@@ -1,4 +1,5 @@
 const cassandra = require('cassandra-driver');
+const path = require('path');
 
 class CassandraClient {
   constructor() {
@@ -8,16 +9,40 @@ class CassandraClient {
 
   async connect() {
     try {
-      this.client = new cassandra.Client({
-        contactPoints: [process.env.CASSANDRA_HOST || 'localhost'],
-        localDataCenter: process.env.CASSANDRA_DATACENTER || 'datacenter1',
-        keyspace: this.keyspace,
-        authProvider: process.env.CASSANDRA_USERNAME ? 
-          new cassandra.auth.PlainTextAuthProvider(
-            process.env.CASSANDRA_USERNAME, 
-            process.env.CASSANDRA_PASSWORD
-          ) : null
-      });
+      const secureBundle = process.env.ASTRA_SECURE_BUNDLE;
+
+      if (secureBundle) {
+        const bundlePath = path.resolve(
+          __dirname,
+          '..',
+          '..',
+          secureBundle
+        );
+
+        this.client = new cassandra.Client({
+          cloud: {
+            secureConnectBundle: bundlePath
+          },
+          credentials: {
+            username: process.env.CASSANDRA_USERNAME,
+            password: process.env.CASSANDRA_PASSWORD
+          },
+          keyspace: this.keyspace
+        });
+
+        console.log('Using Astra DB with secure connect bundle at', bundlePath);
+      } else {
+        this.client = new cassandra.Client({
+          contactPoints: [process.env.CASSANDRA_HOST || 'localhost'],
+          localDataCenter: process.env.CASSANDRA_DATACENTER || 'datacenter1',
+          keyspace: this.keyspace,
+          authProvider: process.env.CASSANDRA_USERNAME ? 
+            new cassandra.auth.PlainTextAuthProvider(
+              process.env.CASSANDRA_USERNAME, 
+              process.env.CASSANDRA_PASSWORD
+            ) : null
+        });
+      }
 
       await this.client.connect();
       console.log('✅ Connected to Cassandra cluster');
