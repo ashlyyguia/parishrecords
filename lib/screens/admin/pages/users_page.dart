@@ -101,7 +101,7 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
 
             // Users List
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: FirebaseFirestore.instance
                     .collection('users')
                     .snapshots(),
@@ -139,14 +139,19 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                             ),
                             textAlign: TextAlign.center,
                           ),
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: () => setState(() {}),
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Retry'),
+                          ),
                         ],
                       ),
                     );
                   }
-
-                  final users = snapshot.data?.docs ?? [];
-                  final filteredUsers = users.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
+                  final docs = snapshot.data?.docs ?? const [];
+                  final filteredUsers = docs.where((doc) {
+                    final data = doc.data();
                     final email = (data['email'] ?? '')
                         .toString()
                         .toLowerCase();
@@ -186,11 +191,13 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                   }
 
                   return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: context.isCompact ? 12 : 24,
+                    ),
                     itemCount: filteredUsers.length,
                     itemBuilder: (context, index) {
                       final doc = filteredUsers[index];
-                      final data = doc.data() as Map<String, dynamic>;
+                      final data = doc.data();
                       return _buildUserCard(doc.id, data, colorScheme);
                     },
                   );
@@ -225,123 +232,226 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: _getRoleColor(role).withValues(alpha: 0.1),
-                  child: Icon(_getRoleIcon(role), color: _getRoleColor(role)),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 520;
+
+          final roleChip = Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: _getRoleColor(role).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              role.toUpperCase(),
+              style: TextStyle(
+                color: _getRoleColor(role),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          );
+
+          final menu = PopupMenuButton<String>(
+            onSelected: (value) => _handleUserAction(value, userId, data),
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'edit_role',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit),
+                    SizedBox(width: 8),
+                    Text('Change Role'),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Delete User', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          );
+
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isNarrow) ...[
+                  Row(
                     children: [
-                      Text(
-                        displayName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
+                      CircleAvatar(
+                        backgroundColor: _getRoleColor(
+                          role,
+                        ).withValues(alpha: 0.1),
+                        child: Icon(
+                          _getRoleIcon(role),
+                          color: _getRoleColor(role),
                         ),
                       ),
-                      Text(
-                        email,
-                        style: TextStyle(
-                          color: colorScheme.onSurface.withValues(alpha: 0.7),
-                          fontSize: 14,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                            Text(
+                              email,
+                              style: TextStyle(
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.7,
+                                ),
+                                fontSize: 14,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ],
                         ),
                       ),
+                      menu,
                     ],
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _getRoleColor(role).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    role.toUpperCase(),
-                    style: TextStyle(
-                      color: _getRoleColor(role),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  onSelected: (value) => _handleUserAction(value, userId, data),
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'edit_role',
-                      child: Row(
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      roleChip,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.edit),
-                          SizedBox(width: 8),
-                          Text('Change Role'),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, color: Colors.red),
-                          SizedBox(width: 8),
+                          Icon(
+                            emailVerified ? Icons.verified : Icons.warning,
+                            size: 16,
+                            color: emailVerified ? Colors.green : Colors.orange,
+                          ),
+                          const SizedBox(width: 4),
                           Text(
-                            'Delete User',
-                            style: TextStyle(color: Colors.red),
+                            emailVerified ? 'Verified' : 'Not verified',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: emailVerified
+                                  ? Colors.green
+                                  : Colors.orange,
+                            ),
                           ),
                         ],
                       ),
+                    ],
+                  ),
+                  if (lastLogin != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Last login: ${_formatTimestamp(lastLogin)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(
-                  emailVerified ? Icons.verified : Icons.warning,
-                  size: 16,
-                  color: emailVerified ? Colors.green : Colors.orange,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  emailVerified ? 'Verified' : 'Not verified',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: emailVerified ? Colors.green : Colors.orange,
+                ] else ...[
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: _getRoleColor(
+                          role,
+                        ).withValues(alpha: 0.1),
+                        child: Icon(
+                          _getRoleIcon(role),
+                          color: _getRoleColor(role),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              email,
+                              style: TextStyle(
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.7,
+                                ),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      roleChip,
+                      menu,
+                    ],
                   ),
-                ),
-                const SizedBox(width: 16),
-                if (lastLogin != null) ...[
-                  Icon(
-                    Icons.access_time,
-                    size: 16,
-                    color: colorScheme.onSurface.withValues(alpha: 0.5),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Last login: ${_formatTimestamp(lastLogin)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(
+                        emailVerified ? Icons.verified : Icons.warning,
+                        size: 16,
+                        color: emailVerified ? Colors.green : Colors.orange,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        emailVerified ? 'Verified' : 'Not verified',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: emailVerified ? Colors.green : Colors.orange,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      if (lastLogin != null) ...[
+                        Icon(
+                          Icons.access_time,
+                          size: 16,
+                          color: colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            'Last login: ${_formatTimestamp(lastLogin)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.5,
+                              ),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -352,8 +462,6 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
         return Colors.red;
       case 'staff':
         return Colors.blue;
-      case 'volunteer':
-        return Colors.green;
       default:
         return Colors.grey;
     }
@@ -365,8 +473,6 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
         return Icons.admin_panel_settings;
       case 'staff':
         return Icons.work;
-      case 'volunteer':
-        return Icons.volunteer_activism;
       default:
         return Icons.person;
     }
@@ -425,7 +531,7 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: ['admin', 'staff', 'volunteer'].map((role) {
+                children: ['admin', 'staff'].map((role) {
                   final isSelected = selectedRole == role;
                   return ChoiceChip(
                     label: Text(role[0].toUpperCase() + role.substring(1)),
@@ -447,10 +553,17 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
             ),
             ElevatedButton(
               onPressed: () async {
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(userId)
-                    .update({'role': selectedRole});
+                try {
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(userId)
+                      .update({'role': selectedRole});
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to update role: $e')),
+                  );
+                }
                 if (context.mounted) Navigator.pop(context);
               },
               child: const Text('Update'),
@@ -474,11 +587,18 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
           ),
           ElevatedButton(
             onPressed: () async {
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(userId)
-                  .delete();
-              if (context.mounted) Navigator.pop(context);
+              try {
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(userId)
+                    .delete();
+                if (context.mounted) Navigator.pop(context);
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to delete user: $e')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete'),
@@ -525,7 +645,6 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
               items: const [
                 DropdownMenuItem(value: 'admin', child: Text('Admin')),
                 DropdownMenuItem(value: 'staff', child: Text('Staff')),
-                DropdownMenuItem(value: 'volunteer', child: Text('Volunteer')),
               ],
               onChanged: (value) => selectedRole = value!,
             ),
@@ -550,27 +669,16 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                 return;
               }
 
-              try {
-                await FirebaseFirestore.instance.collection('users').add({
-                  'email': email,
-                  'displayName': name,
-                  'role': selectedRole,
-                  'createdAt': FieldValue.serverTimestamp(),
-                  'emailVerified': false,
-                });
-
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                }
-
-                ScaffoldMessenger.of(parentContext).showSnackBar(
-                  const SnackBar(content: Text('User added successfully.')),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(parentContext).showSnackBar(
-                  SnackBar(content: Text('Failed to add user: $e')),
-                );
+              if (dialogContext.mounted) {
+                Navigator.pop(dialogContext);
               }
+              ScaffoldMessenger.of(parentContext).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'User creation via admin UI is not yet wired to the backend.',
+                  ),
+                ),
+              );
             },
             child: const Text('Add User'),
           ),

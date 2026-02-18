@@ -234,7 +234,7 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
                           ? const Center(child: Text('No exports yet'))
                           : ListView.separated(
                               itemCount: _history.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const Divider(height: 0),
                               itemBuilder: (_, i) {
                                 final h = _history[i];
@@ -254,7 +254,7 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
                           ? const Center(child: Text('No exports yet'))
                           : ListView.separated(
                               itemCount: _history.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const Divider(height: 0),
                               itemBuilder: (_, i) {
                                 final h = _history[i];

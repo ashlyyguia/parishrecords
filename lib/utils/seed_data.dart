@@ -20,12 +20,5 @@ class SeedData {
       role: AppRoles.staff,
       emailVerified: true,
     ),
-    AppUser(
-      id: _uuid.v4(),
-      email: 'volunteer@parish.com',
-      displayName: 'Volunteer',
-      role: AppRoles.volunteer,
-      emailVerified: true,
-    ),
   ];
 }

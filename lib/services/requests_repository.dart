@@ -1,36 +1,89 @@
-import 'dart:convert';
+import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
-
-import '../config/backend.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class RequestsRepository {
-  String get _base => BackendConfig.baseUrl;
+  static const Duration _timeout = Duration(seconds: 12);
 
-  Future<Map<String, String>> _authHeader() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken();
-    return {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
+
+  String _requireUid() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      throw Exception('Not authenticated');
+    }
+    return uid;
+  }
+
+  Future<bool> _isAdmin() async {
+    final uid = _requireUid();
+    final snap = await _db
+        .collection('users')
+        .doc(uid)
+        .get()
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Role lookup timed out'),
+        );
+    final role = (snap.data()?['role'] ?? '').toString().trim().toLowerCase();
+    return role == 'admin';
   }
 
   Future<List<Map<String, dynamic>>> list({int limit = 50}) async {
-    final headers = await _authHeader();
-    final resp = await http.get(
-      Uri.parse('$_base/api/requests?limit=$limit'),
-      headers: headers,
-    );
-    if (resp.statusCode != 200) {
-      throw Exception('Requests list failed: ${resp.statusCode} ${resp.body}');
+    return _listFromFirestore(limit: limit);
+  }
+
+  Future<List<Map<String, dynamic>>> _listFromFirestore({
+    int limit = 50,
+  }) async {
+    QuerySnapshot<Map<String, dynamic>> snap;
+    try {
+      snap = await FirebaseFirestore.instance
+          .collection('requests')
+          .orderBy('requested_at', descending: true)
+          .limit(limit)
+          .get()
+          .timeout(
+            _timeout,
+            onTimeout: () => throw TimeoutException('Requests list timed out'),
+          );
+    } catch (_) {
+      snap = await FirebaseFirestore.instance
+          .collection('requests')
+          .orderBy('created_at', descending: true)
+          .limit(limit)
+          .get()
+          .timeout(
+            _timeout,
+            onTimeout: () => throw TimeoutException('Requests list timed out'),
+          );
     }
-    final body = json.decode(resp.body) as Map<String, dynamic>;
-    final rows = (body['rows'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
-    return rows;
+
+    String toIso(dynamic val) {
+      if (val == null) return '';
+      if (val is Timestamp) return val.toDate().toIso8601String();
+      if (val is DateTime) return val.toIso8601String();
+      return val.toString();
+    }
+
+    return snap.docs.map((doc) {
+      final d = doc.data();
+      return <String, dynamic>{
+        'request_id': doc.id,
+        'record_id': d['record_id'],
+        'parish_id': d['parish_id'],
+        'request_type': d['request_type'],
+        'requester_name': d['requester_name'],
+        'status': d['status'] ?? 'pending',
+        'requested_at': toIso(
+          d['requested_at'] ?? d['created_at'] ?? d['createdAt'],
+        ),
+        'processed_at': toIso(d['processed_at']),
+        'processed_by': d['processed_by'],
+        'notification_sent': d['notification_sent'] == true,
+      };
+    }).toList();
   }
 
   Future<void> create({
@@ -39,21 +92,24 @@ class RequestsRepository {
     String? recordId,
     String? parishId,
   }) async {
-    final headers = await _authHeader();
-    final payload = {
-      'request_type': requestType,
-      'requester_name': requesterName,
-      'record_id': recordId,
-      'parish_id': parishId,
-    };
-    final resp = await http.post(
-      Uri.parse('$_base/api/requests'),
-      headers: headers,
-      body: json.encode(payload),
-    );
-    if (resp.statusCode != 200) {
-      throw Exception('Create request failed: ${resp.statusCode} ${resp.body}');
-    }
+    final uid = _requireUid();
+    await _db
+        .collection('requests')
+        .add({
+          'request_type': requestType,
+          'requester_name': requesterName,
+          'record_id': recordId,
+          'parish_id': parishId,
+          'status': 'pending',
+          'requested_at': FieldValue.serverTimestamp(),
+          'created_at': FieldValue.serverTimestamp(),
+          'created_by_uid': uid,
+          'notification_sent': false,
+        })
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Create request timed out'),
+        );
   }
 
   Future<void> updateStatus(
@@ -62,19 +118,24 @@ class RequestsRepository {
     bool? notificationSent,
     String? parishId,
   }) async {
-    final headers = await _authHeader();
-    final payload = {
-      'status': status,
-      if (notificationSent != null) 'notification_sent': notificationSent,
-      if (parishId != null) 'parish_id': parishId,
-    };
-    final resp = await http.put(
-      Uri.parse('$_base/api/requests/$requestId'),
-      headers: headers,
-      body: json.encode(payload),
-    );
-    if (resp.statusCode != 200) {
-      throw Exception('Update request failed: ${resp.statusCode} ${resp.body}');
+    final isAdmin = await _isAdmin();
+    if (!isAdmin) {
+      throw Exception('Admin access required');
     }
+    await _db
+        .collection('requests')
+        .doc(requestId)
+        .set({
+          'status': status,
+          'notification_sent': notificationSent,
+          'parish_id': parishId,
+          'processed_at': FieldValue.serverTimestamp(),
+          'processed_by': _requireUid(),
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true))
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Update request timed out'),
+        );
   }
 }

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/record.dart';
@@ -59,13 +58,14 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
   final _burialPlaceCtrl = TextEditingController();
   final _officiantCtrl = TextEditingController();
 
-  // Remarks
+  // Remarks / Additional info
   final _remarksCtrl = TextEditingController();
+  bool _certificateIssued = false;
+  final _staffNameCtrl = TextEditingController();
 
-  final ImagePicker _picker = ImagePicker();
   String? _attachmentPath;
-  bool _attachPsaDeathCertificate = false;
-  bool _attachRepresentativeId = false;
+  final bool _attachPsaDeathCertificate = false;
+  final bool _attachRepresentativeId = false;
   String? _encoderSignaturePath;
   String? _priestSignaturePath;
   String? _ocrRawText;
@@ -151,11 +151,14 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
           }
 
           if (meta != null) {
+            final staffName = meta['staffName']?.toString();
+            if (staffName != null && staffName.isNotEmpty) {
+              _staffNameCtrl.text = staffName;
+            }
             final ocrText = meta['ocrRawText']?.toString();
             if (ocrText != null && ocrText.isNotEmpty) {
               _ocrRawText = ocrText;
             }
-
             final bookNo = meta['bookNo']?.toString();
             if (bookNo != null && bookNo.isNotEmpty) {
               _bookNoCtrl.text = bookNo;
@@ -232,6 +235,7 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
     _burialPlaceCtrl.dispose();
     _officiantCtrl.dispose();
     _remarksCtrl.dispose();
+    _staffNameCtrl.dispose();
     super.dispose();
   }
 
@@ -247,62 +251,6 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
       lastDate: DateTime(2100),
     );
     if (picked != null) set(picked);
-  }
-
-  Future<void> _pickAttachment() async {
-    try {
-      final XFile? file = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
-      if (file != null) setState(() => _attachmentPath = file.path);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Attachment error: ${e.toString()}')),
-        );
-      }
-    }
-  }
-
-  Future<void> _pickEncoderSignature() async {
-    try {
-      final XFile? file = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
-      if (file != null) {
-        setState(() {
-          _encoderSignaturePath = file.path;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Signature error: ${e.toString()}')),
-        );
-      }
-    }
-  }
-
-  Future<void> _pickPriestSignature() async {
-    try {
-      final XFile? file = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
-      if (file != null) {
-        setState(() {
-          _priestSignaturePath = file.path;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Signature error: ${e.toString()}')),
-        );
-      }
-    }
   }
 
   Future<List<ParishRecord>> _findPossibleDuplicates() async {
@@ -473,6 +421,8 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
         'bookNo': _bookNoCtrl.text.trim(),
         'pageNo': _pageNoCtrl.text.trim(),
         'lineNo': _lineNoCtrl.text.trim(),
+        'certificateIssued': _certificateIssued,
+        'staffName': _staffNameCtrl.text.trim(),
         'attachmentsChecklist': {
           'psaDeathCertificate': _attachPsaDeathCertificate,
           'representativeId': _attachRepresentativeId,
@@ -728,114 +678,43 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
                 ),
               ),
 
-              if (widget.existing != null && !widget.fromAdmin) ...[
-                const SizedBox(height: 16),
-                const Text('Remarks'),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _remarksCtrl,
-                  minLines: 2,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes / remarks',
+              const SizedBox(height: 16),
+              // Additional Information (visible for staff and admin)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Additional Information',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _remarksCtrl,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: const InputDecoration(labelText: 'Remarks'),
+                      ),
+                      const SizedBox(height: 8),
+                      CheckboxListTile(
+                        title: const Text('Certificate Issued?'),
+                        value: _certificateIssued,
+                        onChanged: (v) =>
+                            setState(() => _certificateIssued = v ?? false),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _staffNameCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Prepared By / Staff Name',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-
-                const SizedBox(height: 12),
-                Text(
-                  _ocrRawText == null || _ocrRawText!.isEmpty
-                      ? 'No OCR text captured'
-                      : 'OCR text captured (${_ocrRawText!.length} chars)',
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: _scanOcr,
-                    icon: const Icon(Icons.document_scanner),
-                    label: const Text('Scan from certificate'),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-                const Text('Uploads'),
-                const SizedBox(height: 8),
-                CheckboxListTile(
-                  value: _attachPsaDeathCertificate,
-                  onChanged: (v) =>
-                      setState(() => _attachPsaDeathCertificate = v ?? false),
-                  title: const Text('PSA Death Certificate'),
-                ),
-                CheckboxListTile(
-                  value: _attachRepresentativeId,
-                  onChanged: (v) =>
-                      setState(() => _attachRepresentativeId = v ?? false),
-                  title: const Text('ID of representative'),
-                ),
-
-                const SizedBox(height: 16),
-                const Text('Signatures'),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _encoderSignaturePath == null
-                            ? 'Encoder signature: none'
-                            : 'Encoder signature: selected',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: _pickEncoderSignature,
-                      icon: const Icon(Icons.image_outlined),
-                      label: const Text('Encoder'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _priestSignaturePath == null
-                            ? 'Priest signature: none'
-                            : 'Priest signature: selected',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: _pickPriestSignature,
-                      icon: const Icon(Icons.image_outlined),
-                      label: const Text('Priest'),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-                const Text('Scanned Certificate (optional)'),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _attachmentPath == null
-                            ? 'No file selected'
-                            : _attachmentPath!,
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _pickAttachment,
-                      icon: const Icon(Icons.attach_file),
-                      label: const Text('Attach'),
-                    ),
-                  ],
-                ),
-              ],
+              ),
 
               const SizedBox(height: 24),
               SizedBox(

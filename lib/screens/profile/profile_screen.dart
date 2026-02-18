@@ -2,11 +2,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import '../../providers/auth_provider.dart';
-import '../../services/local_storage.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -16,8 +14,6 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  bool _notifEmail = false;
-  bool _notifPush = false;
   String? _avatarPath;
   bool _isOnline = true;
   bool _checkingOnline = false;
@@ -48,10 +44,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    final box = Hive.box(LocalStorageService.settingsBox);
-    _notifEmail = box.get('notif_email', defaultValue: true) as bool;
-    _notifPush = box.get('notif_push', defaultValue: true) as bool;
-    _avatarPath = box.get('profile_image_path') as String?;
     _refreshOnlineStatus();
   }
 
@@ -122,7 +114,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     children: [
                       Text(
                         user != null
-                            ? user.displayName ?? user.email.split('@').first
+                            ? user.displayName ?? email.split('@').first
                             : 'User',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
@@ -226,35 +218,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   onTap: () => _changePassword(context),
                 ),
                 const ListTile(title: Text('Two-factor authentication')),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ExpansionTile(
-              leading: const Icon(Icons.notifications_none),
-              title: const Text('Notification Preferences'),
-              children: [
-                SwitchListTile(
-                  title: const Text('Email alerts'),
-                  value: _notifEmail,
-                  onChanged: (v) {
-                    setState(() => _notifEmail = v);
-                    Hive.box(
-                      LocalStorageService.settingsBox,
-                    ).put('notif_email', v);
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Push notifications'),
-                  value: _notifPush,
-                  onChanged: (v) {
-                    setState(() => _notifPush = v);
-                    Hive.box(
-                      LocalStorageService.settingsBox,
-                    ).put('notif_push', v);
-                  },
-                ),
               ],
             ),
           ),
@@ -444,9 +407,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 onTap: () async {
                   Navigator.pop(c);
                   setState(() => _avatarPath = null);
-                  Hive.box(
-                    LocalStorageService.settingsBox,
-                  ).delete('profile_image_path');
                 },
               ),
           ],
@@ -461,6 +421,5 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (x == null) return;
     if (!mounted) return;
     setState(() => _avatarPath = x.path);
-    Hive.box(LocalStorageService.settingsBox).put('profile_image_path', x.path);
   }
 }

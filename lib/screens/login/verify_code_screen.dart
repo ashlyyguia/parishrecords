@@ -1,12 +1,9 @@
 ﻿import 'dart:async';
-import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-
-import '../../services/verification_service.dart';
 
 class VerifyCodeScreen extends StatefulWidget {
   const VerifyCodeScreen({super.key});
@@ -24,12 +21,7 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
   );
   final List<FocusNode> _digitNodes = List.generate(6, (_) => FocusNode());
 
-  final _verificationService = VerificationService();
-
   bool _submitting = false;
-  bool _resending = false;
-  int _resendSeconds = 0;
-  Timer? _resendTimer;
   String? _error;
 
   @override
@@ -40,7 +32,6 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
     for (final n in _digitNodes) {
       n.dispose();
     }
-    _resendTimer?.cancel();
     super.dispose();
   }
 
@@ -133,83 +124,6 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
         });
       }
     }
-  }
-
-  Future<void> _resendCode() async {
-    if (_resending || _resendSeconds > 0) return;
-
-    setState(() {
-      _resending = true;
-      _error = null;
-    });
-
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      final email = user?.email;
-      if (user == null || email == null || email.isEmpty) {
-        setState(() {
-          _error = 'No signed-in user email found to resend code.';
-        });
-        return;
-      }
-
-      final docRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid);
-
-      final newCode = (Random().nextInt(900000) + 100000).toString();
-      final expiresAt = DateTime.now().add(const Duration(minutes: 10));
-
-      await docRef.update({
-        'verificationCode': newCode,
-        'verificationCodeExpiresAt': Timestamp.fromDate(expiresAt),
-        'verificationCodeVerified': false,
-      });
-
-      await _verificationService.sendCode(email: email, code: newCode);
-
-      for (final c in _digitCtrls) {
-        c.clear();
-      }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('A new verification code has been sent.')),
-      );
-
-      _startResendTimer();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _resending = false;
-        });
-      }
-    }
-  }
-
-  void _startResendTimer() {
-    _resendTimer?.cancel();
-    setState(() {
-      _resendSeconds = 60;
-    });
-    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      setState(() {
-        if (_resendSeconds > 0) {
-          _resendSeconds--;
-        } else {
-          timer.cancel();
-        }
-      });
-    });
   }
 
   @override
@@ -382,9 +296,7 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                _resendSeconds > 0
-                                    ? 'You can resend code in $_resendSeconds s'
-                                    : "Didn't receive the code?",
+                                "Didn't receive the code?",
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: colorScheme.onSurface.withValues(
                                     alpha: 0.7,
@@ -393,22 +305,8 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
                               ),
                               const SizedBox(width: 8),
                               TextButton(
-                                onPressed: (_resending || _resendSeconds > 0)
-                                    ? null
-                                    : _resendCode,
-                                child: _resending
-                                    ? SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                colorScheme.primary,
-                                              ),
-                                        ),
-                                      )
-                                    : const Text('Resend code'),
+                                onPressed: null,
+                                child: const Text('Resend'),
                               ),
                             ],
                           ),

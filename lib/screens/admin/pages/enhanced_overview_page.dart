@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -55,7 +53,6 @@ class _EnhancedAdminOverviewPageState
     final auth = ref.watch(authProvider);
 
     // Calculate statistics
-    final totalRecords = records.length;
     final baptismRecords = records
         .where((r) => r.type == RecordType.baptism)
         .length;
@@ -67,9 +64,6 @@ class _EnhancedAdminOverviewPageState
         .length;
     final funeralRecords = records
         .where((r) => r.type == RecordType.funeral)
-        .length;
-    final totalRequests = records
-        .where((record) => _isCertificateRequest(record))
         .length;
 
     return Scaffold(
@@ -98,19 +92,6 @@ class _EnhancedAdminOverviewPageState
                     // Modern Header
                     _buildModernHeader(theme, colorScheme, auth, context),
                     SizedBox(height: context.rf(24)),
-
-                    // Statistics Cards
-                    _buildStatisticsGrid(
-                      theme,
-                      colorScheme,
-                      totalRecords,
-                      baptismRecords,
-                      marriageRecords,
-                      confirmationRecords,
-                      funeralRecords,
-                      totalRequests,
-                    ),
-                    const SizedBox(height: 24),
 
                     // Record Types Chart
                     _buildRecordTypesSection(
@@ -229,137 +210,6 @@ class _EnhancedAdminOverviewPageState
     );
   }
 
-  Widget _buildStatisticsGrid(
-    ThemeData theme,
-    ColorScheme colorScheme,
-    int totalRecords,
-    int baptismRecords,
-    int marriageRecords,
-    int confirmationRecords,
-    int funeralRecords,
-    int totalRequests,
-  ) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 1.8,
-      children: [
-        _buildStatCard(
-          'Total Records',
-          totalRecords.toString(),
-          Icons.folder_outlined,
-          colorScheme.primary,
-          theme,
-        ),
-        _buildStatCard(
-          'Baptism Records',
-          baptismRecords.toString(),
-          Icons.water_drop_outlined,
-          Colors.blue,
-          theme,
-        ),
-        _buildStatCard(
-          'Marriage Records',
-          marriageRecords.toString(),
-          Icons.favorite_outline,
-          Colors.pink,
-          theme,
-        ),
-        _buildStatCard(
-          'Confirmation Records',
-          confirmationRecords.toString(),
-          Icons.verified,
-          Colors.purple,
-          theme,
-        ),
-        _buildStatCard(
-          'Death Records',
-          funeralRecords.toString(),
-          Icons.person_outline,
-          Colors.grey,
-          theme,
-        ),
-        _buildStatCard(
-          'Total Requests',
-          totalRequests.toString(),
-          Icons.request_page_outlined,
-          Colors.orange,
-          theme,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-    ThemeData theme,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: theme.colorScheme.shadow.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(
-          color: theme.colorScheme.outline.withValues(alpha: 0.1),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              Icon(Icons.trending_up, color: Colors.green, size: 16),
-            ],
-          ),
-          const Spacer(),
-          Flexible(
-            child: Text(
-              value,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurface,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Flexible(
-            child: Text(
-              title,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildRecordTypesSection(
     ThemeData theme,
     ColorScheme colorScheme,
@@ -381,95 +231,114 @@ class _EnhancedAdminOverviewPageState
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 600;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.pie_chart, color: colorScheme.primary, size: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Record Types Distribution',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+              Row(
+                children: [
+                  Icon(Icons.pie_chart, color: colorScheme.primary, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Record Types Distribution',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: _buildRecordTypeItem(
+              const SizedBox(height: 24),
+              if (isNarrow) ...[
+                _buildRecordTypeItem(
                   'Baptism',
                   baptism,
                   Icons.child_care,
                   Colors.blue,
                   theme,
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildRecordTypeItem(
+                const SizedBox(height: 12),
+                _buildRecordTypeItem(
                   'Marriage',
                   marriage,
                   Icons.favorite,
                   Colors.pink,
                   theme,
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildRecordTypeItem(
+                const SizedBox(height: 12),
+                _buildRecordTypeItem(
                   'Confirmation',
                   confirmation,
                   Icons.verified_user,
                   Colors.green,
                   theme,
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildRecordTypeItem(
+                const SizedBox(height: 12),
+                _buildRecordTypeItem(
                   'Funeral',
                   funeral,
                   Icons.local_florist,
                   Colors.grey,
                   theme,
                 ),
-              ),
+              ] else ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildRecordTypeItem(
+                        'Baptism',
+                        baptism,
+                        Icons.child_care,
+                        Colors.blue,
+                        theme,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildRecordTypeItem(
+                        'Marriage',
+                        marriage,
+                        Icons.favorite,
+                        Colors.pink,
+                        theme,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildRecordTypeItem(
+                        'Confirmation',
+                        confirmation,
+                        Icons.verified_user,
+                        Colors.green,
+                        theme,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildRecordTypeItem(
+                        'Funeral',
+                        funeral,
+                        Icons.local_florist,
+                        Colors.grey,
+                        theme,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
-  }
-
-  bool _isCertificateRequest(ParishRecord record) {
-    final notes = record.notes;
-    if (notes == null || notes.isEmpty) return false;
-
-    try {
-      final decoded = json.decode(notes);
-      if (decoded is Map<String, dynamic>) {
-        final type =
-            (decoded['requestType'] as String?) ?? decoded['request_type'];
-        if (type == 'certificate_request') {
-          return true;
-        }
-      }
-    } catch (_) {
-      // Ignore JSON errors; fall back to simple string contains check below.
-    }
-
-    return notes.contains('certificate_request');
   }
 
   Widget _buildRecordTypeItem(
@@ -557,10 +426,15 @@ class _EnhancedAdminOverviewPageState
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
+            crossAxisCount: context.gridColumns(
+              compact: 1,
+              medium: 2,
+              expanded: 4,
+              wide: 4,
+            ),
             mainAxisSpacing: 8,
             crossAxisSpacing: 8,
-            childAspectRatio: 3.5,
+            childAspectRatio: context.isCompact ? 5.0 : 3.5,
             children: [
               _buildQuickActionButton(
                 'Manage Users',
@@ -599,32 +473,32 @@ class _EnhancedAdminOverviewPageState
     Color color,
     VoidCallback onTap,
   ) {
-    return Material(
-      color: color.withValues(alpha: 0.1),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
                 ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

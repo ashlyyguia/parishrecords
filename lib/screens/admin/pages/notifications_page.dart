@@ -10,60 +10,170 @@ class AdminNotificationsPage extends StatefulWidget {
 
 class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
   final _searchCtrl = TextEditingController();
+  final _titleCtrl = TextEditingController();
+  final _bodyCtrl = TextEditingController();
   final Set<String> _selected = {};
-  final String _tab = 'all'; // all | unread | archived
+  String _tab = 'all'; // all | unread | archived
+
+  bool _creating = false;
 
   final NotificationsRepository _repo = NotificationsRepository();
 
+  Future<List<Map<String, dynamic>>>? _itemsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  void _reload() {
+    setState(() {
+      _itemsFuture = _loadItems();
+    });
+  }
+
   Future<List<Map<String, dynamic>>> _loadItems() async {
-    final rows = await _repo.listRaw(limit: 200);
-    return rows
+    final list = await _repo.listStrict(limit: 50);
+    return list
         .map(
-          (m) => {
-            '_key': (m['id'] ?? '').toString(),
-            'title': (m['title'] ?? '').toString(),
-            'body': (m['body'] ?? '').toString(),
-            'read': m['read'] == true,
-            'archived': m['archived'] == true,
-            'createdAt': m['createdAt'],
+          (n) => {
+            '_key': n.id,
+            'title': n.title,
+            'body': n.body,
+            'read': n.read,
+            'archived': n.archived,
+            'createdAt': n.createdAt.toIso8601String(),
           },
         )
-        .where((m) {
-          final title = (m['title'] ?? '').toString().toLowerCase();
-          final body = (m['body'] ?? '').toString().toLowerCase();
-          final text = '$title $body';
-          final isAddRecord =
-              text.contains('add record') ||
-              text.contains('new record') ||
-              text.contains('new parish record') ||
-              text.contains('record added');
-          final isCertRequest =
-              text.contains('certificate request') ||
-              text.contains('cert request');
-          final isApproval =
-              text.contains('approve') ||
-              text.contains('approved') ||
-              text.contains('decline') ||
-              text.contains('declined');
-          return (isAddRecord || isCertRequest) && !isApproval;
-        })
         .toList();
   }
 
   Future<void> _setRead(String id, bool read) async {
     await _repo.setRead(id, read);
-    setState(() {});
+    _reload();
   }
 
   Future<void> _archive(String id) async {
     await _repo.setArchived(id, true);
-    setState(() {});
+    _reload();
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _titleCtrl.dispose();
+    _bodyCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _createNotification() async {
+    final title = _titleCtrl.text.trim();
+    final body = _bodyCtrl.text.trim();
+
+    if (title.isEmpty || body.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Title and message are required')),
+      );
+      return;
+    }
+
+    setState(() {
+      _creating = true;
+    });
+
+    try {
+      await _repo.create(title: title, body: body);
+
+      if (!mounted) return;
+
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Notification sent')));
+
+      setState(() {
+        _creating = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _creating = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send notification: $e')),
+      );
+    }
+  }
+
+  Future<void> _bulkSetRead(bool read) async {
+    if (_selected.isEmpty) return;
+    final ids = _selected.toList();
+    await _repo.bulkSetRead(ids, read);
+    if (!mounted) return;
+    setState(() => _selected.clear());
+    _reload();
+  }
+
+  Future<void> _bulkArchive() async {
+    if (_selected.isEmpty) return;
+    final ids = _selected.toList();
+    await _repo.bulkSetArchived(ids, true);
+    if (!mounted) return;
+    setState(() => _selected.clear());
+    _reload();
+  }
+
+  Future<void> _showCreateDialog() async {
+    _titleCtrl.clear();
+    _bodyCtrl.clear();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('New notification'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _titleCtrl,
+                decoration: const InputDecoration(labelText: 'Title'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _bodyCtrl,
+                maxLines: 4,
+                decoration: const InputDecoration(labelText: 'Message'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: _creating
+                  ? null
+                  : () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: _creating ? null : _createNotification,
+              child: _creating
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Send'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (mounted) {
+      _reload();
+    }
   }
 
   @override
@@ -100,6 +210,15 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                           onChanged: (_) => setState(() {}),
                         ),
                       ),
+                      const SizedBox(width: 12, height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.icon(
+                          onPressed: _creating ? null : _showCreateDialog,
+                          icon: const Icon(Icons.add),
+                          label: const Text('New notification'),
+                        ),
+                      ),
                     ],
                   );
                 },
@@ -107,10 +226,66 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
             ),
           ),
           const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('All'),
+                selected: _tab == 'all',
+                onSelected: (_) {
+                  setState(() {
+                    _tab = 'all';
+                  });
+                },
+              ),
+              ChoiceChip(
+                label: const Text('Unread'),
+                selected: _tab == 'unread',
+                onSelected: (_) {
+                  setState(() {
+                    _tab = 'unread';
+                  });
+                },
+              ),
+              ChoiceChip(
+                label: const Text('Archived'),
+                selected: _tab == 'archived',
+                onSelected: (_) {
+                  setState(() {
+                    _tab = 'archived';
+                  });
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: _selected.isEmpty ? null : () => _bulkSetRead(true),
+                icon: const Icon(Icons.mark_email_read_outlined),
+                label: const Text('Mark selected read'),
+              ),
+              TextButton.icon(
+                onPressed: _selected.isEmpty ? null : () => _bulkSetRead(false),
+                icon: const Icon(Icons.mark_email_unread_outlined),
+                label: const Text('Mark selected unread'),
+              ),
+              TextButton.icon(
+                onPressed: _selected.isEmpty ? null : () => _bulkArchive(),
+                icon: const Icon(Icons.archive_outlined),
+                label: const Text('Archive selected'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Expanded(
             child: Card(
               child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _loadItems(),
+                future: _itemsFuture,
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
                     return const Center(
@@ -118,8 +293,29 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                     );
                   }
                   if (snap.hasError) {
-                    return const Center(
-                      child: Text('Error loading notifications'),
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.error_outline),
+                            const SizedBox(height: 8),
+                            const Text('Failed to load notifications'),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Details: ${snap.error}',
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: _reload,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
                     );
                   }
                   final list = snap.data ?? const <Map<String, dynamic>>[];
@@ -147,7 +343,7 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                   }
                   return ListView.separated(
                     itemCount: items.length,
-                    separatorBuilder: (_, __) => const Divider(height: 0),
+                    separatorBuilder: (_, _) => const Divider(height: 0),
                     itemBuilder: (_, i) {
                       final m = items[i];
                       final key = (m['_key'] ?? '').toString();

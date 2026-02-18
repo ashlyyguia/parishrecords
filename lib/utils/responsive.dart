@@ -8,6 +8,25 @@ import 'package:flutter/widgets.dart';
 extension ResponsiveContext on BuildContext {
   static const double _baseWidth = 375.0; // reference small-phone width
 
+  double get screenWidth => MediaQuery.of(this).size.width;
+
+  bool get isCompact => screenWidth < 600;
+  bool get isMedium => screenWidth >= 600 && screenWidth < 1024;
+  bool get isExpanded => screenWidth >= 1024;
+
+  int gridColumns({
+    int compact = 1,
+    int medium = 2,
+    int expanded = 3,
+    int wide = 4,
+  }) {
+    final w = screenWidth;
+    if (w >= 1400) return wide;
+    if (w >= 1024) return expanded;
+    if (w >= 600) return medium;
+    return compact;
+  }
+
   /// Scale factor clamped to a reasonable range so UI doesn't explode on tablets.
   double get responsiveScale {
     final width = MediaQuery.of(this).size.width;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../services/requests_repository.dart';
+import '../../../providers/requests_provider.dart';
 
 class AdminCertificatesPage extends ConsumerStatefulWidget {
   const AdminCertificatesPage({super.key});
@@ -11,18 +12,8 @@ class AdminCertificatesPage extends ConsumerStatefulWidget {
 }
 
 class _AdminCertificatesPageState extends ConsumerState<AdminCertificatesPage> {
-  late Future<List<Map<String, dynamic>>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = RequestsRepository().list(limit: 200);
-  }
-
   void _reload() {
-    setState(() {
-      _future = RequestsRepository().list(limit: 200);
-    });
+    ref.invalidate(certificateRequestsProvider(50));
   }
 
   @override
@@ -33,151 +24,171 @@ class _AdminCertificatesPageState extends ConsumerState<AdminCertificatesPage> {
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: SafeArea(
-        child: FutureBuilder<List<Map<String, dynamic>>>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(
-                child: Text(
-                  'Failed to load certificate requests',
-                  style: TextStyle(color: colorScheme.error),
-                ),
-              );
-            }
-
-            final rows = snapshot.data ?? const [];
-            final pending = rows
-                .where((r) => (r['status'] ?? 'pending') == 'pending')
-                .toList();
-            final approved = rows
-                .where((r) => (r['status'] ?? '').toString() == 'approved')
-                .toList();
-            final rejected = rows
-                .where((r) => (r['status'] ?? '').toString() == 'rejected')
-                .toList();
-
-            return Column(
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
+        child: ref
+            .watch(certificateRequestsProvider(50))
+            .when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.verified,
-                            size: 32,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Certificate Management',
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.onSurface,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
+                      Icon(Icons.error_outline, color: colorScheme.error),
                       const SizedBox(height: 8),
                       Text(
-                        'Review and approve certificate requests',
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
+                        'Failed to load certificate requests',
+                        style: TextStyle(color: colorScheme.error),
+                        textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 16),
-
-                      // Statistics
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildStatCard(
-                              'Pending',
-                              pending.length.toString(),
-                              Colors.orange,
-                              colorScheme,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildStatCard(
-                              'Approved',
-                              approved.length.toString(),
-                              Colors.green,
-                              colorScheme,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildStatCard(
-                              'Rejected',
-                              rejected.length.toString(),
-                              Colors.red,
-                              colorScheme,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 6),
+                      Text('Details: $e', textAlign: TextAlign.center),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: _reload,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry'),
                       ),
                     ],
                   ),
                 ),
+              ),
+              data: (rows) {
+                final pending = rows
+                    .where((r) => (r['status'] ?? 'pending') == 'pending')
+                    .toList();
+                final approved = rows
+                    .where((r) => (r['status'] ?? '').toString() == 'approved')
+                    .toList();
+                final rejected = rows
+                    .where((r) => (r['status'] ?? '').toString() == 'rejected')
+                    .toList();
 
-                // Tabs
-                Expanded(
-                  child: DefaultTabController(
-                    length: 3,
-                    child: Column(
-                      children: [
-                        TabBar(
-                          isScrollable: true,
-                          labelColor: colorScheme.primary,
-                          unselectedLabelColor: colorScheme.onSurface
-                              .withValues(alpha: 0.6),
-                          indicatorColor: colorScheme.primary,
-                          tabs: [
-                            Tab(text: 'Pending (${pending.length})'),
-                            Tab(text: 'Approved (${approved.length})'),
-                            Tab(text: 'Rejected (${rejected.length})'),
-                          ],
-                        ),
-                        Expanded(
-                          child: TabBarView(
+                return Column(
+                  children: [
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              _buildRequestsList(
-                                pending,
-                                'pending',
-                                colorScheme,
+                              Icon(
+                                Icons.verified,
+                                size: 32,
+                                color: colorScheme.primary,
                               ),
-                              _buildRequestsList(
-                                approved,
-                                'approved',
-                                colorScheme,
-                              ),
-                              _buildRequestsList(
-                                rejected,
-                                'rejected',
-                                colorScheme,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Certificate Management',
+                                  style: theme.textTheme.headlineSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        color: colorScheme.onSurface,
+                                      ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Text(
+                            'Review and approve certificate requests',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.7,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Statistics
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final cols = constraints.maxWidth < 520 ? 1 : 3;
+                              return GridView.count(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                crossAxisCount: cols,
+                                mainAxisSpacing: 12,
+                                crossAxisSpacing: 12,
+                                childAspectRatio: cols == 1 ? 5.2 : 2.6,
+                                children: [
+                                  _buildStatCard(
+                                    'Pending',
+                                    pending.length.toString(),
+                                    Colors.orange,
+                                    colorScheme,
+                                  ),
+                                  _buildStatCard(
+                                    'Approved',
+                                    approved.length.toString(),
+                                    Colors.green,
+                                    colorScheme,
+                                  ),
+                                  _buildStatCard(
+                                    'Rejected',
+                                    rejected.length.toString(),
+                                    Colors.red,
+                                    colorScheme,
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
+
+                    // Tabs
+                    Expanded(
+                      child: DefaultTabController(
+                        length: 3,
+                        child: Column(
+                          children: [
+                            TabBar(
+                              isScrollable: true,
+                              labelColor: colorScheme.primary,
+                              unselectedLabelColor: colorScheme.onSurface
+                                  .withValues(alpha: 0.6),
+                              indicatorColor: colorScheme.primary,
+                              tabs: [
+                                Tab(text: 'Pending (${pending.length})'),
+                                Tab(text: 'Approved (${approved.length})'),
+                                Tab(text: 'Rejected (${rejected.length})'),
+                              ],
+                            ),
+                            Expanded(
+                              child: TabBarView(
+                                children: [
+                                  _buildRequestsList(
+                                    pending,
+                                    'pending',
+                                    colorScheme,
+                                  ),
+                                  _buildRequestsList(
+                                    approved,
+                                    'approved',
+                                    colorScheme,
+                                  ),
+                                  _buildRequestsList(
+                                    rejected,
+                                    'rejected',
+                                    colorScheme,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
       ),
     );
   }

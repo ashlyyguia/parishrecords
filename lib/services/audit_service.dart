@@ -1,22 +1,28 @@
-import 'dart:convert';
+import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:hive/hive.dart';
-import 'package:http/http.dart' as http;
-
-import '../config/backend.dart';
-import 'local_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuditService {
-  static const _boxName = LocalStorageService.auditsBox;
+  static const Duration _timeout = Duration(seconds: 20);
 
-  static Box<dynamic> _box() {
-    if (!Hive.isBoxOpen(_boxName)) {
-      throw StateError(
-        'Audit box not opened. Make sure LocalStorageService.init() is called.',
-      );
-    }
-    return Hive.box(_boxName);
+  static FirebaseFirestore get _db => FirebaseFirestore.instance;
+
+  static String? _uid() => FirebaseAuth.instance.currentUser?.uid;
+
+  static Future<bool> _canWrite() async {
+    final uid = _uid();
+    if (uid == null || uid.isEmpty) return false;
+    final snap = await _db
+        .collection('users')
+        .doc(uid)
+        .get()
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Role lookup timed out'),
+        );
+    final role = (snap.data()?['role'] ?? '').toString().trim().toLowerCase();
+    return role == 'admin' || role == 'staff';
   }
 
   static Future<void> log({
@@ -26,61 +32,27 @@ class AuditService {
     DateTime? timestamp,
   }) async {
     final now = timestamp ?? DateTime.now();
-    // Send to backend Cassandra audit_logs table (best-effort, no local storage)
+    // Write audit logs to Firestore (best-effort, no local storage)
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final token = await user.getIdToken();
-        final headers = {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        };
-        final payload = json.encode({
-          'user_id': userId,
-          'action': action,
-          'new_values': details,
-          'timestamp': now.toIso8601String(),
-        });
-        final uri = Uri.parse('${BackendConfig.baseUrl}/api/admin/logs');
-        await http.post(uri, headers: headers, body: payload);
-      }
+      if (!await _canWrite()) return;
+
+      await _db
+          .collection('audit_logs')
+          .add({
+            'user_id': userId,
+            'action': action,
+            'details': details,
+            'new_values': details,
+            'timestamp': now.toIso8601String(),
+            'created_at': FieldValue.serverTimestamp(),
+          })
+          .timeout(
+            _timeout,
+            onTimeout: () =>
+                throw TimeoutException('Audit log write timed out'),
+          );
     } catch (_) {
-      // Ignore backend failures for audit logging.
+      // Ignore failures for audit logging.
     }
-  }
-
-  static Future<List<Map<String, dynamic>>> getLogs({
-    int limit = 200,
-    int days = 30,
-  }) async {
-    final box = _box();
-    final cutoff = DateTime.now().subtract(Duration(days: days));
-    final entries = <Map<String, dynamic>>[];
-
-    for (final value in box.values) {
-      if (value is Map) {
-        final map = Map<String, dynamic>.from(value);
-        final tsRaw = map['action_time'] ?? map['timestamp'];
-        final ts = DateTime.tryParse(tsRaw?.toString() ?? '');
-        if (ts != null && ts.isAfter(cutoff)) {
-          entries.add(map..['action_time'] = ts.toIso8601String());
-        }
-      }
-    }
-
-    entries.sort((a, b) {
-      final aTs =
-          DateTime.tryParse(a['action_time']?.toString() ?? '') ??
-          DateTime.fromMillisecondsSinceEpoch(0);
-      final bTs =
-          DateTime.tryParse(b['action_time']?.toString() ?? '') ??
-          DateTime.fromMillisecondsSinceEpoch(0);
-      return bTs.compareTo(aTs);
-    });
-
-    if (entries.length > limit) {
-      return entries.take(limit).toList();
-    }
-    return entries;
   }
 }

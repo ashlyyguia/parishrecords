@@ -87,17 +87,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       }
 
       if (mounted) {
-        // Check if user is admin and redirect accordingly
-        final authState = ref.read(authProvider);
-        final userEmail = email.toLowerCase();
-        final isAdmin =
-            userEmail == 'admin@gmail.com' || authState.user?.role == 'admin';
-
-        if (isAdmin) {
-          context.go('/admin/overview');
-        } else {
-          context.go('/home');
+        // Wait briefly for authProvider to finish loading user + role
+        for (int i = 0; i < 20; i++) {
+          final authState = ref.read(authProvider);
+          if (authState.initialized && authState.user != null) {
+            break;
+          }
+          await Future.delayed(const Duration(milliseconds: 100));
+          if (!mounted) return;
         }
+
+        final authState = ref.read(authProvider);
+        final role = authState.user?.role.trim().toLowerCase();
+        final isAdmin = role == 'admin';
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          context.go(isAdmin ? '/admin/overview' : '/home');
+        });
       }
     } catch (e) {
       if (mounted) {

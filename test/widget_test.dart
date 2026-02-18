@@ -7,14 +7,15 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:parishrecord/main.dart';
+import 'package:parishrecord/app/app.dart';
 
 void main() {
   testWidgets('App builds smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(const ProviderScope(child: MyApp()));
+    await tester.pump();
 
     // Verify that the root MaterialApp is present.
     expect(find.byType(MaterialApp), findsOneWidget);

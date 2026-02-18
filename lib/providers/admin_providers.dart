@@ -11,3 +11,9 @@ final recordHistoryProvider = FutureProvider.family
       final repo = ref.read(adminRepositoryProvider);
       return repo.getRecordHistory(recordId);
     });
+
+final adminAnalyticsProvider = FutureProvider.family
+    .autoDispose<List<Map<String, dynamic>>, int>((ref, days) async {
+      final repo = ref.read(adminRepositoryProvider);
+      return repo.getAnalytics(days: days);
+    });

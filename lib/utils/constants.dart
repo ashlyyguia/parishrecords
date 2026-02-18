@@ -6,19 +6,18 @@ import 'package:parishrecord/models/user.dart';
 class AppRoles {
   static const admin = 'admin';
   static const staff = 'staff';
-  static const volunteer = 'volunteer';
 
   /// List of all roles in order of increasing privileges
-  static const List<String> allRoles = [volunteer, staff, admin];
+  static const List<String> allRoles = [staff, admin];
 
   /// Check if a user has at least the required role
   static bool hasRequiredRole(String? userRole, String requiredRole) {
     if (userRole == null) return false;
     if (userRole == requiredRole) return true;
-    
+
     final userRoleIndex = allRoles.indexOf(userRole);
     final requiredRoleIndex = allRoles.indexOf(requiredRole);
-    
+
     return userRoleIndex >= requiredRoleIndex;
   }
 
@@ -29,8 +28,6 @@ class AppRoles {
         return 'Administrator';
       case staff:
         return 'Staff Member';
-      case volunteer:
-        return 'Volunteer';
       default:
         return role;
     }
@@ -41,30 +38,26 @@ class AppRoles {
 class RoleBasedUI extends ConsumerWidget {
   final Widget admin;
   final Widget staff;
-  final Widget volunteer;
   final Widget fallback;
 
   const RoleBasedUI({
     super.key,
     required this.admin,
     required this.staff,
-    required this.volunteer,
     required this.fallback,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).user;
-    
+
     if (user == null) return fallback;
-    
+
     switch (user.role) {
       case AppRoles.admin:
         return admin;
       case AppRoles.staff:
         return staff;
-      case AppRoles.volunteer:
-        return volunteer;
       default:
         return fallback;
     }
@@ -81,7 +74,7 @@ class AuthGuard extends ConsumerWidget {
   const AuthGuard({
     super.key,
     required this.child,
-    this.requiredRole = AppRoles.volunteer,
+    this.requiredRole = AppRoles.staff,
     this.unauthorizedChild,
     this.checkEmailVerified = true,
   });
@@ -93,9 +86,7 @@ class AuthGuard extends ConsumerWidget {
 
     // Show loading indicator while auth is initializing
     if (!authState.initialized) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     // Check if user is logged in
@@ -190,7 +181,9 @@ class _EmailNotVerifiedScreen extends ConsumerWidget {
               TextButton(
                 onPressed: () async {
                   try {
-                    await ref.read(authProvider.notifier).sendVerificationEmail();
+                    await ref
+                        .read(authProvider.notifier)
+                        .sendVerificationEmail();
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -202,7 +195,9 @@ class _EmailNotVerifiedScreen extends ConsumerWidget {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Failed to resend verification email: $e'),
+                          content: Text(
+                            'Failed to resend verification email: $e',
+                          ),
                           backgroundColor: Theme.of(context).colorScheme.error,
                         ),
                       );

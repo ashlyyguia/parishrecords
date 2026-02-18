@@ -10,7 +10,9 @@ import '../../../services/records_repository.dart';
 import '../../../services/admin_repository.dart';
 
 class AdminRecordsPage extends StatefulWidget {
-  const AdminRecordsPage({super.key});
+  final Map<String, dynamic>? initialFilter;
+
+  const AdminRecordsPage({super.key, this.initialFilter});
 
   @override
   State<AdminRecordsPage> createState() => _AdminRecordsPageState();
@@ -32,6 +34,22 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
   @override
   void initState() {
     super.initState();
+    final f = widget.initialFilter;
+    if (f != null) {
+      final type = f['type']?.toString();
+      if (type != null && type.isNotEmpty) {
+        _selectedType = type;
+      }
+      final fromStr = f['from']?.toString();
+      final toStr = f['to']?.toString();
+      if (fromStr != null && fromStr.isNotEmpty) {
+        _from = DateTime.tryParse(fromStr);
+      }
+      if (toStr != null && toStr.isNotEmpty) {
+        _to = DateTime.tryParse(toStr);
+      }
+    }
+
     _loadFromBackend();
     _timer = Timer.periodic(
       const Duration(seconds: 5),
@@ -462,25 +480,6 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     }
   }
 
-  Widget _buildTypeButton(BuildContext context, String type, String label) {
-    final isSelected = _selectedType == type;
-    return FilledButton.tonal(
-      onPressed: () {
-        if (_selectedType == type) return;
-        setState(() {
-          _selectedType = type;
-        });
-      },
-      style: FilledButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        backgroundColor: isSelected
-            ? Theme.of(context).colorScheme.primaryContainer
-            : null,
-      ),
-      child: Text(label),
-    );
-  }
-
   @override
   void dispose() {
     _searchCtrl.dispose();
@@ -492,264 +491,442 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
   @override
   Widget build(BuildContext context) {
     final items = _load();
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Records Management',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final isNarrow = constraints.maxWidth < 600;
-                      final gap = isNarrow ? 8.0 : 12.0;
-                      return Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: gap,
-                        runSpacing: gap,
-                        children: [
-                          SizedBox(
-                            width: isNarrow ? constraints.maxWidth : 360,
-                            child: TextField(
-                              controller: _searchCtrl,
-                              decoration: const InputDecoration(
-                                prefixIcon: Icon(Icons.search),
-                                hintText: 'Search records',
-                              ),
-                              onChanged: (_) => setState(() {}),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Records Management',
+                          style: theme.textTheme.headlineSmall,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _selectedType.isEmpty
+                              ? '${items.length} records'
+                              : '${items.length} ${_formatTypeLabel(_selectedType).toLowerCase()} records',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.7,
                             ),
                           ),
-                          FilledButton.icon(
-                            onPressed: _openNewRecord,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add Record'),
-                          ),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              OutlinedButton.icon(
-                                onPressed: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: _from ?? DateTime.now(),
-                                    firstDate: DateTime(1900),
-                                    lastDate: DateTime(2100),
-                                  );
-                                  if (picked != null) {
-                                    setState(() {
-                                      _from = DateTime(
-                                        picked.year,
-                                        picked.month,
-                                        picked.day,
-                                      );
-                                    });
-                                  }
-                                },
-                                icon: const Icon(Icons.calendar_today),
-                                label: Text(
-                                  _from == null
-                                      ? 'From date'
-                                      : 'From: ${DateFormat.yMMMd().format(_from!)}',
-                                ),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: _to ?? _from ?? DateTime.now(),
-                                    firstDate: DateTime(1900),
-                                    lastDate: DateTime(2100),
-                                  );
-                                  if (picked != null) {
-                                    setState(() {
-                                      _to = DateTime(
-                                        picked.year,
-                                        picked.month,
-                                        picked.day,
-                                      );
-                                    });
-                                  }
-                                },
-                                icon: const Icon(Icons.calendar_month),
-                                label: Text(
-                                  _to == null
-                                      ? 'To date'
-                                      : 'To: ${DateFormat.yMMMd().format(_to!)}',
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Clear date filter',
-                                onPressed: () {
-                                  if (_from == null && _to == null) return;
-                                  setState(() {
-                                    _from = null;
-                                    _to = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear),
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    },
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
+                  const SizedBox(width: 16),
+                  FilledButton.icon(
+                    onPressed: _openNewRecord,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add record'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isNarrow = constraints.maxWidth < 720;
+                  final searchWidth = isNarrow ? constraints.maxWidth : 320.0;
+                  return Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 12,
+                    runSpacing: 8,
                     children: [
-                      _buildTypeButton(context, 'baptism', 'Baptism'),
-                      _buildTypeButton(context, 'marriage', 'Marriage'),
-                      _buildTypeButton(context, 'confirmation', 'Confirmation'),
-                      _buildTypeButton(context, 'funeral', 'Death / Burial'),
+                      SizedBox(
+                        width: searchWidth,
+                        child: TextField(
+                          controller: _searchCtrl,
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search),
+                            hintText: 'Search records',
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 200,
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _selectedType,
+                          decoration: const InputDecoration(
+                            labelText: 'Record type',
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'baptism',
+                              child: Text('Baptism'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'marriage',
+                              child: Text('Marriage'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'confirmation',
+                              child: Text('Confirmation'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'funeral',
+                              child: Text('Death / Burial'),
+                            ),
+                          ],
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() => _selectedType = v);
+                          },
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _from ?? DateTime.now(),
+                            firstDate: DateTime(1900),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null) {
+                            setState(() {
+                              _from = DateTime(
+                                picked.year,
+                                picked.month,
+                                picked.day,
+                              );
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_today),
+                        label: Text(
+                          _from == null
+                              ? 'From date'
+                              : 'From: ${DateFormat.yMMMd().format(_from!)}',
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _to ?? _from ?? DateTime.now(),
+                            firstDate: DateTime(1900),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null) {
+                            setState(() {
+                              _to = DateTime(
+                                picked.year,
+                                picked.month,
+                                picked.day,
+                              );
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_month),
+                        label: Text(
+                          _to == null
+                              ? 'To date'
+                              : 'To: ${DateFormat.yMMMd().format(_to!)}',
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Clear date filter',
+                        onPressed: () {
+                          if (_from == null && _to == null) return;
+                          setState(() {
+                            _from = null;
+                            _to = null;
+                          });
+                        },
+                        icon: const Icon(Icons.clear),
+                      ),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Divider(height: 0),
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      if (items.isEmpty) {
-                        return const Center(child: Text('No records'));
-                      }
-                      return SingleChildScrollView(
-                        padding: const EdgeInsets.all(12),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: DataTable(
-                            columns: const [
-                              DataColumn(label: Text('Name')),
-                              DataColumn(label: Text('Date')),
-                              DataColumn(label: Text('Parish')),
-                              DataColumn(label: Text('Actions')),
-                            ],
-                            rows: items.map((m) {
-                              final key = m['id']?.toString() ?? '';
-                              final rawParish = (m['parish'] ?? '').toString();
-                              final parish = rawParish.isEmpty
-                                  ? 'Holy Rosary Parish – Oroquieta City'
-                                  : rawParish;
-                              final dateRaw = (m['date'] ?? '').toString();
-                              DateTime? d = DateTime.tryParse(
-                                dateRaw.isEmpty ? '' : dateRaw,
-                              );
-                              final df = DateFormat.yMMMd();
-                              final dateLabel = d == null
-                                  ? ''
-                                  : df.format(d.toLocal());
-                              final name = (m['name'] ?? 'Untitled').toString();
-                              final rec = m['record'] as ParishRecord?;
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              const Divider(height: 0),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (items.isEmpty) {
+                      return _buildEmptyState(context);
+                    }
 
-                              final cells = <DataCell>[
-                                DataCell(
-                                  Text(name, overflow: TextOverflow.ellipsis),
-                                ),
-                                DataCell(Text(dateLabel)),
-                                DataCell(Text(parish)),
-                              ];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildRecordsHeader(context, items.length),
+                        const Divider(height: 0),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(12),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: DataTable(
+                                columns: const [
+                                  DataColumn(label: Text('Name')),
+                                  DataColumn(label: Text('Type')),
+                                  DataColumn(label: Text('Date')),
+                                  DataColumn(label: Text('Parish')),
+                                  DataColumn(label: Text('Actions')),
+                                ],
+                                rows: items.map((m) {
+                                  final key = m['id']?.toString() ?? '';
+                                  final type = (m['type'] ?? '').toString();
+                                  final typeLabel = _formatTypeLabel(type);
+                                  final rawParish = (m['parish'] ?? '')
+                                      .toString();
+                                  final parish = rawParish.isEmpty
+                                      ? 'Holy Rosary Parish – Oroquieta City'
+                                      : rawParish;
+                                  final dateRaw = (m['date'] ?? '').toString();
+                                  DateTime? d = DateTime.tryParse(
+                                    dateRaw.isEmpty ? '' : dateRaw,
+                                  );
+                                  final df = DateFormat.yMMMd();
+                                  final dateLabel = d == null
+                                      ? ''
+                                      : df.format(d.toLocal());
+                                  final name = (m['name'] ?? 'Untitled')
+                                      .toString();
+                                  final rec = m['record'] as ParishRecord?;
 
-                              cells.add(
-                                DataCell(
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        tooltip: 'Edit',
-                                        onPressed: () {
-                                          final recLocal =
-                                              m['record'] as ParishRecord?;
-                                          if (recLocal == null) {
-                                            _upsert(existing: m);
-                                            return;
-                                          }
-
-                                          _openRecordForm(recLocal);
-                                        },
-                                        icon: const Icon(Icons.edit_outlined),
+                                  final cells = <DataCell>[
+                                    DataCell(
+                                      Text(
+                                        name,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      IconButton(
-                                        tooltip: 'Delete',
-                                        onPressed: key.isEmpty
-                                            ? null
-                                            : () async {
-                                                final ok = await showDialog<bool>(
-                                                  context: context,
-                                                  builder: (ctx) => AlertDialog(
-                                                    title: const Text(
-                                                      'Delete record?',
-                                                    ),
-                                                    content: Text(
-                                                      'Are you sure you want to delete "$key"?',
-                                                    ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              ctx,
-                                                              false,
-                                                            ),
-                                                        child: const Text(
-                                                          'Cancel',
-                                                        ),
-                                                      ),
-                                                      FilledButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              ctx,
-                                                              true,
-                                                            ),
-                                                        child: const Text(
-                                                          'Delete',
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
-                                                if (ok == true) {
-                                                  await _delete(key);
-                                                }
-                                              },
-                                        icon: const Icon(Icons.delete_outline),
+                                    ),
+                                    DataCell(
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _typeColor(
+                                            context,
+                                            type,
+                                          ).withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          typeLabel,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: _typeColor(
+                                                  context,
+                                                  type,
+                                                ),
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                        ),
                                       ),
-                                    ],
-                                  ),
-                                ),
-                              );
+                                    ),
+                                    DataCell(Text(dateLabel)),
+                                    DataCell(Text(parish)),
+                                  ];
 
-                              return DataRow(
-                                cells: cells,
-                                onSelectChanged: (selected) {
-                                  if (selected != true) return;
-                                  if (rec == null) return;
-                                  context.push('/admin/records/${rec.id}');
-                                },
-                              );
-                            }).toList(),
+                                  cells.add(
+                                    DataCell(
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            tooltip: 'Edit',
+                                            onPressed: () {
+                                              final recLocal =
+                                                  m['record'] as ParishRecord?;
+                                              if (recLocal == null) {
+                                                _upsert(existing: m);
+                                                return;
+                                              }
+
+                                              _openRecordForm(recLocal);
+                                            },
+                                            icon: const Icon(
+                                              Icons.edit_outlined,
+                                            ),
+                                          ),
+                                          IconButton(
+                                            tooltip: 'Delete',
+                                            onPressed: key.isEmpty
+                                                ? null
+                                                : () async {
+                                                    final ok = await showDialog<bool>(
+                                                      context: context,
+                                                      builder: (ctx) => AlertDialog(
+                                                        title: const Text(
+                                                          'Delete record?',
+                                                        ),
+                                                        content: Text(
+                                                          'Are you sure you want to delete "$key"?',
+                                                        ),
+                                                        actions: [
+                                                          TextButton(
+                                                            onPressed: () =>
+                                                                Navigator.pop(
+                                                                  ctx,
+                                                                  false,
+                                                                ),
+                                                            child: const Text(
+                                                              'Cancel',
+                                                            ),
+                                                          ),
+                                                          FilledButton(
+                                                            onPressed: () =>
+                                                                Navigator.pop(
+                                                                  ctx,
+                                                                  true,
+                                                                ),
+                                                            child: const Text(
+                                                              'Delete',
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                    if (ok == true) {
+                                                      await _delete(key);
+                                                    }
+                                                  },
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+
+                                  return DataRow(
+                                    cells: cells,
+                                    onSelectChanged: (selected) {
+                                      if (selected != true) return;
+                                      if (rec == null) return;
+                                      context.push('/admin/records/${rec.id}');
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                            ),
                           ),
                         ),
-                      );
-                    },
-                  ), // Added missing closing brace here
+                      ],
+                    );
+                  },
                 ),
-              ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecordsHeader(BuildContext context, int count) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Records',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              '$count total',
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.folder_off_outlined,
+            size: 48,
+            color: colorScheme.onSurface.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: 12),
+          Text('No records found', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            'Try adjusting filters or add a new record to get started.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _openNewRecord,
+            icon: const Icon(Icons.add),
+            label: const Text('Add first record'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTypeLabel(String type) {
+    switch (type) {
+      case 'baptism':
+        return 'Baptism';
+      case 'marriage':
+        return 'Marriage';
+      case 'confirmation':
+        return 'Confirmation';
+      case 'funeral':
+        return 'Death / Burial';
+      default:
+        return type.isEmpty ? 'Unknown' : type;
+    }
+  }
+
+  Color _typeColor(BuildContext context, String type) {
+    switch (type) {
+      case 'baptism':
+        return Colors.blue;
+      case 'marriage':
+        return Colors.pink;
+      case 'confirmation':
+        return Colors.purple;
+      case 'funeral':
+        return Colors.grey;
+      default:
+        return Theme.of(context).colorScheme.primary;
+    }
   }
 }

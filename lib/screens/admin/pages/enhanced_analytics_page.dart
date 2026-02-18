@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 import '../../../providers/records_provider.dart';
+import '../../../providers/admin_providers.dart';
 import '../../../models/record.dart';
 
 class EnhancedAnalyticsPage extends ConsumerStatefulWidget {
@@ -18,11 +20,201 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
   late TabController _tabController;
   String _selectedPeriod = '30 Days';
   final List<String> _periods = ['7 Days', '30 Days', '90 Days', '1 Year'];
+  String _selectedRecordTypeFilter = 'all';
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+  }
+
+  List<dynamic> _filterRecords(List<dynamic> records) {
+    final days = _mapPeriodToDays(_selectedPeriod);
+    final now = DateTime.now();
+    final start = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: days - 1));
+
+    return records.where((r) {
+      DateTime? recordDate;
+      String? type;
+
+      if (r is ParishRecord) {
+        recordDate = r.date;
+        type = r.type.value;
+      } else if (r is Map) {
+        final date = r['date'];
+        if (date != null) {
+          recordDate = DateTime.tryParse(date.toString());
+        }
+        type = r['type']?.toString();
+      }
+
+      if (recordDate == null) return false;
+      if (recordDate.isBefore(start) || recordDate.isAfter(now)) {
+        return false;
+      }
+
+      if (_selectedRecordTypeFilter != 'all') {
+        if (type == null) return false;
+        if (type.toLowerCase() != _selectedRecordTypeFilter.toLowerCase()) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
+  }
+
+  Widget _buildBackendAnalyticsSummary(
+    AsyncValue<List<Map<String, dynamic>>> analyticsAsync,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    return analyticsAsync.when(
+      data: (rows) {
+        if (rows.isEmpty) {
+          return Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                'No analytics data recorded yet.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+          );
+        }
+
+        int recordsCreated = 0;
+        int requestsCreated = 0;
+        int requestsApproved = 0;
+
+        for (final m in rows) {
+          final type = (m['metric_type'] ?? '').toString();
+          final name = (m['metric_name'] ?? '').toString();
+          final value = m['value'] is int
+              ? m['value'] as int
+              : int.tryParse(m['value']?.toString() ?? '') ?? 0;
+
+          if (type == 'records' && name.endsWith('_created')) {
+            recordsCreated += value;
+          }
+          if (type == 'requests' &&
+              name.startsWith('certificate_') &&
+              name.endsWith('_created')) {
+            requestsCreated += value;
+          }
+          if (type == 'requests' && name == 'certificate_status_approved') {
+            requestsApproved += value;
+          }
+        }
+
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Backend Analytics (last 30 days)',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    _buildSmallMetricChip(
+                      'Records Created',
+                      recordsCreated.toString(),
+                      Icons.folder_copy_outlined,
+                      colorScheme.primary,
+                    ),
+                    _buildSmallMetricChip(
+                      'Certificate Requests',
+                      requestsCreated.toString(),
+                      Icons.request_page_outlined,
+                      colorScheme.secondary,
+                    ),
+                    _buildSmallMetricChip(
+                      'Requests Approved',
+                      requestsApproved.toString(),
+                      Icons.verified_outlined,
+                      Colors.green,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const SizedBox(
+          height: 80,
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      ),
+      error: (e, _) => Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Failed to load backend analytics: $e',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: Colors.redAccent,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmallMetricChip(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(
+            '$value $label',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -36,6 +228,9 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final records = ref.watch(recordsProvider);
+    final analyticsAsync = ref.watch(
+      adminAnalyticsProvider(_mapPeriodToDays(_selectedPeriod)),
+    );
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -53,7 +248,12 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildOverviewTab(records, theme, colorScheme),
+                  _buildOverviewTab(
+                    records,
+                    analyticsAsync,
+                    theme,
+                    colorScheme,
+                  ),
                   _buildRecordsTab(records, theme, colorScheme),
                   _buildCertificatesTab(records, theme, colorScheme),
                   _buildTrendsTab(records, theme, colorScheme),
@@ -166,16 +366,76 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          // Record type filter chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildTypeFilterChip('all', 'All types', colorScheme),
+                _buildTypeFilterChip('baptism', 'Baptism', colorScheme),
+                _buildTypeFilterChip('marriage', 'Marriage', colorScheme),
+                _buildTypeFilterChip(
+                  'confirmation',
+                  'Confirmation',
+                  colorScheme,
+                ),
+                _buildTypeFilterChip('funeral', 'Death / Burial', colorScheme),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
+  Widget _buildTypeFilterChip(
+    String value,
+    String label,
+    ColorScheme colorScheme,
+  ) {
+    final isSelected = _selectedRecordTypeFilter == value;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        selected: isSelected,
+        label: Text(label),
+        onSelected: (_) {
+          setState(() {
+            _selectedRecordTypeFilter = value;
+          });
+        },
+        selectedColor: colorScheme.primary.withValues(alpha: 0.15),
+        labelStyle: TextStyle(
+          color: isSelected ? colorScheme.primary : colorScheme.onSurface,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
+    );
+  }
+
+  int _mapPeriodToDays(String period) {
+    switch (period) {
+      case '7 Days':
+        return 7;
+      case '30 Days':
+        return 30;
+      case '90 Days':
+        return 90;
+      case '1 Year':
+        return 365;
+      default:
+        return 30;
+    }
+  }
+
   Widget _buildTabBar(ColorScheme colorScheme) {
+    final isNarrow = MediaQuery.of(context).size.width < 720;
     return Container(
       color: colorScheme.surface,
       child: TabBar(
         controller: _tabController,
+        isScrollable: isNarrow,
         labelColor: colorScheme.primary,
         unselectedLabelColor: colorScheme.onSurface.withValues(alpha: 0.6),
         indicatorColor: colorScheme.primary,
@@ -192,14 +452,16 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
 
   Widget _buildOverviewTab(
     List<dynamic> records,
+    AsyncValue<List<Map<String, dynamic>>> analyticsAsync,
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
-    final totalRecords = records.length;
+    final filteredRecords = _filterRecords(records);
+    final totalRecords = filteredRecords.length;
 
     int pendingCertificates = 0;
     int approvedCertificates = 0;
-    for (final r in records) {
+    for (final r in filteredRecords) {
       if (r is ParishRecord) {
         switch (r.certificateStatus) {
           case CertificateStatus.pending:
@@ -221,7 +483,7 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
         }
       }
     }
-    final thisMonth = records.where((r) {
+    final thisMonth = filteredRecords.where((r) {
       DateTime? recordDate;
       if (r is ParishRecord) {
         recordDate = r.date;
@@ -272,13 +534,18 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
 
           const SizedBox(height: 24),
 
+          // Backend analytics summary (from analytics table)
+          _buildBackendAnalyticsSummary(analyticsAsync, theme, colorScheme),
+
+          const SizedBox(height: 24),
+
           // Record Types Distribution
-          _buildRecordTypesChart(records, theme, colorScheme),
+          _buildRecordTypesChart(filteredRecords, theme, colorScheme),
 
           const SizedBox(height: 24),
 
           // Recent Activity
-          _buildRecentActivity(records, theme, colorScheme),
+          _buildRecentActivity(filteredRecords, theme, colorScheme),
         ],
       ),
     );
@@ -289,23 +556,29 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
+    final filteredRecords = _filterRecords(records);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Records by Type
-          _buildRecordsByTypeChart(records, theme, colorScheme),
+          _buildRecordsByTypeChart(
+            context,
+            filteredRecords,
+            theme,
+            colorScheme,
+          ),
 
           const SizedBox(height: 24),
 
           // Monthly Records Trend
-          _buildMonthlyTrendChart(records, theme, colorScheme),
+          _buildMonthlyTrendChart(filteredRecords, theme, colorScheme),
 
           const SizedBox(height: 24),
 
           // Records Summary Table
-          _buildRecordsSummaryTable(records, theme, colorScheme),
+          _buildRecordsSummaryTable(filteredRecords, theme, colorScheme),
         ],
       ),
     );
@@ -316,18 +589,19 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
+    final filteredRecords = _filterRecords(records);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Certificate Status Distribution
-          _buildCertificateStatusChart(records, theme, colorScheme),
+          _buildCertificateStatusChart(filteredRecords, theme, colorScheme),
 
           const SizedBox(height: 24),
 
           // Certificate Metrics
-          _buildCertificateMetrics(records, theme, colorScheme),
+          _buildCertificateMetrics(filteredRecords, theme, colorScheme),
         ],
       ),
     );
@@ -338,18 +612,19 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
+    final filteredRecords = _filterRecords(records);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Growth Trend
-          _buildGrowthTrendChart(records, theme, colorScheme),
+          _buildGrowthTrendChart(filteredRecords, theme, colorScheme),
 
           const SizedBox(height: 24),
 
           // Seasonal Analysis
-          _buildSeasonalAnalysis(records, theme, colorScheme),
+          _buildSeasonalAnalysis(filteredRecords, theme, colorScheme),
 
           const SizedBox(height: 24),
 
@@ -607,6 +882,7 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
   // For brevity, I'll include placeholder methods
 
   Widget _buildRecordsByTypeChart(
+    BuildContext context,
     List<dynamic> records,
     ThemeData theme,
     ColorScheme colorScheme,
@@ -657,7 +933,39 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                                       .toDouble() *
                                   1.2
                             : 10,
-                        barTouchData: BarTouchData(enabled: false),
+                        barTouchData: BarTouchData(
+                          enabled: true,
+                          touchCallback: (event, response) {
+                            if (!event.isInterestedForInteractions ||
+                                response == null ||
+                                response.spot == null) {
+                              return;
+                            }
+                            final index = response.spot!.touchedBarGroup.x;
+                            final types = recordTypes.keys.toList();
+                            if (index < 0 || index >= types.length) return;
+                            final type = types[index];
+
+                            final days = _mapPeriodToDays(_selectedPeriod);
+                            final now = DateTime.now();
+                            final from = DateTime(
+                              now.year,
+                              now.month,
+                              now.day,
+                            ).subtract(Duration(days: days - 1));
+
+                            final df = DateFormat('yyyy-MM-dd');
+                            final params = {
+                              'type': type,
+                              'from': df.format(from),
+                              'to': df.format(now),
+                            };
+
+                            if (context.mounted) {
+                              context.push('/admin/records', extra: params);
+                            }
+                          },
+                        ),
                         titlesData: FlTitlesData(
                           show: true,
                           bottomTitles: AxisTitles(
@@ -812,7 +1120,7 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                               value.toInt() < months.length) {
                             final month = months[value.toInt()];
                             return SideTitleWidget(
-                              axisSide: meta.axisSide,
+                              meta: meta,
                               child: Text(
                                 month.split(
                                   ' ',
@@ -986,125 +1294,137 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
               ),
             ),
             const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: SizedBox(
-                    height: 200,
-                    child: total == 0
-                        ? Center(
-                            child: Text(
-                              'No certificates found',
-                              style: TextStyle(
-                                color: colorScheme.onSurface.withValues(
-                                  alpha: 0.5,
-                                ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow = constraints.maxWidth < 720;
+
+                final chart = SizedBox(
+                  height: 200,
+                  child: total == 0
+                      ? Center(
+                          child: Text(
+                            'No certificates found',
+                            style: TextStyle(
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.5,
                               ),
-                            ),
-                          )
-                        : PieChart(
-                            PieChartData(
-                              sections: [
-                                PieChartSectionData(
-                                  value: statusCounts['Pending']!.toDouble(),
-                                  title:
-                                      '${((statusCounts['Pending']! / total) * 100).toInt()}%',
-                                  color: Colors.orange,
-                                  radius: 60,
-                                  titleStyle: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                PieChartSectionData(
-                                  value: statusCounts['Approved']!.toDouble(),
-                                  title:
-                                      '${((statusCounts['Approved']! / total) * 100).toInt()}%',
-                                  color: Colors.green,
-                                  radius: 60,
-                                  titleStyle: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                PieChartSectionData(
-                                  value: statusCounts['Rejected']!.toDouble(),
-                                  title:
-                                      '${((statusCounts['Rejected']! / total) * 100).toInt()}%',
-                                  color: Colors.red,
-                                  radius: 60,
-                                  titleStyle: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                              centerSpaceRadius: 50,
-                              sectionsSpace: 2,
                             ),
                           ),
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildLegendItem(
-                        'Pending',
-                        Colors.orange,
-                        statusCounts['Pending']!,
-                        theme,
-                      ),
-                      const SizedBox(height: 8),
-                      _buildLegendItem(
-                        'Approved',
-                        Colors.green,
-                        statusCounts['Approved']!,
-                        theme,
-                      ),
-                      const SizedBox(height: 8),
-                      _buildLegendItem(
-                        'Rejected',
-                        Colors.red,
-                        statusCounts['Rejected']!,
-                        theme,
-                      ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Total',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurface.withValues(
-                                  alpha: 0.7,
+                        )
+                      : PieChart(
+                          PieChartData(
+                            sections: [
+                              PieChartSectionData(
+                                value: statusCounts['Pending']!.toDouble(),
+                                title:
+                                    '${((statusCounts['Pending']! / total) * 100).toInt()}%',
+                                color: Colors.orange,
+                                radius: 60,
+                                titleStyle: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
                                 ),
                               ),
-                            ),
-                            Text(
-                              total.toString(),
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.primary,
+                              PieChartSectionData(
+                                value: statusCounts['Approved']!.toDouble(),
+                                title:
+                                    '${((statusCounts['Approved']! / total) * 100).toInt()}%',
+                                color: Colors.green,
+                                radius: 60,
+                                titleStyle: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              PieChartSectionData(
+                                value: statusCounts['Rejected']!.toDouble(),
+                                title:
+                                    '${((statusCounts['Rejected']! / total) * 100).toInt()}%',
+                                color: Colors.red,
+                                radius: 60,
+                                titleStyle: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                            centerSpaceRadius: 50,
+                            sectionsSpace: 2,
+                          ),
+                        ),
+                );
+
+                final legend = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLegendItem(
+                      'Pending',
+                      Colors.orange,
+                      statusCounts['Pending']!,
+                      theme,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildLegendItem(
+                      'Approved',
+                      Colors.green,
+                      statusCounts['Approved']!,
+                      theme,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildLegendItem(
+                      'Rejected',
+                      Colors.red,
+                      statusCounts['Rejected']!,
+                      theme,
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Total',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.7,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                          Text(
+                            total.toString(),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              ],
+                    ),
+                  ],
+                );
+
+                if (narrow) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [chart, const SizedBox(height: 16), legend],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(flex: 2, child: chart),
+                    Expanded(child: legend),
+                  ],
+                );
+              },
             ),
           ],
         ),
@@ -1266,7 +1586,7 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
                               value.toInt() < months.length) {
                             final month = months[value.toInt()];
                             return SideTitleWidget(
-                              axisSide: meta.axisSide,
+                              meta: meta,
                               child: Text(
                                 month.split(' ')[0],
                                 style: const TextStyle(fontSize: 10),

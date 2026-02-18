@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 class AppUser {
   final String id;
   final String email;
   final String? displayName;
-  final String role; // admin, staff, volunteer
+  final String role; // admin, staff
   final DateTime createdAt;
   final DateTime? lastLogin;
   final bool emailVerified;
@@ -46,7 +47,9 @@ class AppUser {
       id: id,
       email: (map['email'] ?? '') as String,
       displayName: map['displayName'] as String?,
-      role: (map['role'] as String?)?.isNotEmpty == true ? map['role'] as String : 'staff',
+      role: (map['role'] as String?)?.isNotEmpty == true
+          ? map['role'] as String
+          : 'staff',
       createdAt: toDate(map['createdAt']),
       lastLogin: toDate(map['lastLogin']),
       emailVerified: map['emailVerified'] as bool? ?? false,

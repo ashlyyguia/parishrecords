@@ -4,7 +4,15 @@ cmake_minimum_required(VERSION 3.10)
 set(EPHEMERAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ephemeral")
 
 # Configuration provided via flutter tool.
-include(${EPHEMERAL_DIR}/generated_config.cmake)
+if(EXISTS "${EPHEMERAL_DIR}/generated_config.cmake")
+  include("${EPHEMERAL_DIR}/generated_config.cmake")
+else()
+  message(STATUS "Flutter Linux generated_config.cmake not found; skipping Linux-specific configuration.")
+endif()
+
+if(NOT DEFINED FLUTTER_TARGET_PLATFORM OR "${FLUTTER_TARGET_PLATFORM}" STREQUAL "")
+  set(FLUTTER_TARGET_PLATFORM "linux-x64")
+endif()
 
 # TODO: Move the rest of this into files in ephemeral. See
 # https://github.com/flutter/flutter/issues/57146.
@@ -21,10 +29,16 @@ endfunction()
 
 # === Flutter Library ===
 # System-level dependencies.
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
-pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
-pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
+if(UNIX AND NOT APPLE)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
+    pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
+    pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
+  else()
+    message(STATUS "PkgConfig not found; skipping GTK/GLib checks for Flutter Linux build.")
+  endif()
+endif()
 
 set(FLUTTER_LIBRARY "${EPHEMERAL_DIR}/libflutter_linux_gtk.so")
 
@@ -62,11 +76,13 @@ target_include_directories(flutter INTERFACE
   "${EPHEMERAL_DIR}"
 )
 target_link_libraries(flutter INTERFACE "${FLUTTER_LIBRARY}")
-target_link_libraries(flutter INTERFACE
-  PkgConfig::GTK
-  PkgConfig::GLIB
-  PkgConfig::GIO
-)
+if(UNIX AND NOT APPLE AND PkgConfig_FOUND)
+  target_link_libraries(flutter INTERFACE
+    PkgConfig::GTK
+    PkgConfig::GLIB
+    PkgConfig::GIO
+  )
+endif()
 add_dependencies(flutter flutter_assemble)
 
 # === Flutter tool backend ===

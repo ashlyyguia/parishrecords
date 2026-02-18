@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../providers/notification_provider.dart';
+
 class BottomNavShell extends ConsumerWidget {
   final Widget child;
   const BottomNavShell({super.key, required this.child});
@@ -10,6 +12,7 @@ class BottomNavShell extends ConsumerWidget {
     '/home',
     '/records',
     '/records/certificates',
+    '/notifications',
     '/profile',
   ];
 
@@ -29,6 +32,29 @@ class BottomNavShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).uri.toString();
     final currentIndex = _indexFromLocation(location);
+    final unreadStreamAsync = ref.watch(unreadNotificationsCountStreamProvider);
+    final unread = unreadStreamAsync.maybeWhen(data: (v) => v, orElse: () => 0);
+
+    ref.listen<AsyncValue<int>>(unreadNotificationsCountStreamProvider, (
+      previous,
+      next,
+    ) {
+      final prevCount =
+          previous?.maybeWhen(data: (v) => v, orElse: () => 0) ?? 0;
+      final currentCount = next.maybeWhen(data: (v) => v, orElse: () => 0);
+      if (currentCount > prevCount && prevCount != 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              currentCount == 1
+                  ? 'You have a new notification'
+                  : 'You have $currentCount unread notifications',
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    });
 
     return Scaffold(
       body: child,
@@ -53,6 +79,11 @@ class BottomNavShell extends ConsumerWidget {
             selectedIcon: Icon(Icons.request_page),
             label: 'Certificates',
           ),
+          NavigationDestination(
+            icon: _buildNotificationIcon(unread, false),
+            selectedIcon: _buildNotificationIcon(unread, true),
+            label: 'Notifications',
+          ),
           const NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
@@ -60,6 +91,41 @@ class BottomNavShell extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildNotificationIcon(int unread, bool selected) {
+    final baseIcon = Icon(
+      selected ? Icons.notifications : Icons.notifications_outlined,
+    );
+    if (unread <= 0) return baseIcon;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        baseIcon,
+        Positioned(
+          right: -2,
+          top: -2,
+          child: Container(
+            padding: const EdgeInsets.all(2),
+            decoration: const BoxDecoration(
+              color: Colors.redAccent,
+              shape: BoxShape.circle,
+            ),
+            constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+            child: Center(
+              child: Text(
+                unread > 9 ? '9+' : '$unread',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

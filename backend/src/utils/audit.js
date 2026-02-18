@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const cassandraClient = require('../database/cassandra');
+const { getAdmin } = require('../firebase_admin');
 
 /**
  * Write an entry into the audit_logs table.
@@ -24,11 +24,7 @@ async function logAudit(req, {
   if (!action) return;
 
   const id = uuidv4();
-  const effectiveUserId = (userId || (req.user && req.user.userId) || '').toString();
-  if (!effectiveUserId) {
-    // Still log the action but with a placeholder user
-    // to avoid dropping important events.
-  }
+  const effectiveUserId = (userId || (req.user && req.user.uid) || '').toString();
 
   const now = new Date();
   const ipAddress = req.ip || null;
@@ -44,21 +40,20 @@ async function logAudit(req, {
       : (newValues || null);
 
   try {
-    await cassandraClient.execute(
-      'INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, old_values, new_values, timestamp, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        id,
-        effectiveUserId || 'system',
-        action,
-        resourceType,
-        resourceId ? resourceId.toString() : null,
-        oldValStr,
-        newValStr,
-        now,
-        ipAddress,
-        userAgent,
-      ]
-    );
+    const admin = getAdmin();
+    const db = admin.firestore();
+
+    await db.collection('audit_logs').doc(id).set({
+      user_id: effectiveUserId || 'system',
+      action,
+      resource_type: resourceType,
+      resource_id: resourceId ? resourceId.toString() : null,
+      old_values: oldValStr,
+      new_values: newValStr,
+      timestamp: now,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+    });
   } catch (err) {
     console.error('Failed to write audit log:', action, resourceType, resourceId, err);
   }

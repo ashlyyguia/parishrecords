@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../ocr/ocr_scan_screen.dart';
 
 class EnhancedBaptismFormScreen extends ConsumerStatefulWidget {
@@ -42,8 +43,6 @@ class _EnhancedBaptismFormScreenState
   final _placeOfBirthCtrl = TextEditingController();
   String _gender = 'Male';
   final _addressCtrl = TextEditingController();
-  String _legitimacy = 'Legitimate';
-
   // Parents
   final _fatherCtrl = TextEditingController();
   final _motherCtrl = TextEditingController();
@@ -87,7 +86,20 @@ class _EnhancedBaptismFormScreenState
     _recordId = 'HRP-BAP-$datePart-${const Uuid().v4()}';
 
     // Auto-populate staff name (you can get this from auth context)
-    _staffNameCtrl.text = 'Current Staff'; // Replace with actual staff name
+    final authState = ref.read(authProvider);
+    final currentUser = authState.user;
+    if (currentUser != null) {
+      final displayName = (currentUser.displayName ?? '').trim();
+      if (displayName.isNotEmpty) {
+        _staffNameCtrl.text = displayName;
+      } else if (currentUser.email.isNotEmpty) {
+        _staffNameCtrl.text = currentUser.email;
+      } else {
+        _staffNameCtrl.text = 'Current Staff';
+      }
+    } else {
+      _staffNameCtrl.text = 'Current Staff';
+    }
 
     // If editing an existing record, prefill fields from its stored JSON notes
     final existing = widget.existing;
@@ -121,7 +133,6 @@ class _EnhancedBaptismFormScreenState
             _placeOfBirthCtrl.text = (child['placeOfBirth'] ?? '').toString();
             _gender = (child['gender'] ?? _gender).toString();
             _addressCtrl.text = (child['address'] ?? '').toString();
-            _legitimacy = (child['legitimacy'] ?? _legitimacy).toString();
           }
 
           if (parents != null) {
@@ -238,6 +249,19 @@ class _EnhancedBaptismFormScreenState
       lastDate: DateTime(2100),
     );
     if (picked != null) set(picked);
+  }
+
+  Future<void> _pickTime(BuildContext ctx) async {
+    // Capture localizations before the async gap to avoid using BuildContext afterwards.
+    final now = TimeOfDay.now();
+    final localizations = MaterialLocalizations.of(ctx);
+    final picked = await showTimePicker(context: ctx, initialTime: now);
+    if (picked != null) {
+      final formatted = localizations.formatTimeOfDay(picked);
+      setState(() {
+        _baptismTimeCtrl.text = formatted;
+      });
+    }
   }
 
   Future<void> _scanOcr() async {
@@ -413,7 +437,6 @@ class _EnhancedBaptismFormScreenState
         'placeOfBirth': _placeOfBirthCtrl.text.trim(),
         'gender': _gender,
         'address': _addressCtrl.text.trim(),
-        'legitimacy': _legitimacy,
       },
       'parents': {
         'father': _fatherCtrl.text.trim(),
@@ -632,25 +655,6 @@ class _EnhancedBaptismFormScreenState
                         controller: _addressCtrl,
                         decoration: const InputDecoration(labelText: 'Address'),
                       ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        initialValue: _legitimacy,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Legitimate',
-                            child: Text('Legitimate'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Illegitimate',
-                            child: Text('Illegitimate'),
-                          ),
-                        ],
-                        onChanged: (v) =>
-                            setState(() => _legitimacy = v ?? 'Legitimate'),
-                        decoration: const InputDecoration(
-                          labelText: 'Legitimacy',
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -773,11 +777,18 @@ class _EnhancedBaptismFormScreenState
                         ],
                       ),
                       const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _baptismTimeCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Time of Baptism',
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Time of Baptism: ${_baptismTimeCtrl.text.isEmpty ? 'Not set' : _baptismTimeCtrl.text}',
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => _pickTime(context),
+                            child: const Text('Pick Time'),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       TextFormField(
@@ -798,7 +809,7 @@ class _EnhancedBaptismFormScreenState
                 ),
               ),
 
-              if (widget.existing != null && !widget.fromAdmin) ...[
+              if (!widget.fromAdmin) ...[
                 const SizedBox(height: 16),
 
                 // Metadata

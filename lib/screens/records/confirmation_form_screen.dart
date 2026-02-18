@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/record.dart';
@@ -55,13 +54,14 @@ class _ConfirmationFormScreenState
   final _confirmPlaceCtrl = TextEditingController();
   final _officiantCtrl = TextEditingController();
 
-  // Remarks
+  // Remarks / Additional info
   final _remarksCtrl = TextEditingController();
+  bool _certificateIssued = false;
+  final _staffNameCtrl = TextEditingController();
 
-  final ImagePicker _picker = ImagePicker();
   String? _attachmentPath;
-  bool _attachBaptismCertificate = false;
-  bool _attachId = false;
+  final bool _attachBaptismCertificate = false;
+  final bool _attachId = false;
   String? _encoderSignaturePath;
   String? _priestSignaturePath;
   String? _ocrRawText;
@@ -135,6 +135,11 @@ class _ConfirmationFormScreenState
           }
 
           if (meta != null) {
+            _certificateIssued = meta['certificateIssued'] == true;
+            final staffName = meta['staffName']?.toString();
+            if (staffName != null && staffName.isNotEmpty) {
+              _staffNameCtrl.text = staffName;
+            }
             final ocrText = meta['ocrRawText']?.toString();
             if (ocrText != null && ocrText.isNotEmpty) {
               _ocrRawText = ocrText;
@@ -212,6 +217,7 @@ class _ConfirmationFormScreenState
     _confirmPlaceCtrl.dispose();
     _officiantCtrl.dispose();
     _remarksCtrl.dispose();
+    _staffNameCtrl.dispose();
     super.dispose();
   }
 
@@ -229,59 +235,202 @@ class _ConfirmationFormScreenState
     if (picked != null) set(picked);
   }
 
-  Future<void> _pickAttachment() async {
-    try {
-      final XFile? file = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
+  void _applyBaptismRecord(ParishRecord rec) {
+    final raw = rec.notes;
+    if (raw == null || raw.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selected baptism record has no details')),
       );
-      if (file != null) setState(() => _attachmentPath = file.path);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Attachment error: ${e.toString()}')),
-        );
+      return;
+    }
+
+    try {
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      final child = decoded['child'] as Map<String, dynamic>?;
+      final parents = decoded['parents'] as Map<String, dynamic>?;
+      final registry = decoded['registry'] as Map<String, dynamic>?;
+
+      DateTime? parseDate(dynamic v) {
+        if (v == null) return null;
+        final s = v.toString();
+        if (s.isEmpty) return null;
+        return DateTime.tryParse(s);
       }
+
+      setState(() {
+        if (child != null) {
+          final name = (child['fullName'] ?? '').toString();
+          if (name.isNotEmpty) {
+            _nameCtrl.text = name;
+          }
+          final dob = parseDate(child['dateOfBirth']);
+          if (dob != null) {
+            _dob = dob;
+          }
+          final pob = (child['placeOfBirth'] ?? '').toString();
+          if (pob.isNotEmpty) {
+            _placeOfBirthCtrl.text = pob;
+          }
+          final addr = (child['address'] ?? '').toString();
+          if (addr.isNotEmpty) {
+            _addressCtrl.text = addr;
+          }
+        }
+
+        if (parents != null) {
+          final father = (parents['father'] ?? '').toString();
+          final mother = (parents['mother'] ?? '').toString();
+          if (father.isNotEmpty) {
+            _fatherCtrl.text = father;
+          }
+          if (mother.isNotEmpty) {
+            _motherCtrl.text = mother;
+          }
+        }
+
+        if (registry != null) {
+          final bookNo = registry['bookNo']?.toString();
+          final pageNo = registry['pageNo']?.toString();
+          final lineNo = registry['lineNo']?.toString();
+
+          if ((bookNo ?? '').isNotEmpty && _bookNoCtrl.text.trim().isEmpty) {
+            _bookNoCtrl.text = bookNo!;
+          }
+          if ((pageNo ?? '').isNotEmpty && _pageNoCtrl.text.trim().isEmpty) {
+            _pageNoCtrl.text = pageNo!;
+          }
+          if ((lineNo ?? '').isNotEmpty && _lineNoCtrl.text.trim().isEmpty) {
+            _lineNoCtrl.text = lineNo!;
+          }
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loaded details from baptism record')),
+      );
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not read baptism record details')),
+      );
     }
   }
 
-  Future<void> _pickEncoderSignature() async {
-    try {
-      final XFile? file = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
+  Future<void> _importFromBaptism() async {
+    final records = ref.read(recordsProvider);
+    if (records.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No records available to import from')),
       );
-      if (file != null) {
-        setState(() {
-          _encoderSignaturePath = file.path;
-        });
+      return;
+    }
+
+    final nameFilter = _nameCtrl.text.trim().toLowerCase();
+    final dobFilter = _dob;
+    final baptisms = records
+        .where((r) => r.type == RecordType.baptism)
+        .toList();
+
+    if (baptisms.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No baptism records found')));
+      return;
+    }
+
+    List<ParishRecord> nameMatches = nameFilter.isEmpty
+        ? baptisms
+        : baptisms
+              .where((r) => r.name.trim().toLowerCase() == nameFilter)
+              .toList();
+
+    if (nameMatches.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No baptism records match this name. Try clearing the name field or adjusting it.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    List<ParishRecord> candidates = nameMatches;
+
+    if (dobFilter != null) {
+      DateTime? extractDob(ParishRecord r) {
+        final raw = r.notes;
+        if (raw == null || raw.isEmpty) return null;
+        try {
+          final decoded = json.decode(raw);
+          if (decoded is! Map<String, dynamic>) return null;
+          final child = decoded['child'] as Map<String, dynamic>?;
+          if (child == null) return null;
+          final v = child['dateOfBirth'];
+          if (v == null) return null;
+          final s = v.toString();
+          if (s.isEmpty) return null;
+          return DateTime.tryParse(s);
+        } catch (_) {
+          return null;
+        }
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Signature error: ${e.toString()}')),
-        );
+
+      bool closeDate(DateTime a, DateTime b) {
+        final diff = a.difference(b).inDays.abs();
+        return diff <= 7;
+      }
+
+      final strong = <ParishRecord>[];
+      for (final r in nameMatches) {
+        final dob = extractDob(r);
+        if (dob != null && closeDate(dobFilter, dob)) {
+          strong.add(r);
+        }
+      }
+
+      if (strong.isNotEmpty) {
+        candidates = strong;
       }
     }
-  }
 
-  Future<void> _pickPriestSignature() async {
-    try {
-      final XFile? file = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
-      if (file != null) {
-        setState(() {
-          _priestSignaturePath = file.path;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Signature error: ${e.toString()}')),
+    if (candidates.length == 1) {
+      _applyBaptismRecord(candidates.first);
+      return;
+    }
+
+    final df = DateFormat.yMMMMd();
+    final selected = await showDialog<ParishRecord>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Select baptism record'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: candidates.length,
+              itemBuilder: (context, index) {
+                final r = candidates[index];
+                return ListTile(
+                  title: Text(r.name),
+                  subtitle: Text(df.format(r.date)),
+                  onTap: () => Navigator.of(ctx).pop(r),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
         );
-      }
+      },
+    );
+
+    if (selected != null) {
+      _applyBaptismRecord(selected);
     }
   }
 
@@ -447,6 +596,8 @@ class _ConfirmationFormScreenState
         'bookNo': _bookNoCtrl.text.trim(),
         'pageNo': _pageNoCtrl.text.trim(),
         'lineNo': _lineNoCtrl.text.trim(),
+        'certificateIssued': _certificateIssued,
+        'staffName': _staffNameCtrl.text.trim(),
         'attachmentsChecklist': {
           'baptismCertificate': _attachBaptismCertificate,
           'id': _attachId,
@@ -546,7 +697,17 @@ class _ConfirmationFormScreenState
                 ],
               ),
               const SizedBox(height: 8),
-              const Text('Confirmand Information'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Confirmand Information'),
+                  TextButton.icon(
+                    onPressed: _importFromBaptism,
+                    icon: const Icon(Icons.download_outlined, size: 18),
+                    label: const Text('Load from Baptism'),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _nameCtrl,
@@ -654,115 +815,43 @@ class _ConfirmationFormScreenState
                 ),
               ),
 
-              if (widget.existing != null) ...[
-                const SizedBox(height: 16),
-                const Text('Remarks'),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _remarksCtrl,
-                  minLines: 2,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes / remarks',
+              const SizedBox(height: 16),
+              // Additional Information (visible for staff and admin)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Additional Information',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _remarksCtrl,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: const InputDecoration(labelText: 'Remarks'),
+                      ),
+                      const SizedBox(height: 8),
+                      CheckboxListTile(
+                        title: const Text('Certificate Issued?'),
+                        value: _certificateIssued,
+                        onChanged: (v) =>
+                            setState(() => _certificateIssued = v ?? false),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _staffNameCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Prepared By / Staff Name',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-
-                if (!widget.fromAdmin) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _ocrRawText == null || _ocrRawText!.isEmpty
-                        ? 'No OCR text captured'
-                        : 'OCR text captured (${_ocrRawText!.length} chars)',
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: _scanOcr,
-                      icon: const Icon(Icons.document_scanner),
-                      label: const Text('Scan from certificate'),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-                  const Text('Uploads'),
-                  const SizedBox(height: 8),
-                  CheckboxListTile(
-                    value: _attachBaptismCertificate,
-                    onChanged: (v) =>
-                        setState(() => _attachBaptismCertificate = v ?? false),
-                    title: const Text('Baptismal Certificate'),
-                  ),
-                  CheckboxListTile(
-                    value: _attachId,
-                    onChanged: (v) => setState(() => _attachId = v ?? false),
-                    title: const Text('ID'),
-                  ),
-
-                  const SizedBox(height: 16),
-                  const Text('Signatures'),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _encoderSignaturePath == null
-                              ? 'Encoder signature: none'
-                              : 'Encoder signature: selected',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: _pickEncoderSignature,
-                        icon: const Icon(Icons.image_outlined),
-                        label: const Text('Encoder'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _priestSignaturePath == null
-                              ? 'Priest signature: none'
-                              : 'Priest signature: selected',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: _pickPriestSignature,
-                        icon: const Icon(Icons.image_outlined),
-                        label: const Text('Priest'),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-                  const Text('Scanned Certificate (optional)'),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _attachmentPath == null
-                              ? 'No file selected'
-                              : _attachmentPath!,
-                        ),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _pickAttachment,
-                        icon: const Icon(Icons.attach_file),
-                        label: const Text('Attach'),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
+              ),
 
               const SizedBox(height: 24),
               SizedBox(

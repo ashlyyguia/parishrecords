@@ -9,7 +9,8 @@ import 'package:intl/intl.dart';
 
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
-import '../../providers/admin_providers.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/records_repository.dart';
 
 class RecordDetailScreen extends ConsumerWidget {
   final String recordId;
@@ -30,9 +31,10 @@ class RecordDetailScreen extends ConsumerWidget {
       );
     }
 
-    final df = DateFormat.yMMMMd();
-    final historyAsync = ref.watch(recordHistoryProvider(rec.id));
+    final user = ref.watch(authProvider).user;
+    final canDelete = user?.role == 'admin';
 
+    final df = DateFormat.yMMMMd();
     Map<String, dynamic>? decodedNotes;
     if (rec.notes != null && rec.notes!.trim().startsWith('{')) {
       try {
@@ -41,6 +43,8 @@ class RecordDetailScreen extends ConsumerWidget {
         decodedNotes = null;
       }
     }
+    final additional = _extractAdditionalInfo(rec, decodedNotes);
+    final hasCert = additional.certificateIssued;
 
     return Scaffold(
       appBar: AppBar(
@@ -66,55 +70,52 @@ class RecordDetailScreen extends ConsumerWidget {
               }
             },
           ),
-          PopupMenuButton<String>(
-            onSelected: (value) async {
-              if (value == 'delete') {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (c) => AlertDialog(
-                    title: const Text('Delete record?'),
-                    content: Text('This will delete "${rec.name}"'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(c, false),
-                        child: const Text('Cancel'),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.pop(c, true),
-                        child: const Text('Delete'),
-                      ),
-                    ],
-                  ),
-                );
-                if (ok == true) {
-                  try {
-                    await ref
-                        .read(recordsProvider.notifier)
-                        .deleteRecord(rec.id);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Record deleted')),
-                      );
-                      Navigator.of(context).pop();
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
+          if (canDelete)
+            PopupMenuButton<String>(
+              onSelected: (value) async {
+                if (value == 'delete') {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (c) => AlertDialog(
+                      title: const Text('Delete record?'),
+                      content: Text('This will delete "${rec.name}"'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(c).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.of(c).pop(true),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (ok == true) {
+                    try {
+                      await RecordsRepository().deleteForType(rec.id, rec.type);
+                      await ref.read(recordsProvider.notifier).load();
+                      if (context.mounted) {
+                        context.pop();
+                      }
+                    } catch (err) {
+                      if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Failed to delete record. It may have been removed on the server. (${e.toString()})',
+                            'Failed to delete record. It may have been removed on the server. (${err.toString()})',
                           ),
                         ),
                       );
                     }
                   }
                 }
-              }
-            },
-            itemBuilder: (c) => const [
-              PopupMenuItem(value: 'delete', child: Text('Delete')),
-            ],
-          ),
+              },
+              itemBuilder: (c) => const [
+                PopupMenuItem(value: 'delete', child: Text('Delete')),
+              ],
+            ),
         ],
       ),
       body: ListView(
@@ -138,37 +139,97 @@ class RecordDetailScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  rec.name,
-                  style: Theme.of(context).textTheme.titleLarge,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Chip(label: Text(_capitalize(rec.type.name))),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.calendar_today_outlined, size: 16),
-                    const SizedBox(width: 6),
-                    Text(df.format(rec.date)),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                // Header
                 Card(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.category_outlined),
-                        title: const Text('Record Type'),
-                        subtitle: Text(_capitalize(rec.type.name)),
-                      ),
-                      const Divider(height: 0),
-                      ListTile(
-                        leading: const Icon(Icons.calendar_today_outlined),
-                        title: const Text('Record Date'),
-                        subtitle: Text(df.format(rec.date)),
-                      ),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                rec.name,
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Chip(label: Text(_capitalize(rec.type.name))),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.calendar_today_outlined,
+                                        size: 16,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(df.format(rec.date)),
+                                    ],
+                                  ),
+                                  if (hasCert)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                            .withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'CERT ISSUED',
+                                        style: TextStyle(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  if (rec.parish != null &&
+                                      rec.parish!.isNotEmpty)
+                                    Text(
+                                      rec.parish!,
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withValues(alpha: 0.7),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              if (rec.id.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Record ID: ${rec.id}',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withValues(alpha: 0.6),
+                                      ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 if (rec.parish != null && rec.parish!.isNotEmpty) ...[
@@ -204,59 +265,6 @@ class RecordDetailScreen extends ConsumerWidget {
                     ),
                   ),
                 ],
-
-                const SizedBox(height: 16),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'History',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        historyAsync.when(
-                          loading: () => const LinearProgressIndicator(),
-                          error: (e, _) => Text(
-                            'Failed to load history',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                          ),
-                          data: (logs) {
-                            if (logs.isEmpty) {
-                              return const Text(
-                                'No history available for this record yet.',
-                              );
-                            }
-                            return Column(
-                              children: logs.map((log) {
-                                final action = (log['action'] ?? '').toString();
-                                final ts = log['action_time'];
-                                final tsStr = ts?.toString() ?? '';
-                                final userId = (log['user_id'] ?? '')
-                                    .toString();
-                                return ListTile(
-                                  dense: true,
-                                  leading: const Icon(Icons.history),
-                                  title: Text(action),
-                                  subtitle: Text(
-                                    [
-                                      if (tsStr.isNotEmpty) tsStr,
-                                      if (userId.isNotEmpty) 'User: $userId',
-                                    ].join('  •  '),
-                                  ),
-                                );
-                              }).toList(),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -343,8 +351,6 @@ class RecordDetailScreen extends ConsumerWidget {
               if (child['gender'] != null) Text('Gender: ${child['gender']}'),
               if (child['address'] != null)
                 Text('Address: ${child['address']}'),
-              if (child['legitimacy'] != null)
-                Text('Legitimacy: ${child['legitimacy']}'),
               const SizedBox(height: 12),
             ],
             if (parents != null) ...[
@@ -742,6 +748,75 @@ class RecordDetailScreen extends ConsumerWidget {
       ),
     );
   }
+
+  _AdditionalInfo _extractAdditionalInfo(
+    ParishRecord rec,
+    Map<String, dynamic>? data,
+  ) {
+    String? remarks;
+    bool cert = false;
+    String? staff;
+
+    if (data != null) {
+      switch (rec.type) {
+        case RecordType.baptism:
+          final meta = data['metadata'] as Map<String, dynamic>?;
+          if (meta != null) {
+            remarks = meta['remarks']?.toString();
+            cert = meta['certificateIssued'] == true;
+            staff = meta['staffName']?.toString();
+          }
+          break;
+        case RecordType.marriage:
+          remarks = data['remarks']?.toString();
+          final meta = data['meta'] as Map<String, dynamic>?;
+          if (meta != null) {
+            cert = meta['certificateIssued'] == true;
+            staff = meta['staffName']?.toString();
+          }
+          break;
+        case RecordType.confirmation:
+          remarks = data['remarks']?.toString();
+          final meta = data['meta'] as Map<String, dynamic>?;
+          if (meta != null) {
+            cert = meta['certificateIssued'] == true;
+            staff = meta['staffName']?.toString();
+          }
+          break;
+        case RecordType.funeral:
+          remarks = data['remarks']?.toString();
+          final meta = data['meta'] as Map<String, dynamic>?;
+          if (meta != null) {
+            cert = meta['certificateIssued'] == true;
+            staff = meta['staffName']?.toString();
+          }
+          break;
+      }
+    }
+
+    return _AdditionalInfo(
+      remarks: remarks,
+      certificateIssued: cert,
+      staffName: staff,
+    );
+  }
+}
+
+class _AdditionalInfo {
+  final String? remarks;
+  final bool certificateIssued;
+  final String? staffName;
+
+  const _AdditionalInfo({
+    this.remarks,
+    this.certificateIssued = false,
+    this.staffName,
+  });
+
+  bool get hasAny =>
+      (remarks != null && remarks!.isNotEmpty) ||
+      certificateIssued ||
+      (staffName != null && staffName!.isNotEmpty);
 }
 
 extension FirstOrNull<E> on Iterable<E> {

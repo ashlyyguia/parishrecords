@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/auth_provider.dart';
-import '../../services/verification_service.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -80,14 +79,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           'verificationCodeExpiresAt': expiresAt,
           'verificationCodeVerified': false,
         }, SetOptions(merge: true));
-
-        // Send code via backend email service (best-effort)
-        try {
-          final verificationService = VerificationService();
-          await verificationService.sendCode(email: email, code: code);
-        } catch (_) {
-          // Ignore email sending errors; the code is still stored in Firestore.
-        }
       }
 
       if (!mounted) return;
@@ -95,7 +86,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Registration successful. A 6-digit verification code has been sent to your email.',
+            'Registration successful. Enter the 6-digit verification code to continue.',
           ),
         ),
       );

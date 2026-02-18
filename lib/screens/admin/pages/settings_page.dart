@@ -230,8 +230,30 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
                           );
                         }
                         if (snap.hasError) {
-                          // If something goes wrong reading logs, show as empty
-                          return const Center(child: Text('No logs'));
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.error_outline),
+                                  const SizedBox(height: 8),
+                                  const Text('Failed to load audit logs'),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Details: ${snap.error}',
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  OutlinedButton.icon(
+                                    onPressed: () => setState(() {}),
+                                    icon: const Icon(Icons.refresh_rounded),
+                                    label: const Text('Retry'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
                         }
 
                         // Normalize date range: if both are set and From > To, swap them
@@ -321,7 +343,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
                         }
                         return ListView.separated(
                           itemCount: list.length,
-                          separatorBuilder: (_, __) => const Divider(height: 0),
+                          separatorBuilder: (_, _) => const Divider(height: 0),
                           itemBuilder: (_, i) {
                             final m = list[i];
                             final title = (m['title'] ?? 'User').toString();

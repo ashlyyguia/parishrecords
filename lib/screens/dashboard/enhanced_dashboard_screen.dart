@@ -8,6 +8,7 @@ import '../../models/record.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/analytics_provider.dart';
 import '../../providers/records_provider.dart';
+import '../records/ocr_record_type_screen.dart';
 
 class EnhancedDashboardScreen extends ConsumerStatefulWidget {
   const EnhancedDashboardScreen({super.key});
@@ -381,9 +382,6 @@ class _EnhancedDashboardScreenState
     final deathRecords = records
         .where((record) => record.type == RecordType.funeral)
         .length;
-    final totalRequests = records
-        .where((record) => _isCertificateRequest(record))
-        .length;
 
     final stats = [
       {
@@ -420,13 +418,6 @@ class _EnhancedDashboardScreenState
         'change': '',
         'icon': Icons.person_outline,
         'color': Colors.grey,
-      },
-      {
-        'title': 'Total Requests',
-        'value': totalRequests.toString(),
-        'change': '',
-        'icon': Icons.request_page_outlined,
-        'color': Colors.orange,
       },
     ];
 
@@ -654,28 +645,10 @@ class _EnhancedDashboardScreenState
   }
 
   Future<void> _openNewRecordWithOcr() async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('Scan New Record'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'baptism'),
-            child: const Text('Baptism (OCR)'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'marriage'),
-            child: const Text('Marriage (OCR)'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'confirmation'),
-            child: const Text('Confirmation (OCR)'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'death'),
-            child: const Text('Death (OCR)'),
-          ),
-        ],
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const OcrRecordTypeScreen(),
       ),
     );
 

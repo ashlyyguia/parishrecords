@@ -1,17 +1,45 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
-import '../config/backend.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/record.dart';
 
 class RecordsRepository {
-  String get _base => BackendConfig.baseUrl;
+  static const Duration _timeout = Duration(seconds: 20);
 
-  ParishRecord _fromBackend(Map<String, dynamic> r) {
-    final createdAt = r['created_at'];
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
+
+  String _requireUid() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) throw Exception('Not authenticated');
+    return uid;
+  }
+
+  String _collectionForType(RecordType type) {
+    switch (type) {
+      case RecordType.baptism:
+        return 'baptism_records';
+      case RecordType.marriage:
+        return 'marriage_records';
+      case RecordType.confirmation:
+        return 'confirmation_records';
+      case RecordType.funeral:
+        return 'funeral_records';
+    }
+  }
+
+  ParishRecord _fromFirestore(
+    RecordType type,
+    String id,
+    Map<String, dynamic> r,
+  ) {
+    final createdAt = r['created_at'] ?? r['createdAt'];
     DateTime date;
-    if (createdAt is String) {
+    if (createdAt is Timestamp) {
+      date = createdAt.toDate();
+    } else if (createdAt is String) {
       date = DateTime.tryParse(createdAt) ?? DateTime.now();
     } else if (createdAt is DateTime) {
       date = createdAt;
@@ -20,21 +48,6 @@ class RecordsRepository {
     }
     final name =
         (r['text'] as String?) ?? (r['name'] as String?) ?? 'Unnamed Record';
-    final typeStr = (r['type'] as String?)?.toLowerCase() ?? 'baptism';
-    final type = () {
-      switch (typeStr) {
-        case 'marriage':
-          return RecordType.marriage;
-        case 'funeral':
-        case 'death':
-          return RecordType.funeral;
-        case 'confirmation':
-          return RecordType.confirmation;
-        case 'baptism':
-        default:
-          return RecordType.baptism;
-      }
-    }();
     CertificateStatus certificateStatus = CertificateStatus.pending;
     final rawStatus = r['certificate_status'] ?? r['certificateStatus'];
     if (rawStatus is String) {
@@ -46,7 +59,7 @@ class RecordsRepository {
     final notes = (r['notes'] as String?) ?? (r['source'] as String?);
 
     return ParishRecord(
-      id: (r['id'] as String?) ?? (r['record_id'] as String?) ?? '',
+      id: id,
       type: type,
       name: name,
       date: date,
@@ -162,36 +175,35 @@ class RecordsRepository {
     }
   }
 
-  Future<Map<String, String>> _authHeader() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken();
-    return {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
-  }
-
   Future<List<ParishRecord>> list() async {
+    final uid = _requireUid();
+    if (uid.isEmpty) {
+      return const <ParishRecord>[];
+    }
+
+    Future<List<ParishRecord>> loadType(RecordType t) async {
+      final col = _collectionForType(t);
+      final snap = await _db
+          .collection(col)
+          .orderBy('created_at', descending: true)
+          .limit(500)
+          .get()
+          .timeout(
+            _timeout,
+            onTimeout: () => throw TimeoutException('Records list timed out'),
+          );
+      return snap.docs.map((d) => _fromFirestore(t, d.id, d.data())).toList();
+    }
+
     try {
-      final headers = await _authHeader();
-      final resp = await http.get(
-        Uri.parse('$_base/api/records'),
-        headers: headers,
-      );
-      if (resp.statusCode != 200) {
-        throw Exception(
-          'Failed to load records: ${resp.statusCode} ${resp.body}',
-        );
+      final all = <ParishRecord>[];
+      for (final t in RecordType.values) {
+        all.addAll(await loadType(t));
       }
-      final body = json.decode(resp.body) as Map<String, dynamic>;
-      final rows = (body['rows'] as List<dynamic>? ?? [])
-          .cast<Map<String, dynamic>>();
-      final records = rows.map(_fromBackend).toList()
-        ..sort((a, b) => b.date.compareTo(a.date));
-      return records;
+      all.sort((a, b) => b.date.compareTo(a.date));
+      return all;
     } catch (e) {
-      developer.log('Backend load failed: $e', name: 'RecordsRepository');
+      developer.log('Firestore load failed: $e', name: 'RecordsRepository');
       rethrow;
     }
   }
@@ -246,19 +258,21 @@ class RecordsRepository {
       }
     }
 
-    final headers = await _authHeader();
-    final response = await http.post(
-      Uri.parse('$_base/api/records'),
-      headers: headers,
-      body: json.encode(payload),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      developer.log(
-        'Backend add failed: ${response.statusCode} ${response.body}',
-        name: 'RecordsRepository',
-      );
-      throw Exception('Failed to save record: ${response.statusCode}');
-    }
+    final uid = _requireUid();
+    payload['created_by_uid'] = uid;
+    payload['created_at'] = FieldValue.serverTimestamp();
+    payload['updated_at'] = FieldValue.serverTimestamp();
+    payload['certificate_status'] = CertificateStatus.pending.name;
+    payload['date'] = Timestamp.fromDate(date);
+
+    final col = _collectionForType(type);
+    await _db
+        .collection(col)
+        .add(payload)
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Add record timed out'),
+        );
   }
 
   Future<void> update(
@@ -269,63 +283,72 @@ class RecordsRepository {
     String? imagePath,
     String? parish,
     String? notes,
+    CertificateStatus? certificateStatus,
   }) async {
+    if (type == null) {
+      throw Exception('Record type is required for Firebase-only update');
+    }
     final data = <String, dynamic>{};
-    if (type != null) data['type'] = type.name;
+    data['type'] = type.name;
     if (name != null) data['text'] = name;
     if (imagePath != null) data['image_ref'] = imagePath;
     if (parish != null) data['source'] = parish;
     if (notes != null) data['notes'] = notes;
+    if (date != null) data['date'] = Timestamp.fromDate(date);
+    if (certificateStatus != null) {
+      data['certificate_status'] = certificateStatus.name;
+    }
     if (data.isEmpty) return;
 
-    final headers = await _authHeader();
-    final response = await http.put(
-      Uri.parse('$_base/api/records/$id'),
-      headers: headers,
-      body: json.encode(data),
-    );
-    if (response.statusCode != 200) {
-      developer.log(
-        'Backend update failed: ${response.statusCode} ${response.body}',
-        name: 'RecordsRepository',
-      );
-      throw Exception('Failed to update record: ${response.statusCode}');
-    }
+    data['updated_at'] = FieldValue.serverTimestamp();
+    final col = _collectionForType(type);
+    await _db
+        .collection(col)
+        .doc(id)
+        .set(data, SetOptions(merge: true))
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Update record timed out'),
+        );
   }
 
   Future<void> updateCertificateStatus(
     String id,
     CertificateStatus status,
   ) async {
-    final headers = await _authHeader();
-    final response = await http.put(
-      Uri.parse('$_base/api/records/$id/certificate-status'),
-      headers: headers,
-      body: json.encode({'status': status.name}),
+    throw UnimplementedError(
+      'Firebase-only: updateCertificateStatus requires record type; '
+      'use update(id, type: ..., ...) with certificate_status',
     );
-    if (response.statusCode != 200) {
-      developer.log(
-        'Backend certificate status update failed: ${response.statusCode}',
-        name: 'RecordsRepository',
-      );
-      throw Exception(
-        'Failed to update certificate status: ${response.statusCode}',
-      );
-    }
+  }
+
+  Future<void> updateCertificateStatusForType(
+    String id,
+    RecordType type,
+    CertificateStatus status,
+  ) async {
+    final col = _collectionForType(type);
+    await _db.collection(col).doc(id).set({
+      'certificate_status': status.name,
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> delete(String id) async {
-    final headers = await _authHeader();
-    final response = await http.delete(
-      Uri.parse('$_base/api/records/$id'),
-      headers: headers,
+    throw UnimplementedError(
+      'Firebase-only: delete requires record type; use deleteForType',
     );
-    if (response.statusCode != 200) {
-      developer.log(
-        'Backend delete failed: ${response.statusCode} ${response.body}',
-        name: 'RecordsRepository',
-      );
-      throw Exception('Failed to delete record: ${response.statusCode}');
-    }
+  }
+
+  Future<void> deleteForType(String id, RecordType type) async {
+    final col = _collectionForType(type);
+    await _db
+        .collection(col)
+        .doc(id)
+        .delete()
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Delete record timed out'),
+        );
   }
 }

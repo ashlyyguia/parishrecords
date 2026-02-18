@@ -23,7 +23,9 @@ import '../../services/requests_repository.dart';
 ///   "submittedAt": "ISO8601..."
 /// }
 class CertificateRequestFormScreen extends ConsumerStatefulWidget {
-  const CertificateRequestFormScreen({super.key});
+  final String? initialRecordType;
+
+  const CertificateRequestFormScreen({super.key, this.initialRecordType});
 
   @override
   ConsumerState<CertificateRequestFormScreen> createState() =>
@@ -113,6 +115,10 @@ class _CertificateRequestFormScreenState
   @override
   void initState() {
     super.initState();
+    final initial = widget.initialRecordType;
+    if (initial != null && initial.isNotEmpty) {
+      _recordType = initial;
+    }
     _initializeRequestId();
   }
 
@@ -373,8 +379,7 @@ class _CertificateRequestFormScreenState
             notes: json.encode(body),
           );
 
-      // Also create a backend certificate request entry so that analytics and
-      // admin tools backed by Cassandra can see it.
+      // Also create a backend certificate request entry.
       try {
         final requestsRepo = RequestsRepository();
         final requestType = _mapRecordTypeToRequestType();
@@ -522,6 +527,10 @@ class _CertificateRequestFormScreenState
               TextFormField(
                 controller: _contactCtrl,
                 decoration: const InputDecoration(labelText: 'Contact number'),
+                keyboardType: TextInputType.phone,
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Please enter contact number'
+                    : null,
               ),
               const SizedBox(height: 8),
               TextFormField(
@@ -529,6 +538,14 @@ class _CertificateRequestFormScreenState
                 decoration: const InputDecoration(
                   labelText: 'Email address (optional)',
                 ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) return null;
+                  final value = v.trim();
+                  return value.contains('@')
+                      ? null
+                      : 'Enter a valid email address';
+                },
               ),
               const SizedBox(height: 8),
               Row(
@@ -597,6 +614,8 @@ class _CertificateRequestFormScreenState
             TextFormField(
               controller: _baptismChildNameCtrl,
               decoration: const InputDecoration(labelText: "Child's name"),
+              textInputAction: TextInputAction.search,
+              onFieldSubmitted: _onNameSubmitted,
               validator: (v) => (v == null || v.trim().isEmpty)
                   ? 'Please enter child\'s name'
                   : null,
@@ -685,6 +704,7 @@ class _CertificateRequestFormScreenState
             TextFormField(
               controller: _marriageGroomNameCtrl,
               decoration: const InputDecoration(labelText: "Groom's full name"),
+              textInputAction: TextInputAction.next,
               validator: (v) => (v == null || v.trim().isEmpty)
                   ? 'Please enter groom\'s name'
                   : null,
@@ -693,6 +713,8 @@ class _CertificateRequestFormScreenState
             TextFormField(
               controller: _marriageBrideNameCtrl,
               decoration: const InputDecoration(labelText: "Bride's full name"),
+              textInputAction: TextInputAction.search,
+              onFieldSubmitted: _onNameSubmitted,
               validator: (v) => (v == null || v.trim().isEmpty)
                   ? 'Please enter bride\'s name'
                   : null,
@@ -744,6 +766,8 @@ class _CertificateRequestFormScreenState
               decoration: const InputDecoration(
                 labelText: 'Full name of confirmand',
               ),
+              textInputAction: TextInputAction.search,
+              onFieldSubmitted: _onNameSubmitted,
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Please enter name' : null,
             ),
@@ -832,6 +856,8 @@ class _CertificateRequestFormScreenState
               decoration: const InputDecoration(
                 labelText: 'Full name of deceased',
               ),
+              textInputAction: TextInputAction.search,
+              onFieldSubmitted: _onNameSubmitted,
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Please enter name' : null,
             ),
@@ -945,6 +971,8 @@ class _CertificateRequestFormScreenState
             TextFormField(
               controller: _certFullNameCtrl,
               decoration: const InputDecoration(labelText: 'Full name'),
+              textInputAction: TextInputAction.search,
+              onFieldSubmitted: _onNameSubmitted,
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Please enter name' : null,
             ),
@@ -1081,5 +1109,396 @@ class _CertificateRequestFormScreenState
     }
 
     return boxes;
+  }
+
+  void _onNameSubmitted(String _) {
+    _tryAutoFillFromExisting();
+  }
+
+  Future<void> _tryAutoFillFromExisting() async {
+    final records = ref.read(recordsProvider);
+
+    String nameFilter = '';
+    RecordType? typeFilter;
+
+    switch (_recordType) {
+      case 'Baptism':
+        nameFilter = _baptismChildNameCtrl.text.trim().toLowerCase();
+        typeFilter = RecordType.baptism;
+        break;
+      case 'Marriage':
+        final groom = _marriageGroomNameCtrl.text.trim().toLowerCase();
+        final bride = _marriageBrideNameCtrl.text.trim().toLowerCase();
+        if (groom.isEmpty || bride.isEmpty) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Please enter both groom and bride names before auto-fill.',
+              ),
+            ),
+          );
+          return;
+        }
+        nameFilter = '$groom & $bride';
+        typeFilter = RecordType.marriage;
+        break;
+      case 'Confirmation':
+        nameFilter = _confFullNameCtrl.text.trim().toLowerCase();
+        typeFilter = RecordType.confirmation;
+        break;
+      case 'Death':
+        nameFilter = _deathFullNameCtrl.text.trim().toLowerCase();
+        typeFilter = RecordType.funeral;
+        break;
+      case 'Parish Certification':
+      default:
+        nameFilter = _certFullNameCtrl.text.trim().toLowerCase();
+        typeFilter = null; // search across all types
+        break;
+    }
+
+    if (nameFilter.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a name first.')),
+      );
+      return;
+    }
+
+    bool isCertificateRequest(ParishRecord r) {
+      if (r.notes == null || r.notes!.isEmpty) return false;
+      try {
+        final decoded = json.decode(r.notes!);
+        if (decoded is! Map<String, dynamic>) return false;
+        final rt =
+            (decoded['requestType'] as String?) ??
+            (decoded['request_type'] as String?);
+        return rt == 'certificate_request';
+      } catch (_) {
+        return false;
+      }
+    }
+
+    final candidates = records.where((r) {
+      if (typeFilter != null && r.type != typeFilter) return false;
+      if (isCertificateRequest(r)) return false;
+      final rName = r.name.trim().toLowerCase();
+      if (rName != nameFilter) return false;
+      return true;
+    }).toList();
+
+    if (candidates.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No existing record found for this name.'),
+        ),
+      );
+      return;
+    }
+
+    ParishRecord selected;
+    if (candidates.length == 1) {
+      selected = candidates.first;
+    } else {
+      if (!mounted) return;
+      final df = DateFormat.yMMMMd();
+      final result = await showDialog<ParishRecord>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text('Select matching record'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: candidates.length,
+                itemBuilder: (context, index) {
+                  final r = candidates[index];
+                  return ListTile(
+                    title: Text(r.name),
+                    subtitle: Text(df.format(r.date)),
+                    onTap: () => Navigator.of(ctx).pop(r),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (result == null) {
+        return;
+      }
+      selected = result;
+    }
+
+    if (selected.notes == null || selected.notes!.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selected record has no stored details.')),
+      );
+      return;
+    }
+
+    try {
+      final decoded = json.decode(selected.notes!);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Invalid record JSON');
+      }
+
+      switch (selected.type) {
+        case RecordType.baptism:
+          _applyFromBaptismRecord(decoded);
+          break;
+        case RecordType.marriage:
+          _applyFromMarriageRecord(decoded);
+          break;
+        case RecordType.confirmation:
+          _applyFromConfirmationRecord(decoded);
+          break;
+        case RecordType.funeral:
+          _applyFromDeathRecord(decoded);
+          break;
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loaded details from existing record.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not read record details for auto-fill.'),
+        ),
+      );
+    }
+  }
+
+  DateTime? _parseDate(dynamic value) {
+    if (value == null) return null;
+    final s = value.toString();
+    if (s.isEmpty) return null;
+    return DateTime.tryParse(s);
+  }
+
+  void _applyFromBaptismRecord(Map<String, dynamic> jsonMap) {
+    final child = jsonMap['child'] as Map<String, dynamic>?;
+    final parents = jsonMap['parents'] as Map<String, dynamic>?;
+    final baptism = jsonMap['baptism'] as Map<String, dynamic>?;
+
+    setState(() {
+      if (child != null) {
+        final name = (child['fullName'] ?? '').toString();
+        if (name.isNotEmpty) {
+          _baptismChildNameCtrl.text = name;
+        }
+        final dob = _parseDate(child['dateOfBirth']);
+        if (dob != null) {
+          _baptismDob = dob;
+        }
+        final pob = (child['placeOfBirth'] ?? '').toString();
+        if (pob.isNotEmpty) {
+          _baptismPlaceOfBirthCtrl.text = pob;
+        }
+        final gender = (child['gender'] ?? '').toString();
+        if (gender == 'Male' || gender == 'Female') {
+          _baptismGender = gender;
+        }
+        final addr = (child['address'] ?? '').toString();
+        if (addr.isNotEmpty) {
+          _baptismAddressCtrl.text = addr;
+        }
+      }
+
+      if (parents != null) {
+        final father = (parents['father'] ?? '').toString();
+        final mother = (parents['mother'] ?? '').toString();
+        if (father.isNotEmpty) {
+          _baptismFatherCtrl.text = father;
+        }
+        if (mother.isNotEmpty) {
+          _baptismMotherCtrl.text = mother;
+        }
+      }
+
+      if (baptism != null) {
+        final date = _parseDate(baptism['date']);
+        if (date != null) {
+          _baptismDateOfBaptism = date;
+        }
+        final officiant = (baptism['minister'] ?? '').toString();
+        if (officiant.isNotEmpty) {
+          _baptismOfficiantCtrl.text = officiant;
+        }
+      }
+    });
+  }
+
+  void _applyFromMarriageRecord(Map<String, dynamic> jsonMap) {
+    final marriage = jsonMap['marriage'] as Map<String, dynamic>?;
+    final groom = jsonMap['groom'] as Map<String, dynamic>?;
+    final bride = jsonMap['bride'] as Map<String, dynamic>?;
+
+    setState(() {
+      if (groom != null) {
+        final name = (groom['fullName'] ?? '').toString();
+        if (name.isNotEmpty) {
+          _marriageGroomNameCtrl.text = name;
+        }
+        final addr = (groom['address'] ?? '').toString();
+        if (addr.isNotEmpty) {
+          _marriageAddressCtrl.text = addr;
+        }
+      }
+
+      if (bride != null) {
+        final name = (bride['fullName'] ?? '').toString();
+        if (name.isNotEmpty) {
+          _marriageBrideNameCtrl.text = name;
+        }
+      }
+
+      if (marriage != null) {
+        final date = _parseDate(marriage['date']);
+        if (date != null) {
+          _marriageDate = date;
+        }
+        final place = (marriage['place'] ?? '').toString();
+        if (place.isNotEmpty) {
+          _marriagePlaceCtrl.text = place;
+        }
+        final officiant = (marriage['officiant'] ?? '').toString();
+        if (officiant.isNotEmpty) {
+          _marriageOfficiantCtrl.text = officiant;
+        }
+      }
+    });
+  }
+
+  void _applyFromConfirmationRecord(Map<String, dynamic> jsonMap) {
+    final confirmand = jsonMap['confirmand'] as Map<String, dynamic>?;
+    final parents = jsonMap['parents'] as Map<String, dynamic>?;
+    final sponsor = jsonMap['sponsor'] as Map<String, dynamic>?;
+    final confirmation = jsonMap['confirmation'] as Map<String, dynamic>?;
+
+    setState(() {
+      if (confirmand != null) {
+        final name = (confirmand['fullName'] ?? '').toString();
+        if (name.isNotEmpty) {
+          _confFullNameCtrl.text = name;
+        }
+        final dob = _parseDate(confirmand['dateOfBirth']);
+        if (dob != null) {
+          _confDob = dob;
+        }
+        final addr = (confirmand['address'] ?? '').toString();
+        if (addr.isNotEmpty) {
+          _confAddressCtrl.text = addr;
+        }
+      }
+
+      if (parents != null) {
+        final father = (parents['father'] ?? '').toString();
+        final mother = (parents['mother'] ?? '').toString();
+        if (father.isNotEmpty) {
+          _confFatherCtrl.text = father;
+        }
+        if (mother.isNotEmpty) {
+          _confMotherCtrl.text = mother;
+        }
+      }
+
+      if (sponsor != null) {
+        final sponsorName = (sponsor['fullName'] ?? '').toString();
+        if (sponsorName.isNotEmpty) {
+          _confSponsorCtrl.text = sponsorName;
+        }
+      }
+
+      if (confirmation != null) {
+        final date = _parseDate(confirmation['date']);
+        if (date != null) {
+          _confDate = date;
+        }
+        final place = (confirmation['place'] ?? '').toString();
+        if (place.isNotEmpty) {
+          _confPlaceCtrl.text = place;
+        }
+        final officiant = (confirmation['officiant'] ?? '').toString();
+        if (officiant.isNotEmpty) {
+          _confOfficiantCtrl.text = officiant;
+        }
+      }
+    });
+  }
+
+  void _applyFromDeathRecord(Map<String, dynamic> jsonMap) {
+    final deceased = jsonMap['deceased'] as Map<String, dynamic>?;
+    final representative = jsonMap['representative'] as Map<String, dynamic>?;
+    final burial = jsonMap['burial'] as Map<String, dynamic>?;
+
+    setState(() {
+      if (deceased != null) {
+        final name = (deceased['fullName'] ?? '').toString();
+        if (name.isNotEmpty) {
+          _deathFullNameCtrl.text = name;
+        }
+        final dob = _parseDate(deceased['dateOfBirth']);
+        if (dob != null) {
+          _deathDob = dob;
+        }
+        final dod = _parseDate(deceased['dateOfDeath']);
+        if (dod != null) {
+          _deathDod = dod;
+        }
+        final place = (deceased['placeOfDeath'] ?? '').toString();
+        if (place.isNotEmpty) {
+          _deathPlaceOfDeathCtrl.text = place;
+        }
+        final cause = (deceased['causeOfDeath'] ?? '').toString();
+        if (cause.isNotEmpty) {
+          _deathCauseCtrl.text = cause;
+        }
+        final addr = (deceased['address'] ?? '').toString();
+        if (addr.isNotEmpty) {
+          _deathAddressCtrl.text = addr;
+        }
+      }
+
+      if (representative != null) {
+        final reqName = (representative['name'] ?? '').toString();
+        final rel = (representative['relationship'] ?? '').toString();
+        if (reqName.isNotEmpty) {
+          _deathRequestorNameCtrl.text = reqName;
+        }
+        if (rel.isNotEmpty) {
+          _deathRelationshipCtrl.text = rel;
+        }
+      }
+
+      if (burial != null) {
+        final date = _parseDate(burial['date']);
+        if (date != null) {
+          _deathFuneralDate = date;
+        }
+        final place = (burial['place'] ?? '').toString();
+        if (place.isNotEmpty) {
+          _deathFuneralVenueCtrl.text = place;
+        }
+        final officiant = (burial['officiant'] ?? '').toString();
+        if (officiant.isNotEmpty) {
+          _deathOfficiantCtrl.text = officiant;
+        }
+      }
+    });
   }
 }

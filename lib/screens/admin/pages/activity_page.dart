@@ -130,16 +130,75 @@ class _ActivityList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _ActivityListInner(
+      filter: filter,
+      search: search,
+      selected: selected,
+      onToggle: onToggle,
+      onVisibleKeys: onVisibleKeys,
+    );
+  }
+}
+
+class _ActivityListInner extends StatefulWidget {
+  final String filter;
+  final String search;
+  final Set<String> selected;
+  final void Function(String key, bool value) onToggle;
+  final void Function(List<String> keys) onVisibleKeys;
+
+  const _ActivityListInner({
+    required this.filter,
+    required this.search,
+    required this.selected,
+    required this.onToggle,
+    required this.onVisibleKeys,
+  });
+
+  @override
+  State<_ActivityListInner> createState() => _ActivityListInnerState();
+}
+
+class _ActivityListInnerState extends State<_ActivityListInner> {
+  int _reloadTick = 0;
+
+  @override
+  Widget build(BuildContext context) {
     final adminRepo = AdminRepository();
+    final future = adminRepo.getLogs(limit: 200, days: 30);
 
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: adminRepo.getLogs(limit: 200, days: 30),
+      key: ValueKey(_reloadTick),
+      future: future,
       builder: (context, logSnap) {
         if (logSnap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(strokeWidth: 2));
         }
         if (logSnap.hasError) {
-          return const Center(child: Text('Error loading activity'));
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline),
+                  const SizedBox(height: 8),
+                  const Text('Failed to load activity'),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Details: ${logSnap.error}',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => _reloadTick++),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
 
         var rawLogs = logSnap.data ?? const <Map<String, dynamic>>[];
@@ -187,18 +246,20 @@ class _ActivityList extends StatelessWidget {
 
         // Report visible keys to parent for select-all
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          onVisibleKeys(items.map((e) => e['key'] as String).toList());
+          widget.onVisibleKeys(items.map((e) => e['key'] as String).toList());
         });
 
         // Search filter
-        if (search.isNotEmpty) {
+        if (widget.search.isNotEmpty) {
           items = items
               .where(
                 (m) =>
-                    (m['title']?.toString().toLowerCase().contains(search) ??
-                        false) ||
-                    (m['subtitle']?.toString().toLowerCase().contains(search) ??
-                        false),
+                    (m['title'] as String).toLowerCase().contains(
+                      widget.search,
+                    ) ||
+                    (m['subtitle'] as String).toLowerCase().contains(
+                      widget.search,
+                    ),
               )
               .toList();
         }
@@ -209,30 +270,41 @@ class _ActivityList extends StatelessWidget {
 
         return ListView.separated(
           itemCount: items.length,
-          separatorBuilder: (_, __) => const Divider(height: 0),
+          separatorBuilder: (_, _) => const Divider(height: 0),
           itemBuilder: (_, i) {
             final m = items[i];
             final key = m['key'] as String;
-            final isSelected = selected.contains(key);
-            return ListTile(
-              leading: Row(
-                mainAxisSize: MainAxisSize.min,
+            final when = m['when'] as DateTime;
+            final icon = m['icon'] as IconData;
+            final title = m['title'] as String;
+            final subtitle = m['subtitle'] as String;
+
+            final isSelected = widget.selected.contains(key);
+            return CheckboxListTile(
+              value: isSelected,
+              onChanged: (v) => widget.onToggle(key, v == true),
+              title: Row(
                 children: [
-                  Checkbox(
-                    value: isSelected,
-                    onChanged: (v) => onToggle(key, v == true),
+                  Icon(icon, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title),
+                        Text(
+                          subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
-                  Icon(m['icon'] as IconData),
                 ],
               ),
-              title: Text(m['title']?.toString() ?? ''),
               subtitle: Text(
-                m['subtitle']?.toString() ?? '',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: Text(
-                _timeAgo(m['when'] as DateTime),
+                _timeAgo(when),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             );

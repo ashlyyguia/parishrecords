@@ -1,51 +1,91 @@
-const nodemailer = require('nodemailer');
+const https = require('https');
 
 const {
-  SMTP_HOST,
-  SMTP_PORT,
-  SMTP_USER,
-  SMTP_PASS,
-  SMTP_FROM,
+  EMAILJS_SERVICE_ID,
+  EMAILJS_TEMPLATE_ID,
+  EMAILJS_PUBLIC_KEY,
+  EMAILJS_PRIVATE_KEY,
+  EMAILJS_FROM_NAME,
+  EMAILJS_REPLY_TO,
 } = process.env;
 
-let transporter;
+function postJson(url, payload) {
+  return new Promise((resolve, reject) => {
+    const data = Buffer.from(JSON.stringify(payload));
+    const u = new URL(url);
 
-function getTransporter() {
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: Number(SMTP_PORT) || 587,
-      secure: false,
-      auth:
-        SMTP_USER && SMTP_PASS
-          ? {
-              user: SMTP_USER,
-              pass: SMTP_PASS,
-            }
-          : undefined,
-    });
-  }
-  return transporter;
+    const req = https.request(
+      {
+        method: 'POST',
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: u.pathname + u.search,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': data.length,
+        },
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          resolve({ statusCode: res.statusCode || 0, body });
+        });
+      }
+    );
+
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
 }
 
 async function sendVerificationCodeEmail(to, code) {
-  const from = SMTP_FROM || SMTP_USER;
-  if (!from) {
-    throw new Error('SMTP_FROM or SMTP_USER must be configured');
+  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+    throw new Error(
+      'EmailJS is not configured. Set EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, and EMAILJS_PUBLIC_KEY.'
+    );
   }
 
-  const transport = getTransporter();
-  const mailOptions = {
-    from,
-    to,
-    subject: 'Your ParishRecord verification code',
-    text: `Your verification code is: ${code}\n\nEnter this 6-digit code in the app to complete your registration.`,
-    html: `<p>Your verification code is:</p>
-<p style="font-size:24px;font-weight:bold;letter-spacing:4px;">${code}</p>
-<p>Enter this 6-digit code in the app to complete your registration.</p>`,
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const expiresAtLabel = expiresAt
+    .toISOString()
+    .replace('T', ' ')
+    .replace(/\.\d{3}Z$/, ' UTC');
+
+  const payload = {
+    service_id: EMAILJS_SERVICE_ID,
+    template_id: EMAILJS_TEMPLATE_ID,
+    user_id: EMAILJS_PUBLIC_KEY,
+    // EmailJS requires a private key for server-side usage.
+    // If you created a private key in EmailJS, set EMAILJS_PRIVATE_KEY.
+    ...(EMAILJS_PRIVATE_KEY ? { accessToken: EMAILJS_PRIVATE_KEY } : {}),
+    template_params: {
+      email: to,
+      to_email: to,
+      code: code,
+      passcode: code,
+      time: expiresAtLabel,
+      minutes_valid: 15,
+      app_name: 'ParishRecord',
+      from_name: EMAILJS_FROM_NAME || 'ParishRecord',
+      reply_to: EMAILJS_REPLY_TO || undefined,
+    },
   };
 
-  await transport.sendMail(mailOptions);
+  const resp = await postJson(
+    'https://api.emailjs.com/api/v1.0/email/send',
+    payload
+  );
+
+  if (resp.statusCode < 200 || resp.statusCode >= 300) {
+    throw new Error(
+      `EmailJS send failed: ${resp.statusCode} ${resp.body || ''}`
+    );
+  }
 }
 
 module.exports = {

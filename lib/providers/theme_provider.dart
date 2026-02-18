@@ -8,12 +8,18 @@ class ThemeModeState {
   const ThemeModeState(this.mode);
 }
 
-class ThemeModeNotifier extends StateNotifier<ThemeModeState> {
-  ThemeModeNotifier() : super(const ThemeModeState(ThemeMode.system)) {
-    _listenRemote();
-  }
-
+class ThemeModeNotifier extends Notifier<ThemeModeState> {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _sub;
+
+  @override
+  ThemeModeState build() {
+    ref.onDispose(() {
+      _sub?.cancel();
+    });
+
+    _listenRemote();
+    return const ThemeModeState(ThemeMode.system);
+  }
 
   void _listenRemote() {
     _sub?.cancel();
@@ -22,11 +28,11 @@ class ThemeModeNotifier extends StateNotifier<ThemeModeState> {
         .doc('app')
         .snapshots()
         .listen((doc) {
-      final s = (doc.data()?['themeMode']?.toString() ?? '').toLowerCase();
-      if (s.isNotEmpty) {
-        state = ThemeModeState(_fromString(s));
-      }
-    });
+          final s = (doc.data()?['themeMode']?.toString() ?? '').toLowerCase();
+          if (s.isNotEmpty) {
+            state = ThemeModeState(_fromString(s));
+          }
+        });
   }
 
   Future<void> setMode(ThemeMode mode) async {
@@ -60,6 +66,6 @@ class ThemeModeNotifier extends StateNotifier<ThemeModeState> {
   }
 }
 
-final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeModeState>((ref) {
-  return ThemeModeNotifier();
-});
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeModeState>(
+  ThemeModeNotifier.new,
+);

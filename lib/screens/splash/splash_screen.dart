@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../providers/auth_provider.dart';
+
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -19,8 +21,19 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   Future<void> _boot() async {
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
-    // Enforce Splash -> Login -> Dashboard flow
-    context.go('/login');
+    final auth = ref.read(authProvider);
+    if (!auth.initialized) {
+      context.go('/login');
+      return;
+    }
+
+    final role = auth.user?.role.trim().toLowerCase();
+    final isAdmin = role == 'admin';
+    if (auth.user == null) {
+      context.go('/login');
+    } else {
+      context.go(isAdmin ? '/admin/overview' : '/home');
+    }
   }
 
   @override
@@ -44,12 +57,22 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             const SizedBox(height: 16),
             Text(
               'ParishKeeper',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
-            Text('Loading records...', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurface.withValues(alpha: 0.6))),
+            Text(
+              'Loading records...',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
             const SizedBox(height: 24),
-            const SizedBox(width: 160, child: LinearProgressIndicator(minHeight: 4)),
+            const SizedBox(
+              width: 160,
+              child: LinearProgressIndicator(minHeight: 4),
+            ),
           ],
         ),
       ),

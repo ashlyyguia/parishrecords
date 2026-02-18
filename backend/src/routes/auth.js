@@ -1,173 +1,65 @@
 const express = require('express');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
-const cassandraClient = require('../database/cassandra');
+const { getAdmin } = require('../firebase_admin');
 const emailService = require('../services/email');
 const { logAudit } = require('../utils/audit');
+const { verifyFirebaseToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Register new user
-router.post('/register', async (req, res) => {
-  try {
-    const { email, password, displayName, role = 'staff' } = req.body;
-
-    // Check if user already exists
-    const existingUser = await cassandraClient.execute(
-      'SELECT email FROM users WHERE email = ? ALLOW FILTERING',
-      [email]
-    );
-
-    if (existingUser.rows.length > 0) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const userId = uuidv4();
-
-    // Insert user
-    await cassandraClient.execute(
-      'INSERT INTO users (id, email, display_name, role, created_at, email_verified) VALUES (?, ?, ?, ?, ?, ?)',
-      [userId, email, displayName, role, new Date(), false]
-    );
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId, email, role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
-
-    // Audit: Account Created
-    await logAudit(req, {
-      userId: userId,
-      action: 'Account Created',
-      resourceType: 'user',
-      resourceId: userId,
-      newValues: { email, displayName, role },
-    });
-
-    res.status(201).json({
-      message: 'User created successfully',
-      token,
-      user: { id: userId, email, displayName, role }
-    });
-
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Registration failed' });
-  }
+router.post('/register', (_req, res) => {
+  return res.status(410).json({
+    error: 'auth_register_removed',
+    message: 'Registration is handled by Firebase Auth. Create users via Firebase Auth and store profiles under Firestore users/{uid}.',
+  });
 });
 
-// Login user
-router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    // Find user
-    const result = await cassandraClient.execute(
-      'SELECT * FROM users WHERE email = ? ALLOW FILTERING',
-      [email]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const user = result.rows[0];
-
-    // For now, skip password verification since we're integrating with Firebase Auth
-    // In production, you'd verify the Firebase token here
-
-    // Update last login
-    await cassandraClient.execute(
-      'UPDATE users SET last_login = ? WHERE id = ?',
-      [new Date(), user.id]
-    );
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
-
-    // Audit: User Login
-    await logAudit(req, {
-      userId: user.id,
-      action: 'User Login',
-      resourceType: 'user',
-      resourceId: user.id,
-      newValues: { email: user.email },
-    });
-
-    res.json({
-      message: 'Login successful',
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.display_name,
-        role: user.role
-      }
-    });
-
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
-  }
+router.post('/login', (_req, res) => {
+  return res.status(410).json({
+    error: 'auth_login_removed',
+    message: 'Login is handled by Firebase Auth. Send Firebase ID token as Authorization: Bearer <token> to access /api routes.',
+  });
 });
 
-// Verify token middleware
-const verifyToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
-
+router.get('/me', verifyFirebaseToken, async (req, res) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-};
-
-// Get current user
-router.get('/me', verifyToken, async (req, res) => {
-  try {
-    const result = await cassandraClient.execute(
-      'SELECT * FROM users WHERE id = ?',
-      [req.user.userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+    const uid = req.user && req.user.uid ? req.user.uid.toString() : null;
+    if (!uid) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const user = result.rows[0];
-    res.json({
-      id: user.id,
-      email: user.email,
-      displayName: user.display_name,
-      role: user.role,
-      emailVerified: user.email_verified,
-      createdAt: user.created_at,
-      lastLogin: user.last_login
+    const admin = getAdmin();
+    const db = admin.firestore();
+
+    const userDoc = await db.collection('users').doc(uid).get();
+    const data = userDoc.exists ? (userDoc.data() || {}) : {};
+
+    await logAudit(req, {
+      userId: uid,
+      action: 'User Profile Viewed',
+      resourceType: 'user',
+      resourceId: uid,
+      newValues: { email: req.user.email || null },
     });
 
+    return res.json({
+      id: uid,
+      uid,
+      email: req.user.email || data.email || null,
+      displayName: data.display_name || data.displayName || req.user.name || null,
+      role: data.role || (req.user.admin ? 'admin' : 'staff'),
+      emailVerified: req.user.email_verified === true || data.email_verified === true,
+      disabled: data.disabled === true,
+      createdAt: data.created_at || null,
+      lastLogin: data.last_login || null,
+    });
   } catch (error) {
     console.error('Get user error:', error);
-    res.status(500).json({ error: 'Failed to get user' });
+    return res.status(500).json({ error: 'Failed to get user' });
   }
 });
 
 // Send 6-digit verification code email
-router.post('/send-code', async (req, res) => {
+router.post('/send-code', verifyFirebaseToken, async (req, res) => {
   try {
     const { email, code } = req.body || {};
 
