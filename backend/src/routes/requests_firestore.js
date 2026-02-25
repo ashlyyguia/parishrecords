@@ -57,18 +57,124 @@ router.get('/', requireAuth, async (req, res) => {
     const parishId = (req.query.parish_id || DEFAULT_PARISH).toString();
     const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 200);
 
-    const snap = await db
-      .collection('requests')
-      .where('parish_id', '==', parishId)
-      .orderBy('requested_at', 'desc')
-      .limit(limit)
-      .get();
+    const uid = req.user && req.user.uid ? req.user.uid.toString() : null;
+    const role = req.user && req.user.role;
+    const isAdmin = req.user && req.user.admin === true;
+    const isStaff = role === 'staff' || role === 'admin' || isAdmin;
+
+    const userIdFilter = req.query.user_id ? req.query.user_id.toString() : null;
+
+    let q = db.collection('requests').where('parish_id', '==', parishId);
+
+    if (userIdFilter) {
+      if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+      if (userIdFilter !== uid && !isStaff) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      q = q.where('created_by_uid', '==', userIdFilter);
+    }
+
+    const snap = await q.orderBy('requested_at', 'desc').limit(limit).get();
 
     const rows = snap.docs.map(normalizeRequestDoc);
     return res.json({ rows });
   } catch (error) {
     console.error('Get certificate requests error:', error);
     return res.status(500).json({ error: 'requests_list_failed' });
+  }
+});
+
+// GET /api/requests/:id
+router.get('/:id', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user && req.user.uid ? req.user.uid.toString() : null;
+    if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+
+    const role = req.user && req.user.role;
+    const isAdmin = req.user && req.user.admin === true;
+    const isStaff = role === 'staff' || role === 'admin' || isAdmin;
+
+    const id = (req.params.id || '').toString();
+    if (!id) return res.status(400).json({ error: 'Missing request id' });
+
+    const admin = getAdmin();
+    const db = admin.firestore();
+    const snap = await db.collection('requests').doc(id).get();
+    if (!snap.exists) return res.status(404).json({ error: 'Request not found' });
+
+    const data = snap.data() || {};
+    const owner = (data.created_by_uid || '').toString();
+    if (owner && owner !== uid && !isStaff) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const row = normalizeRequestDoc(snap);
+    // Attach lightweight timeline (derived from timestamps)
+    row.timeline = [
+      {
+        status: 'submitted',
+        at: toIso(data.created_at) || toIso(data.requested_at) || null,
+      },
+      {
+        status: data.status || 'pending',
+        at: toIso(data.processed_at) || null,
+      },
+    ];
+
+    return res.json({ row });
+  } catch (error) {
+    console.error('Get request detail error:', error);
+    return res.status(500).json({ error: 'request_detail_failed' });
+  }
+});
+
+// POST /api/requests/:id/cancel
+router.post('/:id/cancel', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user && req.user.uid ? req.user.uid.toString() : null;
+    if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+
+    const id = (req.params.id || '').toString();
+    if (!id) return res.status(400).json({ error: 'Missing request id' });
+
+    const admin = getAdmin();
+    const db = admin.firestore();
+    const ref = db.collection('requests').doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Request not found' });
+
+    const data = snap.data() || {};
+    const owner = (data.created_by_uid || '').toString();
+    if (owner && owner !== uid) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const currentStatus = (data.status || 'pending').toString();
+    if (currentStatus === 'ready' || currentStatus === 'approved') {
+      return res.status(400).json({ error: 'Cannot cancel a completed request' });
+    }
+
+    await ref.set(
+      {
+        status: 'cancelled',
+        cancelled_at: new Date(),
+        updated_at: new Date(),
+      },
+      { merge: true },
+    );
+
+    await logAudit(req, {
+      action: 'Certificate Request Cancelled',
+      resourceType: 'certificate_request',
+      resourceId: id,
+      oldValues: { status: currentStatus },
+      newValues: { status: 'cancelled' },
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Cancel request error:', error);
+    return res.status(500).json({ error: 'request_cancel_failed' });
   }
 });
 
@@ -121,7 +227,7 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-router.put('/:id', requireAdmin, async (req, res) => {
+router.put('/:id', requireStaff, async (req, res) => {
   try {
     const requestId = req.params.id;
     const body = req.body || {};

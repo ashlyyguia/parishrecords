@@ -84,6 +84,33 @@ function requireAdmin(req, res, next) {
   return next();
 }
 
+function requireSelfOrStaff(getTargetUid) {
+  return function (req, res, next) {
+    const uid = req.user && req.user.uid ? req.user.uid.toString() : null;
+    if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+
+    let targetUid = null;
+    try {
+      targetUid = getTargetUid(req);
+    } catch (_) {
+      targetUid = null;
+    }
+
+    if (!targetUid) return res.status(400).json({ error: 'Missing target user id' });
+    targetUid = targetUid.toString();
+
+    const isAdmin = req.user && req.user.admin === true;
+    const role = req.user && req.user.role;
+    const isStaff = role === 'staff' || role === 'admin' || isAdmin;
+
+    if (targetUid !== uid && !isStaff) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    return next();
+  };
+}
+
 function requireStaff(req, res, next) {
   const role = req.user && req.user.role;
   const allowed = role === 'staff' || role === 'admin' || (req.user && req.user.admin === true);
@@ -95,8 +122,21 @@ function requireStaff(req, res, next) {
   return next();
 }
 
+function requireFinance(req, res, next) {
+  const role = req.user && req.user.role;
+  const allowed = role === 'finance' || role === 'admin' || (req.user && req.user.admin === true);
+
+  if (!allowed) {
+    return res.status(403).json({ error: 'Finance access required' });
+  }
+
+  return next();
+}
+
 module.exports = {
   verifyFirebaseToken,
   requireAdmin,
   requireStaff,
+  requireFinance,
+  requireSelfOrStaff,
 };

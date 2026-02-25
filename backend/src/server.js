@@ -12,6 +12,17 @@ const usersRoutes = require('./routes/users_firestore');
 const adminRoutes = require('./routes/admin_firestore');
 const requestsRoutes = require('./routes/requests_firestore');
 const notificationsRoutes = require('./routes/notifications_firestore');
+const staffRoutes = require('./routes/staff_firestore');
+const ocrJobsRoutes = require('./routes/ocr_jobs_firestore');
+const eventsRoutes = require('./routes/events_firestore');
+const bookingsRoutes = require('./routes/bookings_firestore');
+const financeRoutes = require('./routes/finance_firestore');
+const donationsRoutes = require('./routes/donations_firestore');
+const reportsFinancialRoutes = require('./routes/reports_financial_firestore');
+const userDashboardRoutes = require('./routes/user_dashboard_firestore');
+const userSelfRoutes = require('./routes/user_self_firestore');
+const sacramentsRoutes = require('./routes/sacraments_firestore');
+const appointmentsRoutes = require('./routes/appointments_firestore');
 const { verifyFirebaseToken } = require('./middleware/auth');
 const { logAudit } = require('./utils/audit');
 
@@ -118,6 +129,17 @@ app.use('/api/users', usersRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/requests', requestsRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/staff', staffRoutes);
+app.use('/api/ocr_jobs', ocrJobsRoutes);
+app.use('/api/events', eventsRoutes);
+app.use('/api/bookings', bookingsRoutes);
+app.use('/api/finance', financeRoutes);
+app.use('/api/donations', donationsRoutes);
+app.use('/api/reports', reportsFinancialRoutes);
+app.use('/api/users', userDashboardRoutes);
+app.use('/api/users', userSelfRoutes);
+app.use('/api/sacraments', sacramentsRoutes);
+app.use('/api/appointments', appointmentsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
