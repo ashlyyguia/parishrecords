@@ -2,10 +2,19 @@ const express = require('express');
 
 const { getAdmin } = require('../firebase_admin');
 const { requireFinance } = require('../middleware/auth');
-const { logAudit } = require('../utils/audit');
 
 const router = express.Router();
-router.use(requireFinance);
+// Allow both finance and admin users
+router.use((req, res, next) => {
+  const role = req.user && req.user.role;
+  const isAdmin = req.user && req.user.admin === true;
+  const allowed = role === 'finance' || role === 'admin' || isAdmin;
+  
+  if (!allowed) {
+    return res.status(403).json({ error: 'Finance access required' });
+  }
+  next();
+});
 
 function parseNumber(val) {
   if (val == null) return 0;
