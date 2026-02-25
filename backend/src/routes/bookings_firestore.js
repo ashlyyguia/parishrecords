@@ -5,7 +5,17 @@ const { requireStaff } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 
 const router = express.Router();
-router.use(requireStaff);
+// Allow both staff and admin users
+router.use((req, res, next) => {
+  const role = req.user && req.user.role;
+  const isAdmin = req.user && req.user.admin === true;
+  const allowed = role === 'staff' || role === 'admin' || isAdmin;
+  
+  if (!allowed) {
+    return res.status(403).json({ error: 'Staff access required' });
+  }
+  next();
+});
 
 function toIso(val) {
   if (!val) return null;
