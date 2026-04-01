@@ -11,3 +11,15 @@ services:
         value: production
       - key: PORT
         value: 10000
+      - key: EMAILJS_SERVICE_ID
+        value: service_ck0mxc9
+      - key: EMAILJS_TEMPLATE_ID
+        value: template_mxaaua5
+      - key: EMAILJS_PUBLIC_KEY
+        value: pffQo-NDfeKxhb78r
+      - key: EMAILJS_PRIVATE_KEY
+        value: ypwIOtR-vzwQalsWlolx4
+      - key: EMAILJS_FROM_NAME
+        value: ParishRecord
+      - key: EMAILJS_REPLY_TO
+        value: noreply@parishrecord.com
