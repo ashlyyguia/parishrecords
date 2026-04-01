@@ -97,21 +97,4 @@ router.post('/resend-code', async (req, res) => {
   }
 });
 
-/**
- * GET /api/verification/test-config
- * Test EmailJS configuration
- */
-router.get('/test-config', async (req, res) => {
-  res.json({
-    emailjsConfigured: {
-      serviceId: !!process.env.EMAILJS_SERVICE_ID,
-      templateId: !!process.env.EMAILJS_TEMPLATE_ID,
-      publicKey: !!process.env.EMAILJS_PUBLIC_KEY,
-      privateKey: !!process.env.EMAILJS_PRIVATE_KEY,
-      fromName: process.env.EMAILJS_FROM_NAME || 'ParishRecord'
-    },
-    timestamp: new Date().toISOString()
-  });
-});
-
 module.exports = { router };
