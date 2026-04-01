@@ -1,5 +1,14 @@
 const https = require('https');
 
+let emailjs;
+try {
+  // Optional dependency (works if installed). Allows EmailJS SDK send which can behave differently vs raw API.
+  // If not present, we keep using the raw HTTPS call.
+  emailjs = require('@emailjs/nodejs');
+} catch (_e) {
+  emailjs = null;
+}
+
 const {
   EMAILJS_SERVICE_ID,
   EMAILJS_TEMPLATE_ID,
@@ -76,16 +85,35 @@ async function sendVerificationCodeEmail(to, code) {
     },
   };
 
-  const resp = await postJson(
-    'https://api.emailjs.com/api/v1.0/email/send',
-    payload
-  );
+  const resp = await postJson('https://api.emailjs.com/api/v1.0/email/send', payload);
 
-  if (resp.statusCode < 200 || resp.statusCode >= 300) {
-    throw new Error(
-      `EmailJS send failed: ${resp.statusCode} ${resp.body || ''}`
-    );
+  if (resp.statusCode >= 200 && resp.statusCode < 300) {
+    return;
   }
+
+  // Fallback: try the official EmailJS Node SDK if available.
+  // Some accounts/configurations behave differently with the SDK vs raw REST call.
+  if (emailjs) {
+    try {
+      const options = EMAILJS_PRIVATE_KEY ? { privateKey: EMAILJS_PRIVATE_KEY } : undefined;
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        payload.template_params,
+        {
+          publicKey: EMAILJS_PUBLIC_KEY,
+          ...(options || {}),
+        }
+      );
+      return;
+    } catch (e) {
+      throw new Error(
+        `EmailJS send failed: ${resp.statusCode} ${resp.body || ''} | SDK fallback failed: ${e && e.message ? e.message : String(e)}`
+      );
+    }
+  }
+
+  throw new Error(`EmailJS send failed: ${resp.statusCode} ${resp.body || ''}`);
 }
 
 module.exports = {

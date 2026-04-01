@@ -1,6 +1,6 @@
 const express = require('express');
 const { sendVerificationCodeEmail } = require('../services/email');
-const admin = require('firebase-admin');
+const { getAdmin } = require('../firebase_admin');
 
 const router = express.Router();
 
@@ -57,6 +57,7 @@ router.post('/resend-code', async (req, res) => {
       return res.status(400).json({ error: 'User ID is required' });
     }
 
+    const admin = getAdmin();
     // Get user document
     const userDoc = await admin.firestore().collection('users').doc(uid).get();
     

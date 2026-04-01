@@ -12,6 +12,9 @@ const adminRoutes = require('./routes/admin_firestore');
 const verificationRoutes = require('./routes/verification');
 
 const app = express();
+// Render sits behind a proxy and sets X-Forwarded-* headers.
+// express-rate-limit validates these headers and requires trust proxy to be enabled.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
 // Security middleware
