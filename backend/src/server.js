@@ -5,7 +5,7 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
-const recordsRoutes = require('./routes/records');
+const recordsRoutes = require('./routes/records_firestore');
 const usersRoutes = require('./routes/users');
 const notificationsRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
