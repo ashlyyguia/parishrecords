@@ -4,7 +4,6 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
-const cassandraClient = require('./database/cassandra');
 const authRoutes = require('./routes/auth');
 const recordsRoutes = require('./routes/records');
 const usersRoutes = require('./routes/users');
@@ -38,7 +37,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    database: cassandraClient.getState() === 'connected' ? 'connected' : 'disabled'
+    database: 'disabled'
   });
 });
 
@@ -80,10 +79,6 @@ app.use('*', (req, res) => {
 // Start server
 async function startServer() {
   try {
-    // Connect to Cassandra
-    await cassandraClient.connect();
-    console.log('✅ Connected to Cassandra database');
-    
     app.listen(PORT, () => {
       console.log(`🚀 Parish Record API server running on port ${PORT}`);
       console.log(`📊 Health check: http://localhost:${PORT}/health`);
@@ -97,7 +92,6 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down server...');
-  await cassandraClient.shutdown();
   process.exit(0);
 });
 
