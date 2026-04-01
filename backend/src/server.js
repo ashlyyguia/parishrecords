@@ -6,9 +6,9 @@ require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
 const recordsRoutes = require('./routes/records_firestore');
-const usersRoutes = require('./routes/users');
-const notificationsRoutes = require('./routes/notifications');
-const adminRoutes = require('./routes/admin');
+const usersRoutes = require('./routes/users_firestore');
+const notificationsRoutes = require('./routes/notifications_firestore');
+const adminRoutes = require('./routes/admin_firestore');
 const verificationRoutes = require('./routes/verification');
 
 const app = express();
