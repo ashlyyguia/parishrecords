@@ -1,10 +1,11 @@
 const express = require('express');
 
 const { getAdmin } = require('../firebase_admin');
-const { requireAdmin } = require('../middleware/auth');
+const { verifyFirebaseToken, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
+router.use(verifyFirebaseToken);
 router.use(requireAdmin);
 
 function toIso(val) {
@@ -538,6 +539,60 @@ router.post('/users/sync', async (_req, res) => {
   } catch (error) {
     console.error('Admin users sync error:', error);
     return res.status(500).json({ error: 'Failed to compute users total' });
+  }
+});
+
+router.get('/analytics', async (_req, res) => {
+  try {
+    const admin = getAdmin();
+    const db = admin.firestore();
+
+    const [
+      householdsSnap,
+      membersSnap,
+      recordsSnap,
+      requestsSnap,
+      donationsSnap,
+      ocrSnap,
+    ] = await Promise.all([
+      db.collection('households').count().get(),
+      db.collection('household_members').count().get(),
+      db.collection('sacrament_records').count().get(),
+      db.collection('requests').count().get(),
+      db.collection('donations').count().get(),
+      db.collection('ocr_jobs').where('status', '==', 'pending').count().get(),
+    ]);
+
+    return res.json({
+      households: householdsSnap.data().count,
+      parishioners: membersSnap.data().count,
+      records: recordsSnap.data().count,
+      requests: requestsSnap.data().count,
+      donations: donationsSnap.data().count,
+      ocrPending: ocrSnap.data().count,
+    });
+  } catch (error) {
+    console.error('Admin analytics error:', error);
+    return res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+});
+
+// DELETE /api/admin/users/:id - Delete user using Admin SDK
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const admin = getAdmin();
+    
+    // Delete from Firebase Auth using Admin SDK
+    await admin.auth().deleteUser(userId);
+    
+    // Delete from Firestore
+    await admin.firestore().collection('users').doc(userId).delete();
+    
+    return res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return res.status(500).json({ error: 'Failed to delete user', details: error.message });
   }
 });
 

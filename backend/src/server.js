@@ -7,21 +7,40 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const recordsRoutes = require('./routes/records_firestore');
 const usersRoutes = require('./routes/users_firestore');
+const userDashboardRoutes = require('./routes/user_dashboard_firestore');
 const notificationsRoutes = require('./routes/notifications_firestore');
 const adminRoutes = require('./routes/admin_firestore');
 const verificationRoutes = require('./routes/verification');
+const householdsRoutes = require('./routes/households');
+const requestsRoutes = require('./routes/requests');
+const appointmentsRoutes = require('./routes/appointments');
+const profileRoutes = require('./routes/profile');
+const { verifyFirebaseToken } = require('./middleware/auth');
 
 const app = express();
 // Render sits behind a proxy and sets X-Forwarded-* headers.
 // express-rate-limit validates these headers and requires trust proxy to be enabled.
 app.set('trust proxy', 1);
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
-  credentials: true
+  origin: function(origin, callback) {
+    // Allow any localhost origin for development
+    if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return callback(null, true);
+    }
+    // Check against allowed origins from env
+    const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [];
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+    callback(null, true); // Allow all for now during development
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // Rate limiting
@@ -60,11 +79,20 @@ app.get('/api/verification/test-config', (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
+app.use('/api/verification', verificationRoutes);
+
+// All remaining /api routes require a valid Firebase ID token
+app.use('/api', verifyFirebaseToken);
+
 app.use('/api/records', recordsRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/users', userDashboardRoutes);
+app.use('/api/users', profileRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/verification', verificationRoutes);
+app.use('/api/households', householdsRoutes);
+app.use('/api/requests', requestsRoutes);
+app.use('/api/appointments', appointmentsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

@@ -32,6 +32,24 @@ async function resolveUserRole(uid) {
 }
 
 async function verifyFirebaseToken(req, res, next) {
+  // DEV BYPASS: Always bypass auth for local development on localhost
+  const isLocalhost = req.headers.host?.includes('localhost') || req.headers.origin?.includes('localhost');
+  if (isLocalhost || process.env.DEV_BYPASS_AUTH === 'true') {
+    // Extract UID from request params/body if available, or use a mock
+    const uid = req.params.id || req.params.uid || req.body?.uid || 'dev-user-123';
+    
+    req.user = {
+      uid: uid,
+      email: 'dev@localhost',
+      claims: {},
+      admin: true,
+      role: 'admin',
+    };
+    
+    console.log('[DEV BYPASS] Auth bypassed for:', req.path, 'UID:', uid);
+    return next();
+  }
+
   const authHeader = req.headers.authorization || '';
   const token = authHeader.startsWith('Bearer ')
     ? authHeader.slice('Bearer '.length)
@@ -69,6 +87,10 @@ async function verifyFirebaseToken(req, res, next) {
 
     return next();
   } catch (err) {
+    console.error('verifyFirebaseToken failed:', {
+      message: err && err.message ? err.message : String(err),
+      code: err && err.code ? err.code : null,
+    });
     return res.status(401).json({ error: 'Invalid Firebase token' });
   }
 }

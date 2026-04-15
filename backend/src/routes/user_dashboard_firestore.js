@@ -1,7 +1,7 @@
 const express = require('express');
 
 const { getAdmin } = require('../firebase_admin');
-const { requireSelfOrStaff } = require('../middleware/auth');
+const { requireSelfOrStaff, verifyFirebaseToken } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -56,9 +56,25 @@ function normalizeSacramentDoc(doc) {
   };
 }
 
+function toSortableTime(val) {
+  if (!val) return 0;
+  if (val instanceof Date) return val.getTime();
+  if (typeof val.toDate === 'function') {
+    const d = val.toDate();
+    return d instanceof Date ? d.getTime() : 0;
+  }
+  try {
+    const d = new Date(val);
+    return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+  } catch (_) {
+    return 0;
+  }
+}
+
 // GET /api/users/:id/dashboard
 router.get(
   '/:id/dashboard',
+  verifyFirebaseToken,
   requireSelfOrStaff((req) => req.params.id),
   async (req, res) => {
     try {
@@ -71,7 +87,6 @@ router.get(
       const requestsSnap = await db
         .collection('requests')
         .where('created_by_uid', '==', uid)
-        .orderBy('requested_at', 'desc')
         .limit(5)
         .get();
 
@@ -98,7 +113,14 @@ router.get(
         .get();
 
       return res.json({
-        requests: requestsSnap.docs.map(normalizeRequestDoc),
+        requests: requestsSnap.docs
+          .slice()
+          .sort((a, b) => {
+            const aTime = toSortableTime((a.data() || {}).requested_at);
+            const bTime = toSortableTime((b.data() || {}).requested_at);
+            return bTime - aTime;
+          })
+          .map(normalizeRequestDoc),
         appointments: apptSnap.docs.map(normalizeAppointmentDoc),
         sacraments: sacSnap.docs.map(normalizeSacramentDoc),
       });
