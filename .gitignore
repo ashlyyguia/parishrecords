@@ -17,6 +17,8 @@ migrate_working_dir/
 **/.env.*
 **/node_modules/
 **/secure-connect-*.zip
+**/*firebase-adminsdk*.json
+**/holyparish*.json
 
 # IntelliJ related
 *.iml
