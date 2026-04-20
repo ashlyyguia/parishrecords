@@ -3,6 +3,7 @@ services:
     name: parish-record-api
     env: node
     plan: free
+    rootDir: backend
     buildCommand: "npm install"
     startCommand: "node src/server.js"
     healthCheckPath: /health
