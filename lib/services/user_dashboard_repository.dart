@@ -1,51 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-
-import '../../config/backend.dart';
 
 class UserDashboardRepository {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static const Duration _timeout = Duration(seconds: 20);
-
-  Future<String> _getToken({bool forceRefresh = false}) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    try {
-      final token = await user.getIdToken(forceRefresh);
-      if (token == null || token.isEmpty) throw Exception('Missing auth token');
-      return token;
-    } catch (e) {
-      if (e.toString().contains('network-request-failed')) {
-        return 'dummy-token-network-failed';
-      }
-      rethrow;
-    }
-  }
-
-  Future<http.Response> _getWithAuth(Uri url) async {
-    var token = await _getToken();
-    var resp = await http
-        .get(url, headers: {'Authorization': 'Bearer $token'})
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Request timed out'),
-        );
-
-    if (resp.statusCode == 401) {
-      token = await _getToken(forceRefresh: true);
-      resp = await http
-          .get(url, headers: {'Authorization': 'Bearer $token'})
-          .timeout(
-            _timeout,
-            onTimeout: () => throw TimeoutException('Request timed out'),
-          );
-    }
-
-    return resp;
-  }
 
   String _requireUid() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -53,43 +12,57 @@ class UserDashboardRepository {
     return uid;
   }
 
-  Uri _uri(String path) {
-    return Uri.parse(BackendConfig.baseUrl).replace(path: path);
-  }
-
   Future<Map<String, dynamic>> getMyDashboard() async {
     final uid = _requireUid();
-    final url = _uri('/api/users/$uid/dashboard');
 
-    debugPrint('Fetching dashboard from: $url');
+    // Get user stats from Firestore
+    final userDoc = await _firestore
+        .collection('users')
+        .doc(uid)
+        .get()
+        .timeout(_timeout);
+    final userData = userDoc.data() ?? {};
 
-    try {
-      final resp = await _getWithAuth(url).timeout(
-        _timeout,
-        onTimeout: () => throw TimeoutException(
-          'Dashboard request timed out after ${_timeout.inSeconds}s',
-        ),
-      );
+    // Get user's recent records count
+    int recordsCount = 0;
+    final collections = [
+      'baptism_records',
+      'marriage_records',
+      'confirmation_records',
+      'funeral_records',
+    ];
 
-      debugPrint('Dashboard response status: ${resp.statusCode}');
-
-      if (resp.statusCode >= 400) {
-        debugPrint('Dashboard error body: ${resp.body}');
-        throw Exception(
-          'Dashboard API failed (${resp.statusCode}): ${resp.body}',
-        );
+    for (final collection in collections) {
+      try {
+        final snap = await _firestore
+            .collection(collection)
+            .where('created_by_uid', isEqualTo: uid)
+            .count()
+            .get();
+        recordsCount += snap.count ?? 0;
+      } catch (e) {
+        // Ignore errors
       }
-
-      final body = json.decode(resp.body);
-      if (body is Map<String, dynamic>) {
-        debugPrint('Dashboard loaded successfully');
-        return body;
-      }
-      throw Exception('Unexpected dashboard payload: ${resp.body}');
-    } catch (e, stackTrace) {
-      debugPrint('Dashboard fetch error: $e');
-      debugPrint('Stack trace: $stackTrace');
-      rethrow;
     }
+
+    // Get recent requests
+    final requestsSnap = await _firestore
+        .collection('requests')
+        .where('created_by_uid', isEqualTo: uid)
+        .orderBy('created_at', descending: true)
+        .limit(5)
+        .get()
+        .timeout(_timeout);
+
+    return {
+      'user': userData,
+      'records_count': recordsCount,
+      'recent_requests': requestsSnap.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList(),
+      'generated_at': DateTime.now().toIso8601String(),
+    };
   }
 }

@@ -1,11 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http;
-
-import '../config/backend.dart';
 
 class RequestsRepository {
   static const Duration _timeout = Duration(seconds: 12);
@@ -155,51 +151,13 @@ class RequestsRepository {
       throw Exception('Staff access required');
     }
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    var token = await user.getIdToken();
-    if (token == null || token.isEmpty) throw Exception('Missing auth token');
-
-    Uri uri(String path) =>
-        Uri.parse(BackendConfig.baseUrl).replace(path: path);
-
-    Future<http.Response> doDelete(String t) {
-      return http
-          .delete(
-            uri('/api/requests/$requestId'),
-            headers: {
-              'Authorization': 'Bearer $t',
-              'Accept': 'application/json',
-            },
-          )
-          .timeout(
-            _timeout,
-            onTimeout: () => throw TimeoutException('Delete request timed out'),
-          );
-    }
-
-    var resp = await doDelete(token);
-    if (resp.statusCode == 401) {
-      token = (await user.getIdToken(true)) ?? '';
-      resp = await doDelete(token);
-    }
-
-    if (resp.statusCode >= 400) {
-      final snippet = resp.body.length > 400
-          ? resp.body.substring(0, 400)
-          : resp.body;
-      throw Exception(
-        'Delete request failed (${resp.statusCode}) body=$snippet',
-      );
-    }
-
-    try {
-      final decoded = json.decode(resp.body);
-      if (decoded is Map && decoded['ok'] != true) {
-        throw Exception('Delete request failed: ${resp.body}');
-      }
-    } catch (_) {
-      // ignore: empty_catches
-    }
+    await _db
+        .collection('requests')
+        .doc(requestId)
+        .delete()
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Delete request timed out'),
+        );
   }
 }

@@ -1,72 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
-
-import '../../config/backend.dart';
 
 class UserRequestsRepository {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static const Duration _timeout = Duration(seconds: 20);
-
-  Future<String> _getToken({bool forceRefresh = false}) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    try {
-      final token = await user.getIdToken(forceRefresh);
-      if (token == null || token.isEmpty) throw Exception('Missing auth token');
-      return token;
-    } catch (e) {
-      if (e.toString().contains('network-request-failed')) {
-        return 'dummy-token-network-failed';
-      }
-      rethrow;
-    }
-  }
-
-  Future<http.Response> _getWithAuth(Uri url) async {
-    var token = await _getToken();
-    var resp = await http
-        .get(url, headers: {'Authorization': 'Bearer $token'})
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Request timed out'),
-        );
-
-    if (resp.statusCode == 401) {
-      token = await _getToken(forceRefresh: true);
-      resp = await http
-          .get(url, headers: {'Authorization': 'Bearer $token'})
-          .timeout(
-            _timeout,
-            onTimeout: () => throw TimeoutException('Request timed out'),
-          );
-    }
-
-    return resp;
-  }
-
-  Future<http.Response> _postWithAuth(Uri url) async {
-    var token = await _getToken();
-    var resp = await http
-        .post(url, headers: {'Authorization': 'Bearer $token'})
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Request timed out'),
-        );
-
-    if (resp.statusCode == 401) {
-      token = await _getToken(forceRefresh: true);
-      resp = await http
-          .post(url, headers: {'Authorization': 'Bearer $token'})
-          .timeout(
-            _timeout,
-            onTimeout: () => throw TimeoutException('Request timed out'),
-          );
-    }
-
-    return resp;
-  }
 
   String _requireUid() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -74,99 +12,65 @@ class UserRequestsRepository {
     return uid;
   }
 
-  Uri _uri(String path, [Map<String, String>? query]) {
-    return Uri.parse(
-      BackendConfig.baseUrl,
-    ).replace(path: path, queryParameters: query);
-  }
-
   Future<List<Map<String, dynamic>>> listMyRequests({int limit = 50}) async {
     final uid = _requireUid();
-    final url = _uri('/api/requests', {
-      'user_id': uid,
-      'limit': limit.toString(),
-    });
 
-    final resp = await _getWithAuth(url).timeout(
-      _timeout,
-      onTimeout: () => throw TimeoutException('Requests list timed out'),
-    );
+    final snap = await _firestore
+        .collection('requests')
+        .where('created_by_uid', isEqualTo: uid)
+        .orderBy('created_at', descending: true)
+        .limit(limit)
+        .get()
+        .timeout(_timeout);
 
-    if (resp.statusCode >= 400) {
-      throw Exception('Requests list failed (${resp.statusCode})');
-    }
-
-    final body = json.decode(resp.body);
-    final rows = body is Map<String, dynamic> ? body['rows'] : null;
-    if (rows is List) {
-      return rows
-          .whereType<Map>()
-          .map((m) => Map<String, dynamic>.from(m))
-          .toList();
-    }
-    return const <Map<String, dynamic>>[];
+    return snap.docs.map((doc) {
+      final data = doc.data();
+      data['request_id'] = doc.id;
+      return data;
+    }).toList();
   }
 
   Future<Map<String, dynamic>> getRequestDetail(String requestId) async {
-    final url = _uri('/api/requests/$requestId');
+    final doc = await _firestore
+        .collection('requests')
+        .doc(requestId)
+        .get()
+        .timeout(_timeout);
 
-    final resp = await _getWithAuth(url).timeout(
-      _timeout,
-      onTimeout: () => throw TimeoutException('Request detail timed out'),
-    );
-
-    if (resp.statusCode >= 400) {
-      throw Exception('Request detail failed (${resp.statusCode})');
+    if (!doc.exists) {
+      throw Exception('Request not found');
     }
 
-    final body = json.decode(resp.body);
-    if (body is Map<String, dynamic>) {
-      final row = body['row'];
-      if (row is Map) return Map<String, dynamic>.from(row);
-    }
-    throw Exception('Unexpected request detail payload');
+    final data = doc.data() ?? {};
+    data['request_id'] = doc.id;
+    return data;
   }
 
   Future<void> cancel(String requestId) async {
-    final url = _uri('/api/requests/$requestId/cancel');
+    _requireUid();
 
-    final resp = await _postWithAuth(url).timeout(
-      _timeout,
-      onTimeout: () => throw TimeoutException('Cancel timed out'),
-    );
-
-    if (resp.statusCode >= 400) {
-      throw Exception('Cancel failed (${resp.statusCode})');
-    }
+    await _firestore
+        .collection('requests')
+        .doc(requestId)
+        .update({
+          'status': 'cancelled',
+          'cancelled_at': FieldValue.serverTimestamp(),
+        })
+        .timeout(_timeout);
   }
 
   Future<Map<String, dynamic>> createRequest(Map<String, dynamic> data) async {
-    final url = _uri('/api/requests');
-    final token = await _getToken();
+    final uid = _requireUid();
 
-    final resp = await http
-        .post(
-          url,
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
-          body: json.encode(data),
-        )
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Create request timed out'),
-        );
+    data['created_by_uid'] = uid;
+    data['created_at'] = FieldValue.serverTimestamp();
+    data['status'] = 'pending';
 
-    if (resp.statusCode >= 400) {
-      throw Exception('Create request failed (${resp.statusCode})');
-    }
+    final docRef = await _firestore
+        .collection('requests')
+        .add(data)
+        .timeout(_timeout);
 
-    final body = json.decode(resp.body);
-    if (body is Map<String, dynamic>) {
-      final row = body['row'] ?? body;
-      if (row is Map) return Map<String, dynamic>.from(row);
-    }
-    return <String, dynamic>{};
+    return {'request_id': docRef.id, ...data};
   }
 }

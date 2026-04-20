@@ -1,95 +1,118 @@
-import 'dart:convert';
+import 'dart:async';
 import 'dart:developer' as developer;
 
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/record.dart';
-import '../config/backend.dart';
 
 class AdminRepository {
-  String get _base => BackendConfig.baseUrl;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  ParishRecord _fromBackend(Map<String, dynamic> r) {
-    final createdAt = r['created_at'];
+  Future<List<ParishRecord>> listRecent({int limit = 50, int days = 7}) async {
+    final since = DateTime.now().subtract(Duration(days: days));
+    final List<ParishRecord> records = [];
+
+    final collections = [
+      'baptism_records',
+      'marriage_records',
+      'confirmation_records',
+      'funeral_records',
+    ];
+
+    for (final collection in collections) {
+      try {
+        final snap = await _firestore
+            .collection(collection)
+            .where('created_at', isGreaterThan: Timestamp.fromDate(since))
+            .orderBy('created_at', descending: true)
+            .limit(limit)
+            .get();
+
+        for (final doc in snap.docs) {
+          final type = _collectionToType(collection);
+          final record = _fromFirestoreWithType(doc, type);
+          records.add(record);
+        }
+      } catch (e) {
+        developer.log('Error loading $collection: $e', name: 'AdminRepository');
+      }
+    }
+
+    records.sort((a, b) => b.date.compareTo(a.date));
+    return records.take(limit).toList();
+  }
+
+  RecordType _collectionToType(String collection) {
+    switch (collection) {
+      case 'baptism_records':
+        return RecordType.baptism;
+      case 'marriage_records':
+        return RecordType.marriage;
+      case 'confirmation_records':
+        return RecordType.confirmation;
+      case 'funeral_records':
+        return RecordType.funeral;
+      default:
+        return RecordType.baptism;
+    }
+  }
+
+  ParishRecord _fromFirestoreWithType(DocumentSnapshot doc, RecordType type) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    final createdAt = data['created_at'] ?? data['createdAt'];
     DateTime date;
-    if (createdAt is String) {
+    if (createdAt is Timestamp) {
+      date = createdAt.toDate();
+    } else if (createdAt is String) {
       date = DateTime.tryParse(createdAt) ?? DateTime.now();
-    } else if (createdAt is DateTime) {
-      date = createdAt;
     } else {
       date = DateTime.now();
     }
-    final name = (r['text'] as String?) ?? 'Unnamed Record';
-    final typeStr = (r['type'] as String?)?.toLowerCase() ?? 'baptism';
-    final type = RecordType.values.firstWhere(
-      (e) => e.name.toLowerCase() == typeStr,
-      orElse: () => RecordType.baptism,
-    );
+
+    final name = (data['text'] as String?) ?? 'Unnamed Record';
+
     return ParishRecord(
-      id: (r['id'] as String?) ?? (r['record_id'] as String?) ?? '',
+      id: doc.id,
       type: type,
       name: name,
       date: date,
-      imagePath: r['image_ref'] as String?,
+      imagePath: data['image_ref'] as String?,
       parish: null,
-      notes: r['source'] as String?,
+      notes: data['source'] as String?,
     );
-  }
-
-  Future<List<ParishRecord>> listRecent({int limit = 50, int days = 7}) async {
-    List<ParishRecord> records = [];
-
-    // First, try to load from backend admin API
-    try {
-      final headers = await _authHeader();
-      final uri = Uri.parse(
-        '$_base/api/admin/records/recent?limit=$limit&days=$days',
-      );
-      final resp = await http.get(uri, headers: headers);
-      if (resp.statusCode == 200) {
-        final body = json.decode(resp.body) as Map<String, dynamic>;
-        final rows = (body['rows'] as List<dynamic>? ?? [])
-            .cast<Map<String, dynamic>>();
-        records = rows.map(_fromBackend).toList();
-      }
-    } catch (e) {
-      developer.log(
-        'Admin listRecent backend load failed: $e',
-        name: 'AdminRepository',
-      );
-    }
-
-    // Sort by date descending and limit results
-    final sortedRecords = records..sort((a, b) => b.date.compareTo(a.date));
-
-    return sortedRecords.take(limit).toList();
-  }
-
-  Future<Map<String, String>> _authHeader() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken();
-    return {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
   }
 
   Future<List<ParishRecord>> listByUser(String userId, {int limit = 50}) async {
-    final headers = await _authHeader();
-    final uri = Uri.parse(
-      '$_base/api/admin/records?user_id=$userId&limit=$limit',
-    );
-    final resp = await http.get(uri, headers: headers);
-    if (resp.statusCode != 200) {
-      throw Exception('Admin list failed: ${resp.statusCode} ${resp.body}');
+    final List<ParishRecord> records = [];
+    final collections = [
+      'baptism_records',
+      'marriage_records',
+      'confirmation_records',
+      'funeral_records',
+    ];
+
+    for (final collection in collections) {
+      try {
+        final snap = await _firestore
+            .collection(collection)
+            .where('created_by_uid', isEqualTo: userId)
+            .orderBy('created_at', descending: true)
+            .limit(limit)
+            .get();
+
+        final type = _collectionToType(collection);
+        for (final doc in snap.docs) {
+          records.add(_fromFirestoreWithType(doc, type));
+        }
+      } catch (e) {
+        developer.log(
+          'Error loading $collection for user: $e',
+          name: 'AdminRepository',
+        );
+      }
     }
-    final body = json.decode(resp.body) as Map<String, dynamic>;
-    final rows = (body['rows'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
-    return rows.map(_fromBackend).toList();
+
+    return records..sort((a, b) => b.date.compareTo(a.date));
   }
 
   Future<void> update(
@@ -98,49 +121,60 @@ class AdminRepository {
     String? parish,
     String? imagePath,
   }) async {
-    final headers = await _authHeader();
     final data = <String, dynamic>{};
     if (name != null) data['text'] = name;
     if (imagePath != null) data['image_ref'] = imagePath;
     if (parish != null) data['source'] = parish;
     if (data.isEmpty) return;
-    final resp = await http.put(
-      Uri.parse('$_base/api/admin/records/$id'),
-      headers: headers,
-      body: json.encode(data),
-    );
-    if (resp.statusCode != 200) {
-      throw Exception('Admin update failed: ${resp.statusCode} ${resp.body}');
+
+    data['updated_at'] = FieldValue.serverTimestamp();
+
+    // Try all collections to find the record
+    final collections = [
+      'baptism_records',
+      'marriage_records',
+      'confirmation_records',
+      'funeral_records',
+    ];
+    for (final collection in collections) {
+      try {
+        await _firestore.collection(collection).doc(id).update(data);
+        return;
+      } catch (e) {
+        // Continue to next collection
+      }
     }
+    throw Exception('Record not found in any collection');
   }
 
   Future<void> delete(String id) async {
-    final headers = await _authHeader();
-    final resp = await http.delete(
-      Uri.parse('$_base/api/admin/records/$id'),
-      headers: headers,
-    );
-    if (resp.statusCode != 200) {
-      throw Exception('Admin delete failed: ${resp.statusCode} ${resp.body}');
+    final collections = [
+      'baptism_records',
+      'marriage_records',
+      'confirmation_records',
+      'funeral_records',
+    ];
+    for (final collection in collections) {
+      try {
+        await _firestore.collection(collection).doc(id).delete();
+        return;
+      } catch (e) {
+        // Continue to next collection
+      }
     }
+    throw Exception('Record not found in any collection');
   }
 
   Future<Map<String, dynamic>> getSettings() async {
     try {
-      final headers = await _authHeader();
-      final resp = await http.get(
-        Uri.parse('$_base/api/admin/settings'),
-        headers: headers,
-      );
-      if (resp.statusCode == 200) {
-        final body = json.decode(resp.body) as Map<String, dynamic>;
-        return body;
+      final doc = await _firestore.collection('settings').doc('app').get();
+      if (doc.exists) {
+        return doc.data() ?? {};
       }
     } catch (e) {
-      developer.log('Admin settings API failed: $e', name: 'AdminRepository');
+      developer.log('Get settings failed: $e', name: 'AdminRepository');
     }
 
-    // Fallback: return default settings
     return {
       'language': 'en',
       'timezone': 'UTC',
@@ -155,276 +189,184 @@ class AdminRepository {
     required bool notify,
     required bool autoBackup,
   }) async {
-    final headers = await _authHeader();
-    final payload = json.encode({
+    await _firestore.collection('settings').doc('app').set({
       'language': language,
       'timezone': timezone,
       'notify': notify,
       'auto_backup': autoBackup,
-    });
-    final resp = await http.put(
-      Uri.parse('$_base/api/admin/settings'),
-      headers: headers,
-      body: payload,
-    );
-    if (resp.statusCode != 200) {
-      throw Exception(
-        'Failed to save settings: ${resp.statusCode} ${resp.body}',
-      );
-    }
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<List<Map<String, dynamic>>> getLogs({
     int limit = 100,
     int days = 7,
   }) async {
-    // Try backend API first
-    try {
-      final headers = await _authHeader();
-      final uri = Uri.parse('$_base/api/admin/logs?limit=$limit&days=$days');
-      final resp = await http.get(uri, headers: headers);
-      if (resp.statusCode == 200) {
-        final body = json.decode(resp.body) as Map<String, dynamic>;
-        final rows = (body['rows'] as List<dynamic>? ?? [])
-            .cast<Map<String, dynamic>>();
-        return rows;
-      }
-    } catch (e) {
-      developer.log(
-        'Backend getLogs failed, using Firestore fallback: $e',
-        name: 'AdminRepository',
-      );
-    }
-
-    // Fallback: read directly from Firestore (no Firebase Function needed)
     try {
       final since = DateTime.now().subtract(Duration(days: days));
-      final snap = await FirebaseFirestore.instance
+      final snap = await _firestore
           .collection('audit_logs')
+          .where('timestamp', isGreaterThan: Timestamp.fromDate(since))
           .orderBy('timestamp', descending: true)
           .limit(limit)
           .get();
 
-      return snap.docs
-          .where((doc) {
-            final data = doc.data();
-            final ts = data['timestamp'];
-            if (ts == null) return false;
-            DateTime? date;
-            if (ts is Timestamp) {
-              date = ts.toDate();
-            } else if (ts is String) {
-              date = DateTime.tryParse(ts);
-            }
-            return date != null && date.isAfter(since);
-          })
-          .map((doc) {
-            final data = doc.data();
-            return {
-              'id': doc.id,
-              'user_id': data['user_id'] ?? '',
-              'action': data['action'] ?? '',
-              'details': data['details'] ?? data['new_values'] ?? '',
-              'resource_id': data['resource_id'],
-              'timestamp': data['timestamp'] is Timestamp
-                  ? (data['timestamp'] as Timestamp).toDate().toIso8601String()
-                  : (data['timestamp'] ?? ''),
-            };
-          })
-          .toList();
+      return snap.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'user_id': data['user_id'] ?? '',
+          'action': data['action'] ?? '',
+          'details': data['details'] ?? data['new_values'] ?? '',
+          'resource_id': data['resource_id'],
+          'timestamp': data['timestamp'] is Timestamp
+              ? (data['timestamp'] as Timestamp).toDate().toIso8601String()
+              : (data['timestamp'] ?? ''),
+        };
+      }).toList();
     } catch (e) {
-      developer.log('Firestore fallback failed: $e', name: 'AdminRepository');
-      throw Exception('Failed to load audit logs: $e');
+      developer.log('Get logs failed: $e', name: 'AdminRepository');
+      return [];
     }
   }
 
   Future<void> deleteLog(String id) async {
-    // Try backend API first
-    try {
-      final headers = await _authHeader();
-      final resp = await http.delete(
-        Uri.parse('$_base/api/admin/logs/$id'),
-        headers: headers,
-      );
-      if (resp.statusCode == 200) return;
-    } catch (e) {
-      developer.log(
-        'Backend deleteLog failed, using Firestore: $e',
-        name: 'AdminRepository',
-      );
-    }
-
-    // Fallback: delete directly from Firestore
-    try {
-      await FirebaseFirestore.instance
-          .collection('audit_logs')
-          .doc(id)
-          .delete();
-    } catch (e) {
-      developer.log('Firestore deleteLog failed: $e', name: 'AdminRepository');
-      throw Exception('Delete log failed: $e');
-    }
+    await _firestore.collection('audit_logs').doc(id).delete();
   }
 
   Future<List<Map<String, dynamic>>> getUsers(
     String? role, {
     int limit = 100,
   }) async {
-    final headers = await _authHeader();
-    final uri = (role == null || role.isEmpty)
-        ? Uri.parse('$_base/api/admin/users?limit=$limit')
-        : Uri.parse('$_base/api/admin/users?role=$role&limit=$limit');
-    final resp = await http.get(uri, headers: headers);
-    if (resp.statusCode != 200) {
-      throw Exception('Get users failed: ${resp.statusCode} ${resp.body}');
+    Query<Map<String, dynamic>> query = _firestore
+        .collection('users')
+        .limit(limit);
+
+    if (role != null && role.isNotEmpty) {
+      query = query.where('role', isEqualTo: role);
     }
-    final body = json.decode(resp.body) as Map<String, dynamic>;
-    final rows = (body['rows'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
-    return rows;
+
+    final snap = await query.get();
+    return snap.docs.map((doc) {
+      final data = doc.data();
+      data['uid'] = doc.id;
+      return data;
+    }).toList();
   }
 
   Future<void> setUserRole(String uid, String role) async {
-    final headers = await _authHeader();
-    final payload = json.encode({'role': role});
-    final resp = await http.patch(
-      Uri.parse('$_base/api/admin/users/$uid/role'),
-      headers: headers,
-      body: payload,
-    );
-    if (resp.statusCode != 200) {
-      throw Exception('Set user role failed: ${resp.statusCode} ${resp.body}');
-    }
+    await _firestore.collection('users').doc(uid).update({
+      'role': role,
+      'updated_at': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> setUserStatus(String uid, bool disabled) async {
-    final headers = await _authHeader();
-    final payload = json.encode({'disabled': disabled});
-    final resp = await http.patch(
-      Uri.parse('$_base/api/admin/users/$uid/status'),
-      headers: headers,
-      body: payload,
-    );
-    if (resp.statusCode != 200) {
-      throw Exception(
-        'Set user status failed: ${resp.statusCode} ${resp.body}',
-      );
-    }
+    await _firestore.collection('users').doc(uid).update({
+      'disabled': disabled,
+      'updated_at': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<List<Map<String, dynamic>>> getDailyCounts({int days = 14}) async {
-    final headers = await _authHeader();
-    final resp = await http.get(
-      Uri.parse('$_base/api/admin/metrics/records/daily?days=$days'),
-      headers: headers,
-    );
-    if (resp.statusCode != 200) {
-      throw Exception(
-        'Get daily metrics failed: ${resp.statusCode} ${resp.body}',
-      );
+    // Generate daily counts from Firestore
+    final List<Map<String, dynamic>> result = [];
+    final now = DateTime.now();
+
+    for (int i = 0; i < days; i++) {
+      final date = now.subtract(Duration(days: i));
+      final startOfDay = DateTime(date.year, date.month, date.day);
+      final endOfDay = startOfDay.add(Duration(days: 1));
+
+      int count = 0;
+      final collections = [
+        'baptism_records',
+        'marriage_records',
+        'confirmation_records',
+        'funeral_records',
+      ];
+
+      for (final collection in collections) {
+        try {
+          final snap = await _firestore
+              .collection(collection)
+              .where(
+                'created_at',
+                isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+              )
+              .where('created_at', isLessThan: Timestamp.fromDate(endOfDay))
+              .count()
+              .get();
+          count += snap.count ?? 0;
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+
+      result.add({
+        'date': startOfDay.toIso8601String().split('T')[0],
+        'count': count,
+      });
     }
-    final body = json.decode(resp.body) as Map<String, dynamic>;
-    final rows = (body['days'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
-    return rows;
+
+    return result.reversed.toList();
   }
 
   Future<List<Map<String, dynamic>>> getRecordHistory(String recordId) async {
     try {
-      final headers = await _authHeader();
-      final uri = Uri.parse(
-        '$_base/api/admin/logs?limit=50&days=365&resource_id=$recordId',
-      );
-      final resp = await http.get(uri, headers: headers);
-      if (resp.statusCode == 200) {
-        final body = json.decode(resp.body) as Map<String, dynamic>;
-        final rows = (body['rows'] as List<dynamic>? ?? [])
-            .cast<Map<String, dynamic>>();
-        return rows;
-      }
+      final snap = await _firestore
+          .collection('audit_logs')
+          .where('resource_id', isEqualTo: recordId)
+          .orderBy('timestamp', descending: true)
+          .limit(50)
+          .get();
+
+      return snap.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'user_id': data['user_id'] ?? '',
+          'action': data['action'] ?? '',
+          'details': data['details'] ?? '',
+          'timestamp': data['timestamp'] is Timestamp
+              ? (data['timestamp'] as Timestamp).toDate().toIso8601String()
+              : (data['timestamp'] ?? ''),
+        };
+      }).toList();
     } catch (e) {
-      developer.log('getRecordHistory failed: $e', name: 'AdminRepository');
+      developer.log('Get record history failed: $e', name: 'AdminRepository');
+      return [];
     }
-    return [];
   }
 
   Future<List<Map<String, dynamic>>> getAnalytics({int days = 7}) async {
-    try {
-      final headers = await _authHeader();
-      final resp = await http.get(
-        Uri.parse('$_base/api/admin/analytics?days=$days'),
-        headers: headers,
-      );
-      if (resp.statusCode == 200) {
-        final body = json.decode(resp.body) as Map<String, dynamic>;
-        final rows = (body['rows'] as List<dynamic>? ?? [])
-            .cast<Map<String, dynamic>>();
-        return rows;
+    // Get analytics data from Firestore
+    final List<Map<String, dynamic>> result = [];
+    final collections = [
+      'baptism_records',
+      'marriage_records',
+      'confirmation_records',
+      'funeral_records',
+    ];
+
+    for (final collection in collections) {
+      try {
+        final snap = await _firestore.collection(collection).count().get();
+        result.add({
+          'type': collection.replaceAll('_records', ''),
+          'count': snap.count ?? 0,
+        });
+      } catch (e) {
+        result.add({'type': collection.replaceAll('_records', ''), 'count': 0});
       }
-    } catch (e) {
-      developer.log('getAnalytics failed: $e', name: 'AdminRepository');
     }
-    return [];
+
+    return result;
   }
 
   Future<Map<String, dynamic>> getSummary({int days = 7}) async {
     try {
-      final headers = await _authHeader();
-      final resp = await http.get(
-        Uri.parse('$_base/api/admin/summary?days=$days'),
-        headers: headers,
-      );
-      if (resp.statusCode == 200) {
-        final body = json.decode(resp.body) as Map<String, dynamic>;
-        developer.log(
-          'Admin summary loaded from backend: $body',
-          name: 'AdminRepository',
-        );
-        return body;
-      } else {
-        developer.log(
-          'Admin summary API returned ${resp.statusCode}: ${resp.body}',
-          name: 'AdminRepository',
-        );
-      }
-    } catch (e) {
-      developer.log('Admin summary API failed: $e', name: 'AdminRepository');
-    }
-
-    // Fallback: generate summary from Firestore only
-    developer.log('Using fallback summary data', name: 'AdminRepository');
-    return await _generateLocalSummary(days: days);
-  }
-
-  Future<bool> usersHealth() async {
-    final headers = await _authHeader();
-    final resp = await http.get(
-      Uri.parse('$_base/api/admin/users/health'),
-      headers: headers,
-    );
-    if (resp.statusCode == 200) return true;
-    return false;
-  }
-
-  Future<int> usersSync() async {
-    final headers = await _authHeader();
-    final resp = await http.post(
-      Uri.parse('$_base/api/admin/users/sync'),
-      headers: headers,
-    );
-    if (resp.statusCode != 200) {
-      throw Exception('Users sync failed: ${resp.statusCode} ${resp.body}');
-    }
-    final body = json.decode(resp.body) as Map<String, dynamic>;
-    return (body['total'] as int?) ?? 0;
-  }
-
-  Future<Map<String, dynamic>> _generateLocalSummary({int days = 7}) async {
-    try {
-      // Get user counts from Firestore only
-      final usersSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .get();
+      final usersSnapshot = await _firestore.collection('users').get();
       final usersByRole = <String, int>{};
 
       for (final doc in usersSnapshot.docs) {
@@ -432,8 +374,31 @@ class AdminRepository {
         usersByRole[role] = (usersByRole[role] ?? 0) + 1;
       }
 
+      // Get recent records count
+      final since = DateTime.now().subtract(Duration(days: days));
+      int recentRecords = 0;
+      final collections = [
+        'baptism_records',
+        'marriage_records',
+        'confirmation_records',
+        'funeral_records',
+      ];
+
+      for (final collection in collections) {
+        try {
+          final snap = await _firestore
+              .collection(collection)
+              .where('created_at', isGreaterThan: Timestamp.fromDate(since))
+              .count()
+              .get();
+          recentRecords += snap.count ?? 0;
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+
       return {
-        'total_records_last_days': 0,
+        'total_records_last_days': recentRecords,
         'users_by_role': usersByRole.isNotEmpty
             ? usersByRole
             : {'admin': 1, 'staff': 2, 'volunteer': 1},
@@ -451,5 +416,20 @@ class AdminRepository {
         'error': e.toString(),
       };
     }
+  }
+
+  Future<bool> usersHealth() async {
+    try {
+      await _firestore.collection('users').limit(1).get();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<int> usersSync() async {
+    // No sync needed with direct Firestore
+    final snap = await _firestore.collection('users').count().get();
+    return snap.count ?? 0;
   }
 }

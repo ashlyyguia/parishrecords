@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'dart:developer' as developer;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
-import '../config/backend.dart';
 
 /// Admin analytics data model
 class AdminAnalytics {
@@ -23,14 +21,21 @@ class AdminAnalytics {
     required this.ocrPending,
   });
 
-  factory AdminAnalytics.fromJson(Map<String, dynamic> json) {
+  factory AdminAnalytics.fromCounts({
+    required int households,
+    required int parishioners,
+    required int records,
+    required int requests,
+    required int donations,
+    required int ocrPending,
+  }) {
     return AdminAnalytics(
-      households: json['households'] ?? 0,
-      parishioners: json['parishioners'] ?? 0,
-      records: json['records'] ?? 0,
-      requests: json['requests'] ?? 0,
-      donations: json['donations'] ?? 0,
-      ocrPending: json['ocrPending'] ?? 0,
+      households: households,
+      parishioners: parishioners,
+      records: records,
+      requests: requests,
+      donations: donations,
+      ocrPending: ocrPending,
     );
   }
 }
@@ -39,30 +44,48 @@ class AdminAnalytics {
 final adminAnalyticsProvider = FutureProvider<AdminAnalytics>((ref) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) throw Exception('Not authenticated');
-  final token = await user.getIdToken();
 
-  final url = '${BackendConfig.baseUrl}/api/admin/analytics';
-  developer.log('[Analytics] Calling: $url', name: 'AdminAnalytics');
+  developer.log('[Analytics] Loading from Firestore', name: 'AdminAnalytics');
 
-  final response = await http.get(
-    Uri.parse(url),
-    headers: {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    },
-  );
+  final firestore = FirebaseFirestore.instance;
 
-  developer.log(
-    '[Analytics] Response: ${response.statusCode} - ${response.body}',
-    name: 'AdminAnalytics',
-  );
+  // Get counts from Firestore
+  final householdsSnap = await firestore.collection('households').count().get();
+  final parishionersSnap = await firestore
+      .collection('household_members')
+      .count()
+      .get();
+  final requestsSnap = await firestore.collection('requests').count().get();
+  final donationsSnap = await firestore.collection('donations').count().get();
+  final ocrSnap = await firestore
+      .collection('ocr_jobs')
+      .where('status', isEqualTo: 'pending')
+      .count()
+      .get();
 
-  if (response.statusCode == 200) {
-    final data = jsonDecode(response.body);
-    return AdminAnalytics.fromJson(data);
+  // Get record counts from all collections
+  int recordsCount = 0;
+  final collections = [
+    'baptism_records',
+    'marriage_records',
+    'confirmation_records',
+    'funeral_records',
+  ];
+  for (final collection in collections) {
+    try {
+      final snap = await firestore.collection(collection).count().get();
+      recordsCount += snap.count ?? 0;
+    } catch (e) {
+      // Ignore errors
+    }
   }
 
-  throw Exception(
-    'Failed to load analytics: ${response.statusCode} - ${response.body}',
+  return AdminAnalytics.fromCounts(
+    households: householdsSnap.count ?? 0,
+    parishioners: parishionersSnap.count ?? 0,
+    records: recordsCount,
+    requests: requestsSnap.count ?? 0,
+    donations: donationsSnap.count ?? 0,
+    ocrPending: ocrSnap.count ?? 0,
   );
 });

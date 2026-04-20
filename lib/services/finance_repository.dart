@@ -1,159 +1,99 @@
 import 'dart:async';
-import 'dart:convert';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
-
-import '../../config/backend.dart';
 
 class FinanceRepository {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static const Duration _timeout = Duration(seconds: 20);
 
-  Never _throwHttp(String message, http.Response resp, Uri url) {
-    final snippet = resp.body.length > 400
-        ? resp.body.substring(0, 400)
-        : resp.body;
-    throw Exception('$message (${resp.statusCode}) url=$url body=$snippet');
-  }
-
-  Future<String> _getToken({bool forceRefresh = false}) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Not authenticated');
-    final token = await user.getIdToken(forceRefresh);
-    if (token == null || token.isEmpty) throw Exception('Missing auth token');
-    return token;
-  }
-
-  Future<http.Response> _getWithAuth(Uri url) async {
-    var token = await _getToken();
-    var resp = await http
-        .get(
-          url,
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-          },
-        )
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Request timed out'),
-        );
-
-    if (resp.statusCode == 401) {
-      token = await _getToken(forceRefresh: true);
-      resp = await http
-          .get(
-            url,
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Accept': 'application/json',
-            },
-          )
-          .timeout(
-            _timeout,
-            onTimeout: () => throw TimeoutException('Request timed out'),
-          );
+  String _requireUid() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      throw Exception('Not authenticated');
     }
-
-    return resp;
-  }
-
-  Future<http.Response> _postJsonWithAuth(Uri url, Object payload) async {
-    var token = await _getToken();
-    var resp = await http
-        .post(
-          url,
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: json.encode(payload),
-        )
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Request timed out'),
-        );
-
-    if (resp.statusCode == 401) {
-      token = await _getToken(forceRefresh: true);
-      resp = await http
-          .post(
-            url,
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: json.encode(payload),
-          )
-          .timeout(
-            _timeout,
-            onTimeout: () => throw TimeoutException('Request timed out'),
-          );
-    }
-
-    return resp;
-  }
-
-  Uri _uri(String path, [Map<String, String>? query]) {
-    return Uri.parse(
-      BackendConfig.baseUrl,
-    ).replace(path: path, queryParameters: query);
+    return uid;
   }
 
   Future<Map<String, dynamic>> getOverview({int days = 30}) async {
-    final url = _uri('/api/finance/overview', {'days': days.toString()});
+    _requireUid();
 
-    final resp = await _getWithAuth(url).timeout(
-      _timeout,
-      onTimeout: () => throw TimeoutException('Finance overview timed out'),
-    );
+    final since = DateTime.now().subtract(Duration(days: days));
 
-    if (resp.statusCode >= 400) {
-      _throwHttp('Finance overview failed', resp, url);
+    // Get donations summary
+    final snap = await _firestore
+        .collection('donations')
+        .where('created_at', isGreaterThan: Timestamp.fromDate(since))
+        .get()
+        .timeout(_timeout);
+
+    double total = 0;
+    int count = 0;
+    final byMethod = <String, double>{};
+
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      final amount = (data['amount'] as num?)?.toDouble() ?? 0;
+      final method = data['method'] as String? ?? 'cash';
+
+      total += amount;
+      count++;
+      byMethod[method] = (byMethod[method] ?? 0) + amount;
     }
 
-    final body = json.decode(resp.body);
-    if (body is Map<String, dynamic>) return body;
-    throw Exception('Unexpected finance overview payload');
+    return {
+      'total_amount': total,
+      'total_count': count,
+      'by_method': byMethod,
+      'period_days': days,
+      'generated_at': DateTime.now().toIso8601String(),
+    };
   }
 
   Future<Map<String, dynamic>> bankImport({
     required List<Map<String, dynamic>> rows,
   }) async {
-    final url = _uri('/api/finance/bank_import');
+    _requireUid();
 
-    final resp = await _postJsonWithAuth(url, {'rows': rows}).timeout(
-      _timeout,
-      onTimeout: () => throw TimeoutException('Bank import timed out'),
-    );
+    // Store bank import records
+    final batch = _firestore.batch();
+    final collection = _firestore.collection('bank_imports');
 
-    if (resp.statusCode >= 400) {
-      throw Exception('Bank import failed (${resp.statusCode})');
+    for (final row in rows) {
+      final doc = collection.doc();
+      batch.set(doc, {
+        ...row,
+        'imported_at': FieldValue.serverTimestamp(),
+        'imported_by': FirebaseAuth.instance.currentUser?.uid,
+      });
     }
 
-    final body = json.decode(resp.body);
-    if (body is Map<String, dynamic>) return body;
-    throw Exception('Unexpected bank import payload');
+    await batch.commit().timeout(_timeout);
+
+    return {'imported': rows.length, 'status': 'success'};
   }
 
   Future<Map<String, dynamic>> reconcile({
     required List<Map<String, dynamic>> matches,
   }) async {
-    final url = _uri('/api/finance/reconcile');
+    _requireUid();
 
-    final resp = await _postJsonWithAuth(url, {'matches': matches}).timeout(
-      _timeout,
-      onTimeout: () => throw TimeoutException('Reconcile timed out'),
-    );
+    // Update reconciliation status
+    final batch = _firestore.batch();
 
-    if (resp.statusCode >= 400) {
-      throw Exception('Reconcile failed (${resp.statusCode})');
+    for (final match in matches) {
+      final donationId = match['donation_id'] as String?;
+      if (donationId != null) {
+        final doc = _firestore.collection('donations').doc(donationId);
+        batch.update(doc, {
+          'reconciled': true,
+          'reconciled_at': FieldValue.serverTimestamp(),
+          'reconciled_by': FirebaseAuth.instance.currentUser?.uid,
+        });
+      }
     }
 
-    final body = json.decode(resp.body);
-    if (body is Map<String, dynamic>) return body;
-    throw Exception('Unexpected reconcile payload');
+    await batch.commit().timeout(_timeout);
+
+    return {'reconciled': matches.length, 'status': 'success'};
   }
 }

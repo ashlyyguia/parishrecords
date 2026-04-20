@@ -1,71 +1,53 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../config/backend.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-/// Service for sending verification emails via backend API (EmailJS)
+/// Service for sending verification emails via Firebase
+/// Note: Email sending should be handled by Firebase Functions or Firebase Auth
 class VerificationService {
-  static String get _base => BackendConfig.baseUrl;
-
-  /// Send verification code email via EmailJS backend
-  /// Called after user registers to send the verification code to their email
+  /// Send verification code email
+  /// With direct Firestore, we store the verification request and rely on
+  /// Firebase Auth email verification or Cloud Functions to send emails
   static Future<void> sendVerificationEmail({
     required String email,
     required String code,
     String? displayName,
   }) async {
-    final uri = Uri.parse('$_base/api/verification/send-code');
+    // Store verification code in Firestore for cloud function to process
+    await FirebaseFirestore.instance.collection('verification_requests').add({
+      'email': email,
+      'code': code,
+      'displayName': displayName,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
 
-    final payload = {'email': email, 'code': code, 'displayName': displayName};
-
-    final resp = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
-
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception('Failed to send verification email: ${resp.body}');
-    }
+    // Note: Actual email sending should be handled by a Firebase Cloud Function
+    // that triggers on document creation in verification_requests collection
   }
 
   /// Resend verification code for a user
-  /// Requires Firebase Auth token
   static Future<void> resendVerificationCode({
     required String uid,
     required String idToken,
   }) async {
-    final uri = Uri.parse('$_base/api/verification/resend-code');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('Not authenticated');
 
-    final payload = {'uid': uid};
+    // Store resend request in Firestore
+    await FirebaseFirestore.instance
+        .collection('verification_resend_requests')
+        .add({
+          'uid': uid,
+          'status': 'pending',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
 
-    final resp = await http.post(
-      uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $idToken',
-      },
-      body: jsonEncode(payload),
-    );
-
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception('Failed to resend verification code: ${resp.body}');
-    }
+    // Note: Actual email sending should be handled by Firebase Cloud Function
   }
 
-  /// Request password reset link from backend
+  /// Request password reset link
   static Future<String?> requestPasswordResetLink(String email) async {
-    final uri = Uri.parse('$_base/api/auth/reset-password');
-    final resp = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email}),
-    );
-
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception('Failed to request password reset: ${resp.body}');
-    }
-
-    final data = jsonDecode(resp.body);
-    return data['devModeLink'] as String?;
+    await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+    return null; // Firebase Auth handles the email sending
   }
 }
