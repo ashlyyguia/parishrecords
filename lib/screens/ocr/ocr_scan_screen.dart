@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/ocr_service.dart';
+import '../../widgets/app_loading.dart';
 
 class OcrScanScreen extends StatefulWidget {
   const OcrScanScreen({super.key});
@@ -84,12 +85,12 @@ class _OcrScanScreenState extends State<OcrScanScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Scan text')),
       body: _controller == null || _initializeFuture == null
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading(message: 'Starting camera...')
           : FutureBuilder<void>(
               future: _initializeFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const AppLoading(message: 'Starting camera...');
                 }
                 return Stack(
                   children: [

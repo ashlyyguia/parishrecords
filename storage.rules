@@ -1,0 +1,36 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.isAdmin == true ||
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    function isStaff() {
+      return isSignedIn() && (
+        isAdmin() ||
+        request.auth.token.role == 'staff' ||
+        request.auth.token.isStaff == true
+      );
+    }
+
+    // Announcements assets: public read, admin/staff write
+    match /announcements/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

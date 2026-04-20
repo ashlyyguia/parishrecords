@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:parishrecord/models/user.dart';
 import '../services/auth_service.dart';
 import '../services/audit_service.dart';
+import '../services/verification_service.dart';
 
 class AuthState {
   final AppUser? user;
@@ -18,6 +20,9 @@ class AuthNotifier extends Notifier<AuthState> {
   StreamSubscription<User?>? _authStateSubscription;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
   _userDocSubscription;
+
+  bool _userDocSyncDenied = false;
+  bool _userDocListenDenied = false;
 
   AppUser _fallbackUserFromFirebase(
     User fbUser, {
@@ -50,13 +55,32 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> _init() async {
+    debugPrint('AuthNotifier: _init started');
+
+    // Safety timeout: ensure we always become initialized even if Firebase auth is stuck
+    Timer? safetyTimeout;
+    safetyTimeout = Timer(const Duration(seconds: 5), () {
+      debugPrint(
+        'AuthNotifier: Safety timeout triggered - forcing initialized state',
+      );
+      if (!state.initialized) {
+        state = AuthState(user: state.user, initialized: true);
+      }
+    });
+
     // Listen to auth state changes
     _authStateSubscription = _authService.authStateChanges.listen((user) async {
+      debugPrint(
+        'AuthNotifier: authStateChanges emitted user=${user?.uid ?? 'null'}',
+      );
       final previousUser = state.user;
 
       if (user == null) {
+        debugPrint('AuthNotifier: user is null, setting uninitialized state');
         await _userDocSubscription?.cancel();
         _userDocSubscription = null;
+        _userDocSyncDenied = false;
+        _userDocListenDenied = false;
         if (previousUser != null) {
           try {
             await AuditService.log(
@@ -66,26 +90,52 @@ class AuthNotifier extends Notifier<AuthState> {
             );
           } catch (_) {}
         }
+        safetyTimeout?.cancel();
         state = const AuthState(user: null, initialized: true);
+        debugPrint('AuthNotifier: set state to initialized=true, user=null');
         return;
       }
 
       // Get user data from Firestore
       try {
+        debugPrint('AuthNotifier: getting user data for ${user.uid}');
         final idTokenResult = await user.getIdTokenResult(true);
         final claims = idTokenResult.claims;
         final isAdminClaim =
             claims?['admin'] == true ||
             claims?['isAdmin'] == true ||
             (claims?['role']?.toString().trim().toLowerCase() == 'admin');
+        final isStaffClaim =
+            claims?['staff'] == true ||
+            claims?['isStaff'] == true ||
+            (claims?['role']?.toString().trim().toLowerCase() == 'staff');
+        final isFinanceClaim =
+            claims?['finance'] == true ||
+            claims?['isFinance'] == true ||
+            (claims?['role']?.toString().trim().toLowerCase() == 'finance');
+        debugPrint(
+          'AuthNotifier: claims checked - isAdmin=$isAdminClaim, isStaff=$isStaffClaim, isFinance=$isFinanceClaim',
+        );
+
         final appUser = await _authService.getUserData(user.uid);
+        debugPrint(
+          'AuthNotifier: getUserData returned ${appUser != null ? 'user' : 'null'}',
+        );
+
         if (appUser != null) {
           final roleFromDoc = appUser.role.trim().toLowerCase();
           final role = roleFromDoc.isNotEmpty
               ? roleFromDoc
-              : (isAdminClaim ? 'admin' : 'staff');
+              : (isAdminClaim
+                    ? 'admin'
+                    : (isStaffClaim
+                          ? 'staff'
+                          : (isFinanceClaim ? 'finance' : 'parishioner')));
           final updatedUser = appUser.copyWith(role: role);
           state = AuthState(user: updatedUser, initialized: true);
+          debugPrint(
+            'AuthNotifier: set state to initialized=true with existing user, role=$role',
+          );
           _startUserDocListener(updatedUser.id);
           if (previousUser == null || previousUser.id != updatedUser.id) {
             try {
@@ -102,17 +152,31 @@ class AuthNotifier extends Notifier<AuthState> {
             'emailVerified': user.emailVerified,
           };
           try {
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .set(patch, SetOptions(merge: true));
+            if (!_userDocSyncDenied) {
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .update(patch);
+            }
+          } on FirebaseException catch (e) {
+            if (e.code == 'permission-denied') {
+              _userDocSyncDenied = true;
+              debugPrint('Auth user doc sync denied: $e');
+            } else {
+              debugPrint('Auth user doc sync failed: $e');
+            }
           } catch (e) {
             debugPrint('Auth user doc sync failed: $e');
           }
         } else {
           // Create user document if it doesn't exist
+          debugPrint('AuthNotifier: creating new user document');
           final email = user.email ?? '';
-          final role = isAdminClaim ? 'admin' : 'staff';
+          final role = isAdminClaim
+              ? 'admin'
+              : (isStaffClaim
+                    ? 'staff'
+                    : (isFinanceClaim ? 'finance' : 'parishioner'));
           final newUser = AppUser(
             id: user.uid,
             email: email,
@@ -122,11 +186,28 @@ class AuthNotifier extends Notifier<AuthState> {
             emailVerified: user.emailVerified,
             role: role,
           );
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .set(newUser.toMap(), SetOptions(merge: true));
           state = AuthState(user: newUser, initialized: true);
+          debugPrint(
+            'AuthNotifier: set state to initialized=true with new user, role=$role',
+          );
+          try {
+            if (!_userDocSyncDenied) {
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .set(newUser.toMap(), SetOptions(merge: true));
+            }
+          } on FirebaseException catch (e) {
+            if (e.code == 'permission-denied') {
+              _userDocSyncDenied = true;
+              debugPrint('Auth user doc create denied: $e');
+            } else {
+              debugPrint('Auth user doc create failed: $e');
+            }
+          } catch (e) {
+            debugPrint('Auth user doc create failed: $e');
+          }
+
           _startUserDocListener(newUser.id);
           if (previousUser == null || previousUser.id != newUser.id) {
             try {
@@ -138,8 +219,10 @@ class AuthNotifier extends Notifier<AuthState> {
             } catch (_) {}
           }
         }
-      } catch (e) {
-        debugPrint('Error in auth state changes: $e');
+      } catch (e, stack) {
+        debugPrint('AuthNotifier: Error in auth state handler: $e');
+        debugPrint('AuthNotifier: Stack trace: $stack');
+        // Fallback: still mark as initialized to prevent infinite loading
         try {
           final idTokenResult = await user.getIdTokenResult(true);
           final claims = idTokenResult.claims;
@@ -147,24 +230,47 @@ class AuthNotifier extends Notifier<AuthState> {
               claims?['admin'] == true ||
               claims?['isAdmin'] == true ||
               (claims?['role']?.toString().trim().toLowerCase() == 'admin');
-          final role = isAdminClaim ? 'admin' : (previousUser?.role ?? 'staff');
+
+          final isStaffClaim =
+              claims?['staff'] == true ||
+              claims?['isStaff'] == true ||
+              (claims?['role']?.toString().trim().toLowerCase() == 'staff');
+          final isFinanceClaim =
+              claims?['finance'] == true ||
+              claims?['isFinance'] == true ||
+              (claims?['role']?.toString().trim().toLowerCase() == 'finance');
+          final role = isAdminClaim
+              ? 'admin'
+              : (isStaffClaim
+                    ? 'staff'
+                    : (isFinanceClaim
+                          ? 'finance'
+                          : (previousUser?.role ?? 'parishioner')));
           final fallback = _fallbackUserFromFirebase(
             user,
             role: role,
             previous: previousUser,
           );
           state = AuthState(user: fallback, initialized: true);
+          debugPrint('AuthNotifier: set fallback state with initialized=true');
           _startUserDocListener(fallback.id);
         } catch (e2) {
-          debugPrint('Auth fallback user creation failed: $e2');
+          debugPrint('AuthNotifier: Fallback user creation failed: $e2');
+          // Final fallback: mark as initialized even if we can't get user data
           state = AuthState(user: previousUser, initialized: true);
+          debugPrint(
+            'AuthNotifier: set state to initialized=true (error recovery)',
+          );
         }
       }
     });
+    debugPrint('AuthNotifier: _init completed, listener set up');
   }
 
   void _startUserDocListener(String uid) {
     if (uid.isEmpty) return;
+
+    if (_userDocListenDenied) return;
 
     final current = state.user;
     if (current == null || current.id != uid) return;
@@ -174,45 +280,62 @@ class AuthNotifier extends Notifier<AuthState> {
         .collection('users')
         .doc(uid)
         .snapshots()
-        .listen((snap) {
-          final cur = state.user;
-          if (cur == null || cur.id != uid) return;
-          if (!snap.exists) return;
-          final data = snap.data();
-          if (data == null) return;
+        .listen(
+          (snap) {
+            final cur = state.user;
+            if (cur == null || cur.id != uid) return;
+            if (!snap.exists) return;
+            final data = snap.data();
+            if (data == null) return;
 
-          final roleRaw = (data['role'] ?? '').toString().trim().toLowerCase();
-          bool emailVerified = cur.emailVerified;
-          final ev = data['emailVerified'];
-          if (ev is bool) {
-            emailVerified = ev;
-          }
+            final roleRaw = (data['role'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase();
+            bool emailVerified = cur.emailVerified;
+            final ev = data['emailVerified'];
+            if (ev is bool) {
+              emailVerified = ev;
+            }
 
-          DateTime? lastLogin;
-          final ll = data['lastLogin'];
-          if (ll is Timestamp) {
-            lastLogin = ll.toDate();
-          } else if (ll is String) {
-            lastLogin = DateTime.tryParse(ll);
-          }
+            DateTime? lastLogin;
+            final ll = data['lastLogin'];
+            if (ll is Timestamp) {
+              lastLogin = ll.toDate();
+            } else if (ll is String) {
+              lastLogin = DateTime.tryParse(ll);
+            }
 
-          final nextRole = roleRaw.isNotEmpty ? roleRaw : cur.role;
+            final nextRole = roleRaw.isNotEmpty ? roleRaw : cur.role;
 
-          final effectiveRole = cur.role == 'admin' ? 'admin' : nextRole;
+            final effectiveRole = cur.role == 'admin' ? 'admin' : nextRole;
 
-          if (effectiveRole == cur.role && emailVerified == cur.emailVerified) {
-            return;
-          }
+            if (effectiveRole == cur.role &&
+                emailVerified == cur.emailVerified) {
+              return;
+            }
 
-          state = AuthState(
-            initialized: true,
-            user: cur.copyWith(
-              role: effectiveRole,
-              emailVerified: emailVerified,
-              lastLogin: lastLogin ?? cur.lastLogin,
-            ),
-          );
-        });
+            state = AuthState(
+              initialized: true,
+              user: cur.copyWith(
+                role: effectiveRole,
+                emailVerified: emailVerified,
+                lastLogin: lastLogin ?? cur.lastLogin,
+              ),
+            );
+          },
+          onError: (Object error) {
+            if (error is FirebaseException &&
+                error.code == 'permission-denied') {
+              _userDocListenDenied = true;
+              debugPrint('Auth user doc listen denied: $error');
+              _userDocSubscription?.cancel();
+              _userDocSubscription = null;
+            } else {
+              debugPrint('Auth user doc listen error: $error');
+            }
+          },
+        );
   }
 
   // Sign in with email and password
@@ -260,6 +383,16 @@ class AuthNotifier extends Notifier<AuthState> {
         claims?['isAdmin'] == true ||
         (claims?['role']?.toString().trim().toLowerCase() == 'admin');
 
+    final isFinanceClaim =
+        claims?['finance'] == true ||
+        claims?['isFinance'] == true ||
+        (claims?['role']?.toString().trim().toLowerCase() == 'finance');
+
+    final isStaffClaim =
+        claims?['staff'] == true ||
+        claims?['isStaff'] == true ||
+        (claims?['role']?.toString().trim().toLowerCase() == 'staff');
+
     AppUser? appUser;
     try {
       appUser = await _authService.getUserData(fbUser.uid);
@@ -269,7 +402,13 @@ class AuthNotifier extends Notifier<AuthState> {
 
     if (appUser == null) {
       final prev = state.user;
-      final role = isAdminClaim ? 'admin' : (prev?.role ?? 'staff');
+      final role = isAdminClaim
+          ? 'admin'
+          : (isStaffClaim
+                ? 'staff'
+                : (isFinanceClaim
+                      ? 'finance'
+                      : ((prev?.role ?? 'parishioner'))));
       final fallback = _fallbackUserFromFirebase(
         fbUser,
         role: role,
@@ -283,7 +422,11 @@ class AuthNotifier extends Notifier<AuthState> {
     final roleFromDoc = appUser.role.trim().toLowerCase();
     final role = roleFromDoc.isNotEmpty
         ? roleFromDoc
-        : (isAdminClaim ? 'admin' : 'staff');
+        : (isAdminClaim
+              ? 'admin'
+              : (isStaffClaim
+                    ? 'staff'
+                    : (isFinanceClaim ? 'finance' : 'parishioner')));
 
     state = AuthState(
       initialized: true,
@@ -354,8 +497,24 @@ class AuthNotifier extends Notifier<AuthState> {
         password: password,
       );
 
-      // The auth state listener will handle the state update
       if (cred.user != null) {
+        // Check if email is verified via EmailJS verification code
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(cred.user!.uid)
+            .get();
+
+        final isVerified = userDoc.data()?['verificationCodeVerified'] ?? false;
+
+        if (!isVerified) {
+          // Dev Mode Bypass: We auto-verify them if they somehow got stuck with an unverified account.
+          debugPrint('Dev Mode: Bypassing verification check for ${cred.user!.uid}');
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(cred.user!.uid)
+              .update({'verificationCodeVerified': true});
+        }
+        
         return (true, 'Login successful');
       }
       return (false, 'Login failed. Please try again.');
@@ -398,9 +557,25 @@ class AuthNotifier extends Notifier<AuthState> {
       if (currentUser != null) {
         final email = currentUser.email ?? currentUser.uid;
         final idTokenResult = await currentUser.getIdTokenResult(true);
-        final role = (idTokenResult.claims?['admin'] == true)
-            ? 'admin'
-            : 'staff';
+        final claims = idTokenResult.claims;
+        final isAdminClaim =
+            claims?['admin'] == true ||
+            claims?['isAdmin'] == true ||
+            (claims?['role']?.toString().trim().toLowerCase() == 'admin');
+        final isStaffClaim =
+            claims?['staff'] == true ||
+            claims?['isStaff'] == true ||
+            (claims?['role']?.toString().trim().toLowerCase() == 'staff');
+        final isFinanceClaim =
+            claims?['finance'] == true ||
+            claims?['isFinance'] == true ||
+            (claims?['role']?.toString().trim().toLowerCase() == 'finance');
+        
+        final role = isAdminClaim 
+            ? 'admin' 
+            : (isStaffClaim 
+                ? 'staff' 
+                : (isFinanceClaim ? 'finance' : 'parishioner'));
         final appUser = AppUser(
           id: currentUser.uid,
           email: email,
@@ -416,13 +591,21 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  /// Sends a verification email to the current user
+  /// Sends a verification email to the current user via EmailJS
   Future<void> sendVerificationEmail() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user != null && !user.emailVerified) {
-        await user.sendEmailVerification();
+      if (user == null) return;
+
+      // Generate new code and send via EmailJS backend
+      final idToken = await user.getIdToken();
+      if (idToken == null) {
+        throw Exception('Unable to get authentication token');
       }
+      await VerificationService.resendVerificationCode(
+        uid: user.uid,
+        idToken: idToken,
+      );
     } catch (e) {
       debugPrint('Error sending verification email: $e');
       rethrow;

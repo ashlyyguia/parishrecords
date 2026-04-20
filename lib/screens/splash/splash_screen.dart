@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,33 +14,64 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
+  bool _navigated = false;
+  String? _error;
+  int _dots = 0;
+  Timer? _timeoutTimer;
+
   @override
   void initState() {
     super.initState();
-    _boot();
+    _animateDots();
+    // Set timeout
+    _timeoutTimer = Timer(const Duration(seconds: 15), () {
+      if (!mounted || _navigated) return;
+      setState(
+        () => _error =
+            'Initialization timed out. Please check your connection and try again.',
+      );
+    });
   }
 
-  Future<void> _boot() async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
-    final auth = ref.read(authProvider);
-    if (!auth.initialized) {
-      context.go('/login');
-      return;
-    }
+  @override
+  void dispose() {
+    _timeoutTimer?.cancel();
+    super.dispose();
+  }
 
-    final role = auth.user?.role.trim().toLowerCase();
-    final isAdmin = role == 'admin';
+  void _animateDots() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return false;
+      setState(() => _dots = (_dots + 1) % 4);
+      return mounted;
+    });
+  }
+
+  void _navigate(AuthState auth) {
+    if (_navigated) return;
+    if (!auth.initialized) return;
+
+    _navigated = true;
+    _timeoutTimer?.cancel();
+
     if (auth.user == null) {
       context.go('/login');
     } else {
-      context.go(isAdmin ? '/admin/overview' : '/home');
+      context.go('/home');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authProvider);
     final scheme = Theme.of(context).colorScheme;
+
+    // Handle navigation in build - check after first frame
+    if (!_navigated && auth.initialized) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _navigate(auth));
+    }
+
     return Scaffold(
       backgroundColor: scheme.surface,
       body: Center(
@@ -63,16 +96,36 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Loading records...',
+              _error ?? 'Loading records${'.' * _dots}',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurface.withValues(alpha: 0.6),
+                color: _error != null
+                    ? scheme.error
+                    : scheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
             const SizedBox(height: 24),
-            const SizedBox(
-              width: 160,
-              child: LinearProgressIndicator(minHeight: 4),
-            ),
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () {
+                  setState(() => _error = null);
+                  _timeoutTimer?.cancel();
+                  _timeoutTimer = Timer(const Duration(seconds: 15), () {
+                    if (!mounted || _navigated) return;
+                    setState(
+                      () => _error =
+                          'Initialization timed out. Please check your connection and try again.',
+                    );
+                  });
+                },
+                child: const Text('Retry'),
+              ),
+            ] else ...[
+              const SizedBox(
+                width: 160,
+                child: LinearProgressIndicator(minHeight: 4),
+              ),
+            ],
           ],
         ),
       ),

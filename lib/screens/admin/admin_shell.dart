@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class AdminShell extends ConsumerWidget {
@@ -8,19 +7,22 @@ class AdminShell extends ConsumerWidget {
   const AdminShell({super.key, required this.child});
 
   static const _items = [
-    _NavItem('Overview', Icons.dashboard_outlined, '/admin/overview'),
+    _NavItem('Dashboard', Icons.dashboard_outlined, '/admin/dashboard'),
     _NavItem('Users', Icons.group_outlined, '/admin/users'),
-    _NavItem('Analytics', Icons.insights_outlined, '/admin/analytics'),
-    _NavItem('Records', Icons.list_alt_outlined, '/admin/records'),
-    _NavItem('Certificates', Icons.verified_outlined, '/admin/certificates'),
-    _NavItem('Announcements', Icons.campaign_outlined, '/admin/announcements'),
+    _NavItem('Households', Icons.home_outlined, '/admin/households'),
+    _NavItem('Sacraments', Icons.church_outlined, '/admin/records'),
+    _NavItem('OCR Queue', Icons.document_scanner_outlined, '/admin/ocr'),
+    _NavItem('Requests', Icons.assignment_outlined, '/admin/requests'),
     _NavItem(
-      'Notifications',
-      Icons.notifications_outlined,
-      '/admin/notifications',
+      'Finance',
+      Icons.account_balance_wallet_outlined,
+      '/admin/finance',
     ),
-    _NavItem('Backup/Export', Icons.cloud_upload_outlined, '/admin/backup'),
-    _NavItem('Settings & Audit', Icons.settings_outlined, '/admin/settings'),
+    _NavItem('Reports', Icons.assessment_outlined, '/admin/reports'),
+    _NavItem('Announcements', Icons.campaign_outlined, '/admin/announcements'),
+    _NavItem('Audit Logs', Icons.receipt_long_outlined, '/admin/audit'),
+    _NavItem('Settings', Icons.settings_outlined, '/admin/settings'),
+    _NavItem('Profile', Icons.person_outlined, '/admin/profile'),
   ];
 
   int _indexFromLocation(String location) {
@@ -138,23 +140,6 @@ class AdminShell extends ConsumerWidget {
                       ),
                     ),
                     const Divider(height: 1),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.black,
-                          ),
-                          icon: const Icon(Icons.logout),
-                          label: const Text('Logout'),
-                          onPressed: () {
-                            FirebaseAuth.instance.signOut();
-                            goSafe('/login');
-                          },
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -237,40 +222,6 @@ class AdminShell extends ConsumerWidget {
                       ),
                     );
                   },
-                ),
-              ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    FirebaseAuth.instance.signOut();
-                    goSafe('/login');
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.logout, color: Colors.black),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Logout',
-                            style: TextStyle(color: Colors.black),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ),
             ],

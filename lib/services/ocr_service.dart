@@ -19,6 +19,13 @@ class OcrService {
     return recognizedText.text;
   }
 
+  /// Extracts text from an image file at the given path.
+  /// [historical] - when true, uses latin script (same as default for now).
+  Future<String> extractTextFromImage(String path, {bool historical = false}) async {
+    final file = File(path);
+    return recognizeTextFromFile(file);
+  }
+
   Future<void> dispose() async {
     await _textRecognizer.close();
   }

@@ -4,10 +4,11 @@ class AppUser {
   final String id;
   final String email;
   final String? displayName;
-  final String role; // admin, staff
+  final String role; // admin, staff, finance
   final DateTime createdAt;
   final DateTime? lastLogin;
-  final bool emailVerified;
+  final bool
+  emailVerified; // Uses verificationCodeVerified from Firestore (EmailJS flow)
 
   AppUser({
     required this.id,
@@ -52,7 +53,10 @@ class AppUser {
           : 'staff',
       createdAt: toDate(map['createdAt']),
       lastLogin: toDate(map['lastLogin']),
-      emailVerified: map['emailVerified'] as bool? ?? false,
+      emailVerified:
+          map['verificationCodeVerified'] as bool? ??
+          map['emailVerified'] as bool? ??
+          false,
     );
   }
 

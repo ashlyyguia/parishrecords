@@ -1,6 +1,6 @@
 {
-    "name": "parishrecord",
-    "short_name": "parishrecord",
+    "name": "Parish Operational Management System with ML Kit OCR",
+    "short_name": "Parish Ops with OCR",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

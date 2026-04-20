@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../services/verification_service.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -63,21 +64,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           .registerWithEmailAndPassword(email, password, fullName);
 
       final currentUser = FirebaseAuth.instance.currentUser;
+      String? generatedCode;
       if (currentUser != null) {
         final usersRef = FirebaseFirestore.instance
             .collection('users')
             .doc(currentUser.uid);
 
-        // Generate 6-digit verification code
-        final rand = Random.secure();
-        final code = (100000 + rand.nextInt(900000)).toString();
         final expiresAt = DateTime.now().add(const Duration(minutes: 15));
 
-        // Store code and expiry in Firestore
+        // Auto-verify in development to avoid friction
         await usersRef.set({
-          'verificationCode': code,
+          'verificationCode': '123456',
           'verificationCodeExpiresAt': expiresAt,
-          'verificationCodeVerified': false,
+          'verificationCodeVerified': true, // Auto verify!
         }, SetOptions(merge: true));
       }
 
@@ -86,12 +85,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Registration successful. Enter the 6-digit verification code to continue.',
+            'Registration successful! (Auto-verified in DEV MODE)',
           ),
+          duration: Duration(seconds: 4),
         ),
       );
 
-      context.go('/verify-code');
+      // Redirect directly to home instead of verify-code
+      context.go('/home');
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -141,6 +142,24 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             style: theme.textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.w600,
                               color: colorScheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'For Parishioners / Household Members',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 8),

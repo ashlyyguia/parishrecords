@@ -16,7 +16,7 @@ function requireAuth(req, res, next) {
   return next();
 }
 
-const DEFAULT_PARISH = process.env.PARISH_ID_DEFAULT || 'default_parish';
+const DEFAULT_PARISH = process.env.PARISH_ID_DEFAULT || null;
 
 function toIso(val) {
   if (!val) return null;
@@ -54,7 +54,7 @@ router.get('/', requireAuth, async (req, res) => {
     const admin = getAdmin();
     const db = admin.firestore();
 
-    const parishId = (req.query.parish_id || DEFAULT_PARISH).toString();
+    const parishId = req.query.parish_id ? req.query.parish_id.toString() : null;
     const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 200);
 
     const uid = req.user && req.user.uid ? req.user.uid.toString() : null;
@@ -64,7 +64,11 @@ router.get('/', requireAuth, async (req, res) => {
 
     const userIdFilter = req.query.user_id ? req.query.user_id.toString() : null;
 
-    let q = db.collection('requests').where('parish_id', '==', parishId);
+    let q = db.collection('requests');
+
+    if (parishId) {
+      q = q.where('parish_id', '==', parishId);
+    }
 
     if (userIdFilter) {
       if (!uid) return res.status(401).json({ error: 'Unauthorized' });
@@ -74,9 +78,17 @@ router.get('/', requireAuth, async (req, res) => {
       q = q.where('created_by_uid', '==', userIdFilter);
     }
 
-    const snap = await q.orderBy('requested_at', 'desc').limit(limit).get();
+    // No .orderBy() on filtered queries — Firestore requires a composite index for that.
+    // Sort in memory after fetching instead.
+    const snap = await q.limit(limit).get();
 
-    const rows = snap.docs.map(normalizeRequestDoc);
+    const rows = snap.docs
+      .map(normalizeRequestDoc)
+      .sort((a, b) => {
+        const aTime = a.requested_at || '';
+        const bTime = b.requested_at || '';
+        return bTime.localeCompare(aTime); // descending
+      });
     return res.json({ rows });
   } catch (error) {
     console.error('Get certificate requests error:', error);
@@ -184,7 +196,7 @@ router.post('/', requireAuth, async (req, res) => {
     const db = admin.firestore();
 
     const body = req.body || {};
-    const parishId = (body.parish_id || DEFAULT_PARISH).toString();
+    const parishId = body.parish_id ? body.parish_id.toString() : null;
     const requestType = (body.request_type || 'baptism').toString().toLowerCase();
     const requesterName = (body.requester_name || '').toString();
     const recordId = body.record_id ? body.record_id.toString() : null;
@@ -235,11 +247,17 @@ router.put('/:id', requireStaff, async (req, res) => {
     const admin = getAdmin();
     const db = admin.firestore();
 
-    const parishId = (body.parish_id || DEFAULT_PARISH).toString();
+    const parishId = body.parish_id ? body.parish_id.toString() : null;
     const status = body.status ? body.status.toString() : null;
 
     const notificationSent =
       typeof body.notification_sent === 'boolean' ? body.notification_sent : null;
+
+    const ref = db.collection('requests').doc(requestId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Not found' });
+    const data = snap.data() || {};
+    const ownerUid = data.created_by_uid;
 
     const updates = {
       parish_id: parishId,
@@ -259,7 +277,18 @@ router.put('/:id', requireStaff, async (req, res) => {
       updates.notification_sent = notificationSent;
     }
 
-    await db.collection('requests').doc(requestId).set(updates, { merge: true });
+    await ref.set(updates, { merge: true });
+
+    // Send automated notification to the user if status changed
+    if (status && status !== data.status && ownerUid) {
+      await db.collection('notifications').add({
+        title: 'Certificate Request Updated',
+        body: `Your request status is now: ${status}`,
+        user_id: ownerUid,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+        created_by_uid: 'system',
+      });
+    }
 
     await logAudit(req, {
       action: 'Certificate Request Updated',

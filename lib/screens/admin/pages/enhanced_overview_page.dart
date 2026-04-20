@@ -1,10 +1,12 @@
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/records_provider.dart';
 import '../../../models/record.dart';
-import '../../../utils/responsive.dart';
+import '../admin_design_system.dart';
 
 class EnhancedAdminOverviewPage extends ConsumerStatefulWidget {
   const EnhancedAdminOverviewPage({super.key});
@@ -53,6 +55,17 @@ class _EnhancedAdminOverviewPageState
     final auth = ref.watch(authProvider);
 
     // Calculate statistics
+    final totalRecords = records.length;
+    final pendingCertificates = records
+        .where((r) => r.certificateStatus == CertificateStatus.pending)
+        .length;
+    final approvedCertificates = records
+        .where((r) => r.certificateStatus == CertificateStatus.approved)
+        .length;
+    final now = DateTime.now();
+    final thisMonthRecords = records.where((r) {
+      return r.date.year == now.year && r.date.month == now.month;
+    }).length;
     final baptismRecords = records
         .where((r) => r.type == RecordType.baptism)
         .length;
@@ -67,36 +80,36 @@ class _EnhancedAdminOverviewPageState
         .length;
 
     return Scaffold(
+      backgroundColor: colorScheme.surface,
       body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              colorScheme.primary.withValues(alpha: 0.1),
-              colorScheme.surface,
-              colorScheme.secondary.withValues(alpha: 0.05),
-            ],
-          ),
-        ),
+        decoration: AdminDesignSystem.pageBackground(context),
         child: SafeArea(
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: SlideTransition(
               position: _slideAnimation,
               child: SingleChildScrollView(
-                padding: context.padAll(16),
+                padding: const EdgeInsets.all(20.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Modern Header
-                    _buildModernHeader(theme, colorScheme, auth, context),
-                    SizedBox(height: context.rf(24)),
+                    // Modern Header with Design System
+                    _buildWelcomeHeader(theme, colorScheme, auth),
+                    const SizedBox(height: 24),
 
-                    // Record Types Chart
-                    _buildRecordTypesSection(
-                      theme,
-                      colorScheme,
+                    // Statistics Grid using Design System
+                    _buildModernStatsGrid(
+                      context,
+                      totalRecords,
+                      pendingCertificates,
+                      approvedCertificates,
+                      thisMonthRecords,
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Record Types Distribution
+                    _buildRecordTypesCard(
+                      context,
                       baptismRecords,
                       marriageRecords,
                       confirmationRecords,
@@ -104,9 +117,9 @@ class _EnhancedAdminOverviewPageState
                     ),
                     const SizedBox(height: 24),
 
-                    // Quick Actions
-                    _buildQuickActions(context, theme, colorScheme),
-                    SizedBox(height: context.rf(24)),
+                    // Quick Actions Grid
+                    _buildQuickActionsGrid(context),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),
@@ -117,102 +130,77 @@ class _EnhancedAdminOverviewPageState
     );
   }
 
-  Widget _buildModernHeader(
+  Widget _buildWelcomeHeader(
     ThemeData theme,
     ColorScheme colorScheme,
     dynamic auth,
-    BuildContext context,
   ) {
-    final now = DateTime.now();
-    final hour = now.hour;
-    String greeting;
-    IconData greetingIcon;
-
-    if (hour < 12) {
-      greeting = 'Good Morning';
-      greetingIcon = Icons.wb_sunny;
-    } else if (hour < 17) {
-      greeting = 'Good Afternoon';
-      greetingIcon = Icons.wb_sunny_outlined;
-    } else {
-      greeting = 'Good Evening';
-      greetingIcon = Icons.nights_stay;
-    }
-
-    return Container(
-      padding: context.padAll(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            colorScheme.primary,
-            colorScheme.primary.withValues(alpha: 0.8),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return AdminDesignSystem.pageHeader(
+      context,
+      title: 'Welcome back, ${auth.user?.displayName ?? 'Administrator'}',
+      subtitle: 'Parish Record Management System',
+      icon: Icons.dashboard,
+      actions: [
+        AdminDesignSystem.actionButton(
+          context,
+          label: 'Refresh',
+          icon: Icons.refresh,
+          onPressed: () => ref.invalidate(recordsProvider),
+          isPrimary: false,
         ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.primary.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: context.padAll(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(greetingIcon, size: 28, color: Colors.white),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  greeting,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontWeight: FontWeight.w500,
-                    fontSize: context.rf(
-                      theme.textTheme.titleMedium?.fontSize ?? 16,
-                    ),
-                  ),
-                ),
-                SizedBox(height: context.rf(4)),
-                Text(
-                  auth.user?.displayName ?? 'Administrator',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: context.rf(
-                      theme.textTheme.titleLarge?.fontSize ?? 20,
-                    ),
-                  ),
-                ),
-                SizedBox(height: context.rf(8)),
-                Text(
-                  'Parish Record Management System',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 
-  Widget _buildRecordTypesSection(
-    ThemeData theme,
-    ColorScheme colorScheme,
+  Widget _buildModernStatsGrid(
+    BuildContext context,
+    int totalRecords,
+    int pendingCertificates,
+    int approvedCertificates,
+    int thisMonthRecords,
+  ) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: context.isWide ? 4 : 2,
+      mainAxisSpacing: 16,
+      crossAxisSpacing: 16,
+      childAspectRatio: 2.2,
+      children: [
+        AdminDesignSystem.statCard(
+          context,
+          title: 'Total Records',
+          value: totalRecords.toString(),
+          icon: Icons.folder_outlined,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        AdminDesignSystem.statCard(
+          context,
+          title: 'Pending Review',
+          value: pendingCertificates.toString(),
+          icon: Icons.pending_actions,
+          color: Colors.orange,
+        ),
+        AdminDesignSystem.statCard(
+          context,
+          title: 'Approved',
+          value: approvedCertificates.toString(),
+          icon: Icons.verified,
+          color: Colors.green,
+        ),
+        AdminDesignSystem.statCard(
+          context,
+          title: 'This Month',
+          value: thisMonthRecords.toString(),
+          icon: Icons.calendar_month,
+          color: Theme.of(context).colorScheme.secondary,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecordTypesCard(
+    BuildContext context,
     int baptism,
     int marriage,
     int confirmation,
@@ -220,245 +208,47 @@ class _EnhancedAdminOverviewPageState
   ) {
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: theme.colorScheme.shadow.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isNarrow = constraints.maxWidth < 600;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.pie_chart, color: colorScheme.primary, size: 24),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Record Types Distribution',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              if (isNarrow) ...[
-                _buildRecordTypeItem(
-                  'Baptism',
-                  baptism,
-                  Icons.child_care,
-                  Colors.blue,
-                  theme,
-                ),
-                const SizedBox(height: 12),
-                _buildRecordTypeItem(
-                  'Marriage',
-                  marriage,
-                  Icons.favorite,
-                  Colors.pink,
-                  theme,
-                ),
-                const SizedBox(height: 12),
-                _buildRecordTypeItem(
-                  'Confirmation',
-                  confirmation,
-                  Icons.verified_user,
-                  Colors.green,
-                  theme,
-                ),
-                const SizedBox(height: 12),
-                _buildRecordTypeItem(
-                  'Funeral',
-                  funeral,
-                  Icons.local_florist,
-                  Colors.grey,
-                  theme,
-                ),
-              ] else ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildRecordTypeItem(
-                        'Baptism',
-                        baptism,
-                        Icons.child_care,
-                        Colors.blue,
-                        theme,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildRecordTypeItem(
-                        'Marriage',
-                        marriage,
-                        Icons.favorite,
-                        Colors.pink,
-                        theme,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildRecordTypeItem(
-                        'Confirmation',
-                        confirmation,
-                        Icons.verified_user,
-                        Colors.green,
-                        theme,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildRecordTypeItem(
-                        'Funeral',
-                        funeral,
-                        Icons.local_florist,
-                        Colors.grey,
-                        theme,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildRecordTypeItem(
-    String title,
-    int count,
-    IconData icon,
-    Color color,
-    ThemeData theme,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  count.toString(),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  title,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                    fontSize: 11,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActions(
-    BuildContext context,
-    ThemeData theme,
-    ColorScheme colorScheme,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: theme.colorScheme.shadow.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      decoration: AdminDesignSystem.cardDecoration(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.flash_on, color: colorScheme.primary, size: 24),
-              const SizedBox(width: 12),
-              Text(
-                'Quick Actions',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+          AdminDesignSystem.sectionTitle(
+            context,
+            'Record Types Distribution',
+            action: 'View All',
           ),
           const SizedBox(height: 20),
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: context.gridColumns(
-              compact: 1,
-              medium: 2,
-              expanded: 4,
-              wide: 4,
-            ),
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: context.isCompact ? 5.0 : 3.5,
+            crossAxisCount: context.isWide ? 4 : 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 3.5,
             children: [
-              _buildQuickActionButton(
-                'Manage Users',
-                Icons.people,
-                colorScheme.primary,
-                () => context.go('/admin/users'),
+              _buildModernRecordTypeItem(
+                'Baptism',
+                baptism,
+                Icons.child_care,
+                Colors.blue,
               ),
-              _buildQuickActionButton(
-                'Certificates',
-                Icons.verified,
-                Colors.orange,
-                () => context.go('/admin/certificates'),
+              _buildModernRecordTypeItem(
+                'Marriage',
+                marriage,
+                Icons.favorite,
+                Colors.pink,
               ),
-              _buildQuickActionButton(
-                'Analytics',
-                Icons.analytics,
+              _buildModernRecordTypeItem(
+                'Confirmation',
+                confirmation,
+                Icons.verified_user,
                 Colors.green,
-                () => context.go('/admin/analytics'),
               ),
-              _buildQuickActionButton(
-                'Settings',
-                Icons.settings,
+              _buildModernRecordTypeItem(
+                'Funeral',
+                funeral,
+                Icons.local_florist,
                 Colors.grey,
-                () => context.go('/admin/settings'),
               ),
             ],
           ),
@@ -467,40 +257,145 @@ class _EnhancedAdminOverviewPageState
     );
   }
 
-  Widget _buildQuickActionButton(
+  Widget _buildModernRecordTypeItem(
     String title,
+    int count,
     IconData icon,
     Color color,
-    VoidCallback onTap,
   ) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 16),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
             ),
-          ],
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  count.toString(),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActionsGrid(BuildContext context) {
+    final actions = [
+      _QuickAction('Manage Users', Icons.people, Colors.blue, '/admin/users'),
+      _QuickAction(
+        'Analytics',
+        Icons.analytics,
+        Colors.green,
+        '/admin/analytics',
+      ),
+      _QuickAction('Records', Icons.list_alt, Colors.purple, '/admin/records'),
+      _QuickAction(
+        'Requests',
+        Icons.assignment,
+        Colors.teal,
+        '/admin/requests',
+      ),
+      _QuickAction('Settings', Icons.settings, Colors.grey, '/admin/settings'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: AdminDesignSystem.cardDecoration(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AdminDesignSystem.sectionTitle(context, 'Quick Actions'),
+          const SizedBox(height: 20),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: context.isWide ? 3 : 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 4.5,
+            children: actions
+                .map((action) => _buildModernActionButton(action))
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernActionButton(_QuickAction action) {
+    return Material(
+      color: action.color.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: () => context.go(action.route),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: action.color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(action.icon, color: action.color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  action.label,
+                  style: TextStyle(
+                    color: action.color,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, color: action.color, size: 16),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _QuickAction {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final String route;
+
+  _QuickAction(this.label, this.icon, this.color, this.route);
 }

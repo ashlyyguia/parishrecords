@@ -322,9 +322,7 @@ router.get('/metrics/records/daily', async (req, res) => {
   }
 });
 
-router.get('/analytics', async (_req, res) => {
-  return res.json({ rows: [], count: 0 });
-});
+
 
 router.get('/logs', async (req, res) => {
   try {
@@ -542,38 +540,101 @@ router.post('/users/sync', async (_req, res) => {
   }
 });
 
-router.get('/analytics', async (_req, res) => {
+// Debug endpoint to check collections
+router.get('/analytics/debug', async (_req, res) => {
   try {
     const admin = getAdmin();
     const db = admin.firestore();
 
+    const collections = ['households', 'household_members', 'sacrament_records', 'requests', 'donations', 'ocr_jobs', 'users'];
+    const results = {};
+
+    for (const coll of collections) {
+      try {
+        const snap = await db.collection(coll).limit(3).get();
+        results[coll] = {
+          exists: true,
+          docCount: snap.size,
+          sampleIds: snap.docs.map(d => d.id),
+        };
+      } catch (e) {
+        results[coll] = { exists: false, error: e.message };
+      }
+    }
+
+    return res.json(results);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/analytics', async (_req, res) => {
+  console.log('[Analytics] Endpoint hit!');
+  try {
+    const admin = getAdmin();
+    const db = admin.firestore();
+
+    console.log('[Analytics] Fetching counts from Firestore...');
+
+    // Helper to get count - tries count() first, falls back to manual count
+    async function getCount(collectionName, filterFn) {
+      console.log(`[Analytics] Counting ${collectionName}...`);
+      try {
+        // Try aggregation count first (fast but may not work in all Firestore setups)
+        const query = filterFn ? filterFn(db.collection(collectionName)) : db.collection(collectionName);
+        const countSnap = await query.count().get();
+        const count = countSnap.data().count;
+        console.log(`[Analytics] ${collectionName} count:`, count);
+        return count;
+      } catch (countErr) {
+        console.log(`[Analytics] count() failed for ${collectionName}, using manual count:`, countErr.message);
+        try {
+          // Fallback: get all docs and count (slower but more reliable)
+          const query = filterFn ? filterFn(db.collection(collectionName)) : db.collection(collectionName);
+          const snap = await query.limit(1000).get();
+          console.log(`[Analytics] ${collectionName} manual count:`, snap.size, 'docs');
+          // Log first doc ID if any found
+          if (snap.size > 0) {
+            console.log(`[Analytics] ${collectionName} first doc:`, snap.docs[0].id);
+          }
+          return snap.size;
+        } catch (manualErr) {
+          console.log(`[Analytics] Manual count failed for ${collectionName}:`, manualErr.message);
+          return 0;
+        }
+      }
+    }
+
     const [
-      householdsSnap,
-      membersSnap,
-      recordsSnap,
-      requestsSnap,
-      donationsSnap,
-      ocrSnap,
+      households,
+      members,
+      records,
+      requests,
+      donations,
+      ocrPending,
     ] = await Promise.all([
-      db.collection('households').count().get(),
-      db.collection('household_members').count().get(),
-      db.collection('sacrament_records').count().get(),
-      db.collection('requests').count().get(),
-      db.collection('donations').count().get(),
-      db.collection('ocr_jobs').where('status', '==', 'pending').count().get(),
+      getCount('households', null),
+      getCount('household_members', null),
+      getCount('sacrament_records', null),
+      getCount('requests', q => q.where('status', '==', 'pending')),
+      getCount('donations', null),
+      getCount('ocr_jobs', q => q.where('status', '==', 'pending')),
     ]);
 
-    return res.json({
-      households: householdsSnap.data().count,
-      parishioners: membersSnap.data().count,
-      records: recordsSnap.data().count,
-      requests: requestsSnap.data().count,
-      donations: donationsSnap.data().count,
-      ocrPending: ocrSnap.data().count,
-    });
+    const result = {
+      households,
+      parishioners: members,
+      records,
+      requests,
+      donations,
+      ocrPending,
+    };
+
+    console.log('[Analytics] Result:', result);
+    return res.json(result);
   } catch (error) {
     console.error('Admin analytics error:', error);
-    return res.status(500).json({ error: 'Failed to fetch analytics' });
+    return res.status(500).json({ error: 'Failed to fetch analytics', details: error.message });
   }
 });
 

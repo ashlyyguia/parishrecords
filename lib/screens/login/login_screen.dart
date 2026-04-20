@@ -89,20 +89,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       if (mounted) {
         // Wait briefly for authProvider to finish loading user + role
         for (int i = 0; i < 20; i++) {
-          final authState = ref.read(authProvider);
-          if (authState.initialized && authState.user != null) {
+          final s = ref.read(authProvider);
+          if (s.initialized && s.user != null) {
             break;
           }
           await Future.delayed(const Duration(milliseconds: 100));
           if (!mounted) return;
         }
-
-        final authState = ref.read(authProvider);
-        final role = authState.user?.role.trim().toLowerCase();
-        final isAdmin = role == 'admin';
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          context.go(isAdmin ? '/admin/overview' : '/home');
+          final user = ref.read(authProvider).user;
+          final role = user?.role.trim().toLowerCase() ?? '';
+
+          // Debug logging to help diagnose routing issues
+          debugPrint('Login redirect - User: ${user?.email}, Role: "$role"');
+
+          if (role == 'admin') {
+            context.go('/admin/dashboard');
+          } else if (role == 'finance') {
+            context.go('/finance/dashboard');
+          } else if (role == 'staff') {
+            context.go('/staff/dashboard');
+          } else if (role.isNotEmpty) {
+            context.go('/home');
+          } else {
+            // Role not loaded yet, show error or retry
+            debugPrint('Warning: User role not loaded after login');
+            context.go('/home');
+          }
         });
       }
     } catch (e) {
@@ -412,6 +426,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               ],
             ),
           ),
+          // Show verification button if error mentions email verification
+          if (_error!.toLowerCase().contains('verify') ||
+              _error!.toLowerCase().contains('verification')) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => context.push('/verify-code'),
+              icon: const Icon(Icons.verified_user_outlined),
+              label: const Text('Enter Verification Code'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: colorScheme.primary,
+                side: BorderSide(color: colorScheme.primary),
+              ),
+            ),
+          ],
         ],
       ],
     );

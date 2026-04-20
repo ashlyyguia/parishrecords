@@ -6,9 +6,10 @@ import 'package:parishrecord/models/user.dart';
 class AppRoles {
   static const admin = 'admin';
   static const staff = 'staff';
+  static const finance = 'finance';
 
   /// List of all roles in order of increasing privileges
-  static const List<String> allRoles = [staff, admin];
+  static const List<String> allRoles = [staff, finance, admin];
 
   /// Check if a user has at least the required role
   static bool hasRequiredRole(String? userRole, String requiredRole) {
@@ -26,6 +27,8 @@ class AppRoles {
     switch (role) {
       case admin:
         return 'Administrator';
+      case finance:
+        return 'Finance';
       case staff:
         return 'Staff Member';
       default:

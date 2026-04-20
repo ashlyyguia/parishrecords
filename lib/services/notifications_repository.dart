@@ -32,7 +32,7 @@ class NotificationsRepository {
             onTimeout: () => throw TimeoutException('Role lookup timed out'),
           );
       final role = (snap.data()?['role'] ?? '').toString().trim().toLowerCase();
-      return role == 'admin';
+      return role == 'admin' || role == 'staff';
     } catch (e) {
       developer.log('Role lookup failed: $e', name: 'NotificationsRepository');
       return false;

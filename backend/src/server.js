@@ -7,6 +7,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const recordsRoutes = require('./routes/records_firestore');
 const usersRoutes = require('./routes/users_firestore');
+const userSelfRoutes = require('./routes/user_self_firestore');
 const userDashboardRoutes = require('./routes/user_dashboard_firestore');
 const notificationsRoutes = require('./routes/notifications_firestore');
 const adminRoutes = require('./routes/admin_firestore');
@@ -15,6 +16,8 @@ const householdsRoutes = require('./routes/households');
 const requestsRoutes = require('./routes/requests');
 const appointmentsRoutes = require('./routes/appointments');
 const profileRoutes = require('./routes/profile');
+const donationsRoutes = require('./routes/donations_firestore');
+const sacramentsRoutes = require('./routes/sacraments_firestore');
 const { verifyFirebaseToken } = require('./middleware/auth');
 
 const app = express();
@@ -46,7 +49,7 @@ app.use(cors({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 1000 // increased from 100 to 1000 to accommodate frontend polling
 });
 app.use(limiter);
 
@@ -59,7 +62,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    database: 'disabled'
+    database: 'firebase'
   });
 });
 
@@ -86,6 +89,7 @@ app.use('/api', verifyFirebaseToken);
 
 app.use('/api/records', recordsRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/users', userSelfRoutes);
 app.use('/api/users', userDashboardRoutes);
 app.use('/api/users', profileRoutes);
 app.use('/api/notifications', notificationsRoutes);
@@ -93,6 +97,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/households', householdsRoutes);
 app.use('/api/requests', requestsRoutes);
 app.use('/api/appointments', appointmentsRoutes);
+app.use('/api/donations', donationsRoutes);
+app.use('/api/sacraments', sacramentsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

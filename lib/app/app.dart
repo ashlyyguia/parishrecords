@@ -80,7 +80,7 @@ class MyApp extends ConsumerWidget {
     final router = createRouter();
 
     return MaterialApp.router(
-      title: 'Parish Record',
+      title: 'Parish Operational Management System with ML Kit OCR',
       theme: theme,
       debugShowCheckedModeBanner: false,
       routerConfig: router,

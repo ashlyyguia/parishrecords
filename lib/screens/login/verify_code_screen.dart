@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../services/verification_service.dart';
+
 class VerifyCodeScreen extends StatefulWidget {
   const VerifyCodeScreen({super.key});
 
@@ -23,6 +25,9 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
 
   bool _submitting = false;
   String? _error;
+  bool _resending = false;
+  int _resendCooldown = 0;
+  Timer? _resendTimer;
 
   @override
   void dispose() {
@@ -32,6 +37,7 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
     for (final n in _digitNodes) {
       n.dispose();
     }
+    _resendTimer?.cancel();
     super.dispose();
   }
 
@@ -121,6 +127,73 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
       if (mounted) {
         setState(() {
           _submitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _resendCode() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() {
+        _error = 'No user is currently signed in.';
+      });
+      return;
+    }
+
+    setState(() {
+      _resending = true;
+      _error = null;
+    });
+
+    try {
+      // Get Firebase ID token for authentication
+      final idToken = await user.getIdToken();
+      if (idToken == null) {
+        setState(() {
+          _error = 'Unable to get authentication token. Please try again.';
+        });
+        return;
+      }
+
+      // Call backend to resend verification code
+      await VerificationService.resendVerificationCode(
+        uid: user.uid,
+        idToken: idToken,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Verification code resent! Check your email.'),
+        ),
+      );
+
+      // Start cooldown timer
+      setState(() {
+        _resendCooldown = 60; // 60 seconds cooldown
+      });
+      _resendTimer?.cancel();
+      _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() {
+          if (_resendCooldown > 0) {
+            _resendCooldown--;
+          } else {
+            timer.cancel();
+          }
+        });
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error =
+            'Failed to resend code: ${e.toString().replaceFirst('Exception: ', '')}';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _resending = false;
         });
       }
     }
@@ -305,8 +378,14 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
                               ),
                               const SizedBox(width: 8),
                               TextButton(
-                                onPressed: null,
-                                child: const Text('Resend'),
+                                onPressed: _resending || _resendCooldown > 0
+                                    ? null
+                                    : _resendCode,
+                                child: Text(
+                                  _resendCooldown > 0
+                                      ? 'Resend ($_resendCooldown)'
+                                      : 'Resend',
+                                ),
                               ),
                             ],
                           ),

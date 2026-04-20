@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../providers/requests_provider.dart';
+import '../../widgets/app_loading.dart';
 
 class CertificateRequestsListScreen extends ConsumerStatefulWidget {
   const CertificateRequestsListScreen({super.key});
@@ -130,7 +131,7 @@ class _CertificateRequestsListScreenState
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: requestsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const AppLoading(message: 'Loading requests...'),
           error: (e, _) => _buildErrorState(colorScheme, error: e),
           data: (allRows) {
             final safeAllRows = allRows;

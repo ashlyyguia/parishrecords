@@ -61,6 +61,8 @@ router.get('/', requireFinance, async (req, res) => {
 
     const limit = Math.min(parseInt(req.query.limit || '200', 10) || 200, 500);
 
+    console.log('[Donations API] Fetching donations, limit:', limit);
+
     const snap = await db
       .collection('donations')
       .orderBy('created_at', 'desc')
@@ -68,9 +70,11 @@ router.get('/', requireFinance, async (req, res) => {
       .get();
 
     const rows = snap.docs.map(normalizeDonationDoc);
+    console.log('[Donations API] Found', rows.length, 'donations');
+
     return res.json({ rows });
   } catch (error) {
-    console.error('Donations list error:', error);
+    console.error('[Donations API] Error:', error);
     return res.status(500).json({ error: 'donations_list_failed' });
   }
 });
@@ -174,6 +178,40 @@ router.put('/:id/reconcile', requireFinance, async (req, res) => {
   } catch (error) {
     console.error('Donation reconcile error:', error);
     return res.status(500).json({ error: 'donation_reconcile_failed' });
+  }
+});
+
+// DELETE /api/donations/:id
+router.delete('/:id', requireFinance, async (req, res) => {
+  try {
+    const uid = req.user && req.user.uid ? req.user.uid.toString() : null;
+    if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+
+    const id = (req.params.id || '').toString();
+    if (!id) return res.status(400).json({ error: 'Missing donation id' });
+
+    const admin = getAdmin();
+    const db = admin.firestore();
+
+    const ref = db.collection('donations').doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'Donation not found' });
+
+    const current = snap.data() || {};
+
+    await ref.delete();
+
+    await logAudit(req, {
+      action: 'Donation Deleted',
+      resourceType: 'donation',
+      resourceId: id,
+      oldValues: { amount: current.amount, donor_name: current.donor_name, campaign: current.campaign },
+    });
+
+    return res.json({ ok: true, deleted: true });
+  } catch (error) {
+    console.error('Donation delete error:', error);
+    return res.status(500).json({ error: 'donation_delete_failed' });
   }
 });
 

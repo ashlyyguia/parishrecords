@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../services/admin_repository.dart';
+import '../../../widgets/app_loading.dart';
 
 class AdminActivityPage extends StatefulWidget {
   const AdminActivityPage({super.key});
@@ -172,7 +173,7 @@ class _ActivityListInnerState extends State<_ActivityListInner> {
       future: future,
       builder: (context, logSnap) {
         if (logSnap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+          return const AppLoading(message: 'Loading activity...');
         }
         if (logSnap.hasError) {
           return Center(

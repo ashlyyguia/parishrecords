@@ -17,3 +17,15 @@ final adminAnalyticsProvider = FutureProvider.family
       final repo = ref.read(adminRepositoryProvider);
       return repo.getAnalytics(days: days);
     });
+
+final adminSummaryProvider = FutureProvider.family
+    .autoDispose<Map<String, dynamic>, int>((ref, days) async {
+      final repo = ref.read(adminRepositoryProvider);
+      return repo.getSummary(days: days);
+    });
+
+final adminRecentLogsProvider = FutureProvider.family
+    .autoDispose<List<Map<String, dynamic>>, int>((ref, limit) async {
+      final repo = ref.read(adminRepositoryProvider);
+      return repo.getLogs(limit: limit, days: 30);
+    });

@@ -1,7 +1,10 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../models/announcement.dart';
 import '../../../services/announcements_repository.dart';
@@ -93,7 +96,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
 
                   return ListView.separated(
                     itemCount: items.length,
-                    separatorBuilder: (_, __) => const Divider(height: 0),
+                    separatorBuilder: (_, _) => const Divider(height: 0),
                     itemBuilder: (context, index) {
                       final a = items[index];
                       return ListTile(
@@ -190,11 +193,13 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                 firstDate: now.subtract(const Duration(days: 365)),
                 lastDate: now.add(const Duration(days: 365 * 5)),
               );
+              if (!context.mounted) return;
               if (date == null) return;
               final time = await showTimePicker(
                 context: context,
                 initialTime: TimeOfDay.fromDateTime(eventDateTime ?? now),
               );
+              if (!context.mounted) return;
               if (time == null) return;
               setState(() {
                 eventDateTime = DateTime(
@@ -298,6 +303,10 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                 return;
               }
 
+              setState(() {
+                status = 'active';
+              });
+
               setState(() => saving = true);
               try {
                 if (existing == null) {
@@ -330,14 +339,28 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                     newAttachmentFileName: attachmentFileName,
                   );
                 }
-                if (mounted) Navigator.of(dialogContext).pop();
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop();
+                }
+                // Navigate back to the admin announcements list
+                if (mounted) {
+                  context.go('/admin/announcements');
+                }
               } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text('Failed to save: $e')));
+                // Show error in the dialog
+                if (dialogContext.mounted) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to save: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               } finally {
-                if (mounted) setState(() => saving = false);
+                // Always reset saving state
+                if (dialogContext.mounted) {
+                  setState(() => saving = false);
+                }
               }
             }
 
@@ -401,7 +424,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        value: status,
+                        initialValue: status,
                         items: const [
                           DropdownMenuItem(
                             value: 'draft',

@@ -1,8 +1,12 @@
+// ignore_for_file: unnecessary_import
+
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/announcement.dart';
 
@@ -41,23 +45,33 @@ class AnnouncementsRepository {
     String? imageUrl;
     String? imagePath;
     if (imageBytes != null && imageFileName != null) {
-      final ref = _storage.ref().child(
-        'announcements/images/${docRef.id}/$imageFileName',
-      );
-      await ref.putData(imageBytes);
-      imageUrl = await ref.getDownloadURL();
-      imagePath = ref.fullPath;
+      try {
+        final ref = _storage.ref().child(
+          'announcements/images/${docRef.id}/$imageFileName',
+        );
+        await ref.putData(imageBytes);
+        imageUrl = await ref.getDownloadURL();
+        imagePath = ref.fullPath;
+      } catch (e) {
+        // Storage not available - continue without image
+        debugPrint('Storage upload failed (no storage enabled): $e');
+      }
     }
 
     String? attachmentUrl;
     String? attachmentPath;
     if (attachmentBytes != null && attachmentFileName != null) {
-      final ref = _storage.ref().child(
-        'announcements/attachments/${docRef.id}/$attachmentFileName',
-      );
-      await ref.putData(attachmentBytes);
-      attachmentUrl = await ref.getDownloadURL();
-      attachmentPath = ref.fullPath;
+      try {
+        final ref = _storage.ref().child(
+          'announcements/attachments/${docRef.id}/$attachmentFileName',
+        );
+        await ref.putData(attachmentBytes);
+        attachmentUrl = await ref.getDownloadURL();
+        attachmentPath = ref.fullPath;
+      } catch (e) {
+        // Storage not available - continue without attachment
+        debugPrint('Storage upload failed (no storage enabled): $e');
+      }
     }
 
     final ann = Announcement(
@@ -95,27 +109,37 @@ class AnnouncementsRepository {
     String? attachmentPath = announcement.attachmentStoragePath;
 
     if (newImageBytes != null && newImageFileName != null) {
-      if (imagePath != null) {
-        await _storage.ref(imagePath).delete().catchError((_) {});
+      try {
+        if (imagePath != null) {
+          await _storage.ref(imagePath).delete().catchError((_) {});
+        }
+        final ref = _storage.ref().child(
+          'announcements/images/${announcement.id}/$newImageFileName',
+        );
+        await ref.putData(newImageBytes);
+        imageUrl = await ref.getDownloadURL();
+        imagePath = ref.fullPath;
+      } catch (e) {
+        // Storage not available - keep existing image data
+        debugPrint('Storage upload failed (no storage enabled): $e');
       }
-      final ref = _storage.ref().child(
-        'announcements/images/${announcement.id}/$newImageFileName',
-      );
-      await ref.putData(newImageBytes);
-      imageUrl = await ref.getDownloadURL();
-      imagePath = ref.fullPath;
     }
 
     if (newAttachmentBytes != null && newAttachmentFileName != null) {
-      if (attachmentPath != null) {
-        await _storage.ref(attachmentPath).delete().catchError((_) {});
+      try {
+        if (attachmentPath != null) {
+          await _storage.ref(attachmentPath).delete().catchError((_) {});
+        }
+        final ref = _storage.ref().child(
+          'announcements/attachments/${announcement.id}/$newAttachmentFileName',
+        );
+        await ref.putData(newAttachmentBytes);
+        attachmentUrl = await ref.getDownloadURL();
+        attachmentPath = ref.fullPath;
+      } catch (e) {
+        // Storage not available - keep existing attachment data
+        debugPrint('Storage upload failed (no storage enabled): $e');
       }
-      final ref = _storage.ref().child(
-        'announcements/attachments/${announcement.id}/$newAttachmentFileName',
-      );
-      await ref.putData(newAttachmentBytes);
-      attachmentUrl = await ref.getDownloadURL();
-      attachmentPath = ref.fullPath;
     }
 
     // simple auto-archive
@@ -165,16 +189,40 @@ class AnnouncementsRepository {
   }
 
   Stream<List<Announcement>> watchPublicActive() {
-    final nowTs = Timestamp.fromDate(DateTime.now());
-    return _col
+    // Use a controller to properly handle errors without breaking the stream
+    final controller = StreamController<List<Announcement>>.broadcast();
+
+    // Emit empty list immediately so page loads without waiting
+    controller.add(<Announcement>[]);
+
+    // Simplified query without orderBy to avoid composite index issues
+    // Just filter by status and sort in memory
+    _col
         .where('status', isEqualTo: 'active')
-        .where('eventDateTime', isGreaterThanOrEqualTo: nowTs)
-        .orderBy('eventDateTime')
         .snapshots()
-        .map(
-          (snapshot) =>
-              snapshot.docs.map((d) => Announcement.fromDoc(d)).toList(),
+        .listen(
+          (snapshot) {
+            try {
+              final announcements = snapshot.docs
+                  .map((d) => Announcement.fromDoc(d))
+                  .toList();
+              // Sort by eventDateTime in memory
+              announcements.sort(
+                (a, b) => a.eventDateTime.compareTo(b.eventDateTime),
+              );
+              controller.add(announcements);
+            } catch (e) {
+              debugPrint('Error parsing announcements: $e');
+              controller.add(<Announcement>[]);
+            }
+          },
+          onError: (error) {
+            debugPrint('Firestore query error: $error');
+            controller.add(<Announcement>[]);
+          },
         );
+
+    return controller.stream;
   }
 
   Future<Announcement?> loadById(String id) async {

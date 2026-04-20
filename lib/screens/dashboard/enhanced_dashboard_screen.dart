@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,8 +5,8 @@ import 'package:intl/intl.dart';
 import '../../models/record.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/analytics_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../providers/records_provider.dart';
-import '../records/ocr_record_type_screen.dart';
 
 class EnhancedDashboardScreen extends ConsumerStatefulWidget {
   const EnhancedDashboardScreen({super.key});
@@ -60,6 +58,7 @@ class _EnhancedDashboardScreenState
     final colorScheme = theme.colorScheme;
     final user = ref.watch(authProvider).user;
     final analytics = ref.watch(analyticsProvider);
+    final notifications = ref.watch(notificationsProvider);
     final records = ref.watch(recordsProvider);
 
     return Scaffold(
@@ -96,6 +95,53 @@ class _EnhancedDashboardScreenState
               ),
             ),
             actions: [
+              // Notifications Badge
+              Stack(
+                children: [
+                  IconButton(
+                    onPressed: () => context.push('/notifications'),
+                    icon: Icon(
+                      Icons.notifications_outlined,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  if (notifications.when(
+                    data: (list) => list.isNotEmpty,
+                    loading: () => false,
+                    error: (error, stackTrace) => false,
+                  ))
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: colorScheme.error,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          notifications.when(
+                            data: (list) =>
+                                list.length > 9 ? '9+' : list.length.toString(),
+                            loading: () => '0',
+                            error: (error, stackTrace) => '0',
+                          ),
+                          style: TextStyle(
+                            color: colorScheme.onError,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+
               // Profile Button
               IconButton(
                 onPressed: () => context.push('/profile'),
@@ -134,7 +180,7 @@ class _EnhancedDashboardScreenState
                         const SizedBox(height: 20),
 
                         // Quick Actions
-                        _buildQuickActions(context, colorScheme, theme),
+                        _buildQuickActions(colorScheme, theme),
 
                         const SizedBox(height: 20),
 
@@ -226,25 +272,21 @@ class _EnhancedDashboardScreenState
     );
   }
 
-  Widget _buildQuickActions(
-    BuildContext context,
-    ColorScheme colorScheme,
-    ThemeData theme,
-  ) {
+  Widget _buildQuickActions(ColorScheme colorScheme, ThemeData theme) {
     final actions = [
       {
         'title': 'Add Record',
         'subtitle': 'Create new parish record',
         'icon': Icons.add_circle_outline,
         'color': colorScheme.primary,
-        'onTap': () => _openNewRecord(),
+        'route': '/records/new',
       },
       {
-        'title': 'Add with OCR',
-        'subtitle': 'Scan document to add',
+        'title': 'Scan Certificate',
+        'subtitle': 'OCR text extraction',
         'icon': Icons.document_scanner_outlined,
-        'color': colorScheme.tertiary,
-        'onTap': () => _openNewRecordWithOcr(),
+        'color': colorScheme.secondary,
+        'route': '/ocr',
       },
       {
         'title': 'Search Records',
@@ -290,9 +332,7 @@ class _EnhancedDashboardScreenState
               subtitle: action['subtitle'] as String,
               icon: action['icon'] as IconData,
               color: action['color'] as Color,
-              onTap:
-                  (action['onTap'] as VoidCallback?) ??
-                  () => context.push(action['route'] as String),
+              onTap: () => context.push(action['route'] as String),
               colorScheme: colorScheme,
             );
           },
@@ -370,54 +410,34 @@ class _EnhancedDashboardScreenState
     // Get real data from records
     final records = ref.watch(recordsProvider);
     final totalRecords = records.length;
-    final baptismRecords = records
-        .where((record) => record.type == RecordType.baptism)
-        .length;
-    final marriageRecords = records
-        .where((record) => record.type == RecordType.marriage)
-        .length;
-    final confirmationRecords = records
-        .where((record) => record.type == RecordType.confirmation)
-        .length;
-    final deathRecords = records
-        .where((record) => record.type == RecordType.funeral)
+    final thisMonth = records.where((record) {
+      final now = DateTime.now();
+      return record.date.year == now.year && record.date.month == now.month;
+    }).length;
+    final pendingApproval = records
+        .where(
+          (record) => record.certificateStatus == CertificateStatus.pending,
+        )
         .length;
 
     final stats = [
       {
         'title': 'Total Records',
         'value': totalRecords.toString(),
-        'change': '',
         'icon': Icons.folder_outlined,
         'color': colorScheme.primary,
       },
       {
-        'title': 'Baptism Records',
-        'value': baptismRecords.toString(),
-        'change': '',
-        'icon': Icons.water_drop_outlined,
-        'color': Colors.blue,
+        'title': 'This Month',
+        'value': thisMonth.toString(),
+        'icon': Icons.calendar_today_outlined,
+        'color': colorScheme.secondary,
       },
       {
-        'title': 'Marriage Records',
-        'value': marriageRecords.toString(),
-        'change': '',
-        'icon': Icons.favorite_outline,
-        'color': Colors.pink,
-      },
-      {
-        'title': 'Confirmation Records',
-        'value': confirmationRecords.toString(),
-        'change': '',
-        'icon': Icons.verified_outlined,
-        'color': Colors.purple,
-      },
-      {
-        'title': 'Death Records',
-        'value': deathRecords.toString(),
-        'change': '',
-        'icon': Icons.person_outline,
-        'color': Colors.grey,
+        'title': 'Pending Approval',
+        'value': pendingApproval.toString(),
+        'icon': Icons.pending_outlined,
+        'color': colorScheme.tertiary,
       },
     ];
 
@@ -433,7 +453,7 @@ class _EnhancedDashboardScreenState
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 132,
+          height: 100,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: stats.length,
@@ -463,19 +483,18 @@ class _EnhancedDashboardScreenState
   Widget _buildStatCard({
     required String title,
     required String value,
-    required String change,
+    String? change,
     required IconData icon,
     required Color color,
     required ColorScheme colorScheme,
   }) {
-    final hasChange = change.trim().isNotEmpty;
-    final isPositive = change.startsWith('+');
+    final isPositive = change?.startsWith('+') ?? false;
 
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
@@ -484,7 +503,7 @@ class _EnhancedDashboardScreenState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Icon(icon, color: color, size: 18),
-                if (hasChange)
+                if (change != null)
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 4,
@@ -519,11 +538,9 @@ class _EnhancedDashboardScreenState
             Text(
               title,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 color: colorScheme.onSurface.withValues(alpha: 0.7),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -611,30 +628,26 @@ class _EnhancedDashboardScreenState
                     color: colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
-                trailing: _isCertificateRequest(record)
-                    ? Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _getStatusColor(
-                            record.certificateStatus.value,
-                          ).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          record.certificateStatus.value,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: _getStatusColor(
-                              record.certificateStatus.value,
-                            ),
-                          ),
-                        ),
-                      )
-                    : null,
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(
+                      record.certificateStatus.value,
+                    ).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    record.certificateStatus.value,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _getStatusColor(record.certificateStatus.value),
+                    ),
+                  ),
+                ),
                 onTap: () => context.push('/records/${record.id}'),
               );
             },
@@ -642,96 +655,6 @@ class _EnhancedDashboardScreenState
         ),
       ],
     );
-  }
-
-  Future<void> _openNewRecordWithOcr() async {
-    final result = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => const OcrRecordTypeScreen(),
-      ),
-    );
-
-    if (result == null || !mounted) return;
-
-    switch (result) {
-      case 'baptism':
-        await context.push('/records/new/baptism', extra: 'ocr');
-        break;
-      case 'marriage':
-        await context.push('/records/new/marriage', extra: 'ocr');
-        break;
-      case 'confirmation':
-        await context.push('/records/new/confirmation', extra: 'ocr');
-        break;
-      case 'death':
-        await context.push('/records/new/death', extra: 'ocr');
-        break;
-    }
-  }
-
-  Future<void> _openNewRecord() async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('Add New Record'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'baptism'),
-            child: const Text('Baptism'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'marriage'),
-            child: const Text('Marriage'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'confirmation'),
-            child: const Text('Confirmation'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'death'),
-            child: const Text('Death'),
-          ),
-        ],
-      ),
-    );
-
-    if (result == null || !mounted) return;
-
-    switch (result) {
-      case 'baptism':
-        await context.push('/records/new/baptism');
-        break;
-      case 'marriage':
-        await context.push('/records/new/marriage');
-        break;
-      case 'confirmation':
-        await context.push('/records/new/confirmation');
-        break;
-      case 'death':
-        await context.push('/records/new/death');
-        break;
-    }
-  }
-
-  bool _isCertificateRequest(ParishRecord record) {
-    final notes = record.notes;
-    if (notes == null || notes.isEmpty) return false;
-
-    try {
-      final decoded = json.decode(notes);
-      if (decoded is Map<String, dynamic>) {
-        final type =
-            (decoded['requestType'] as String?) ?? decoded['request_type'];
-        if (type == 'certificate_request') {
-          return true;
-        }
-      }
-    } catch (_) {
-      // Ignore JSON errors; fall back to simple string contains check below.
-    }
-
-    return notes.contains('certificate_request');
   }
 
   Color _getRecordTypeColor(String type) {

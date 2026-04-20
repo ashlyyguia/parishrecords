@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/notification_provider.dart';
+import '../../widgets/app_loading.dart';
 
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
@@ -80,7 +81,7 @@ class NotificationsScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () => _refresh(ref),
         child: notificationsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const AppLoading(message: 'Loading notifications...'),
           error: (e, _) =>
               _NotificationsErrorState(onRetry: () => _refresh(ref), error: e),
           data: (rows) {

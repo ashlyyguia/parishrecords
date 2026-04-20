@@ -68,13 +68,11 @@ router.get('/', requireAuth, async (req, res) => {
         db
           .collection('notifications')
           .where('user_id', '==', null)
-          .orderBy('created_at', 'desc')
           .limit(limit)
           .get(),
         db
           .collection('notifications')
           .where('user_id', '==', uid)
-          .orderBy('created_at', 'desc')
           .limit(limit)
           .get(),
       ]);
@@ -89,10 +87,14 @@ router.get('/', requireAuth, async (req, res) => {
       const snap = await db
         .collection('notifications')
         .where('user_id', '==', filterUserId)
-        .orderBy('created_at', 'desc')
         .limit(limit)
         .get();
-      docs = snap.docs;
+      // Sort descending in memory
+      docs = snap.docs.sort((a, b) => {
+        const aT = toIso((a.data() || {}).created_at) || '';
+        const bT = toIso((b.data() || {}).created_at) || '';
+        return bT.localeCompare(aT);
+      });
     } else {
       const snap = await db
         .collection('notifications')

@@ -163,4 +163,37 @@ router.post('/:id/cancel', verifyFirebaseToken, async (req, res) => {
   }
 });
 
+// DELETE /api/requests/:id - Delete request
+router.delete('/:id', verifyFirebaseToken, async (req, res) => {
+  try {
+    const requestId = req.params.id;
+    const uid = req.user?.uid;
+    if (!uid) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const admin = getAdmin();
+    const db = admin.firestore();
+
+    const doc = await db.collection('requests').doc(requestId).get();
+    if (!doc.exists) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    const data = doc.data() || {};
+    const isStaff = req.user.role === 'admin' || req.user.role === 'staff';
+
+    if (data.created_by_uid !== uid && !isStaff) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    await db.collection('requests').doc(requestId).delete();
+
+    return res.json({ ok: true, deleted: true });
+  } catch (error) {
+    console.error('Delete request error:', error);
+    return res.status(500).json({ error: 'Failed to delete request' });
+  }
+});
+
 module.exports = router;

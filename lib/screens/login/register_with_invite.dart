@@ -1,7 +1,12 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:go_router/go_router.dart';
+
+import '../../services/verification_service.dart';
 
 class RegisterWithInviteScreen extends StatefulWidget {
   const RegisterWithInviteScreen({super.key});
@@ -86,18 +91,26 @@ class _RegisterWithInviteScreenState extends State<RegisterWithInviteScreen> {
         email: email,
         password: password,
       );
-      // await cred.user?.sendEmailVerification();
       final uid = cred.user!.uid;
 
+      // Generate 6-digit verification code
+      final rand = Random.secure();
+      final code = (100000 + rand.nextInt(900000)).toString();
+      final codeExpiresAt = DateTime.now().add(const Duration(minutes: 15));
+
       // Create user profile with inviteToken (validated by rules)
+      // Always create as parishioner - admin must upgrade role if needed
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'id': uid,
         'email': email,
         'displayName': null,
-        'role': 'staff',
+        'role': 'parishioner',
         'createdAt': FieldValue.serverTimestamp(),
         'lastLogin': FieldValue.serverTimestamp(),
         'emailVerified': false,
+        'verificationCode': code,
+        'verificationCodeExpiresAt': codeExpiresAt,
+        'verificationCodeVerified': false,
         'inviteToken': token,
       }, SetOptions(merge: true));
 
@@ -113,15 +126,25 @@ class _RegisterWithInviteScreenState extends State<RegisterWithInviteScreen> {
         'inviteToken': FieldValue.delete(),
       });
 
+      // Send verification email via EmailJS backend
+      try {
+        await VerificationService.sendVerificationEmail(
+          email: email,
+          code: code,
+        );
+      } catch (e) {
+        debugPrint('Failed to send verification email: $e');
+      }
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Registration successful. A verification email has been sent. Please check your inbox.',
+            'Registration successful! A verification code has been sent to your email.',
           ),
         ),
       );
-      Navigator.of(context).pop();
+      context.go('/verify-code');
     } on FirebaseAuthException catch (e) {
       setState(() => _error = e.message ?? 'Failed to register');
     } catch (e) {

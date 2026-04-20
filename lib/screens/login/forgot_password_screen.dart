@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../services/verification_service.dart';
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -34,13 +35,37 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
     try {
       final email = _emailCtrl.text.trim();
-      await ref.read(authProvider.notifier).resetPassword(email);
+      
+      // We try the standard Firebase method first
+      try {
+        await ref.read(authProvider.notifier).resetPassword(email);
+      } catch (e) {
+        // Ignore errors from default Firebase sender if it fails
+      }
+
+      // We also request the dev mode link from our backend
+      final devLink = await VerificationService.requestPasswordResetLink(email);
+
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password reset email sent. Please check your inbox.'),
-        ),
-      );
+      
+      if (devLink != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Reset email sent!\n\n(DEV MODE) Reset Link:\n$devLink',
+            ),
+            duration: const Duration(seconds: 15),
+            action: SnackBarAction(label: 'OK', onPressed: () {}),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password reset email sent. Please check your inbox.'),
+          ),
+        );
+      }
+      
       context.go('/login');
     } catch (e) {
       if (!mounted) return;

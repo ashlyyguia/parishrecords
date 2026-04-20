@@ -16,7 +16,7 @@ router.use((req, res, next) => {
   next();
 });
 
-const DEFAULT_PARISH = process.env.PARISH_ID_DEFAULT || 'default_parish';
+const DEFAULT_PARISH = process.env.PARISH_ID_DEFAULT || null;
 
 function toIso(val) {
   if (!val) return null;
@@ -62,7 +62,11 @@ router.get('/', async (req, res) => {
     const admin = getAdmin();
     const db = admin.firestore();
 
-    const parishId = (req.query.parish_id || DEFAULT_PARISH).toString();
+    const parishIdRaw = req.query.parish_id || DEFAULT_PARISH;
+    const parishId = parishIdRaw ? parishIdRaw.toString() : null;
+    if (!parishId) {
+      return res.status(400).json({ error: 'Missing parish_id' });
+    }
     const dateParam = (req.query.date || 'today').toString();
 
     let day = new Date();

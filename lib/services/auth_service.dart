@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:parishrecord/models/user.dart';
 
 class AuthService {
+  static const Duration _timeout = Duration(seconds: 12);
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -41,8 +43,8 @@ class AuthService {
       // Update user display name
       await userCredential.user?.updateDisplayName(displayName);
 
-      // Send verification email to the new user
-      // await userCredential.user?.sendEmailVerification();
+      // Note: Email verification is now handled via EmailJS in the UI layer
+      // The register screen generates a code and calls VerificationService
 
       // Create user document in Firestore
       await _createUserDocument(userCredential.user!, displayName);
@@ -64,9 +66,29 @@ class AuthService {
       'photoURL': user.photoURL,
       'createdAt': FieldValue.serverTimestamp(),
       'lastLogin': FieldValue.serverTimestamp(),
-      'emailVerified': user.emailVerified,
-      'role': 'staff', // Default role aligned with app
+      'emailVerified':
+          false, // Will be set to true after EmailJS code verification
+      'role': 'parishioner', // Default role for self-registered users
     }, SetOptions(merge: true));
+  }
+
+  // Check if email is verified (using Firestore field set by EmailJS verification)
+  Future<bool> isEmailVerified(String uid) async {
+    final doc = await _firestore.collection('users').doc(uid).get();
+    return doc.data()?['verificationCodeVerified'] ?? false;
+  }
+
+  // Note: Email verification is now handled via EmailJS through VerificationService
+  // This method is kept for backward compatibility but does nothing
+  @Deprecated('Use VerificationService instead')
+  Future<void> sendEmailVerification() async {
+    // Email verification is now done via EmailJS backend
+    // See VerificationService.sendVerificationEmail()
+  }
+
+  // Reload user to get latest emailVerified status
+  Future<void> reloadUser() async {
+    await _auth.currentUser?.reload();
   }
 
   // Sign out
@@ -80,7 +102,11 @@ class AuthService {
       DocumentSnapshot doc = await _firestore
           .collection('users')
           .doc(uid)
-          .get();
+          .get()
+          .timeout(
+            _timeout,
+            onTimeout: () => throw Exception('User profile lookup timed out'),
+          );
       if (doc.exists) {
         return AppUser.fromMap(doc.data() as Map<String, dynamic>);
       }

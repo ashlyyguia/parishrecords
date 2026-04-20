@@ -37,6 +37,8 @@ router.get('/', requireAdmin, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || '100', 10) || 100, 200);
     const roleFilter = req.query.role ? req.query.role.toString().trim().toLowerCase() : null;
 
+    console.log('[Users API] Fetching users, limit:', limit, 'role:', roleFilter);
+
     let query = db.collection('users').limit(limit);
     if (roleFilter) {
       query = query.where('role', '==', roleFilter);
@@ -45,6 +47,7 @@ router.get('/', requireAdmin, async (req, res) => {
     const snap = await query.get();
     const rows = snap.docs.map(normalizeUserDoc);
 
+    console.log('[Users API] Found', rows.length, 'users');
     return res.json({ rows, count: rows.length });
   } catch (error) {
     console.error('Get users error:', error);

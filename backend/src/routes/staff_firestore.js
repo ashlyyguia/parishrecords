@@ -41,7 +41,11 @@ router.get('/worktray', async (req, res) => {
     const admin = getAdmin();
     const db = admin.firestore();
 
-    const parishId = (req.query.parish_id || process.env.PARISH_ID_DEFAULT || 'default_parish').toString();
+    const parishIdRaw = req.query.parish_id || process.env.PARISH_ID_DEFAULT;
+    const parishId = parishIdRaw ? parishIdRaw.toString() : null;
+    if (!parishId) {
+      return res.status(400).json({ error: 'Missing parish_id' });
+    }
 
     // Pending requests (parish-scoped)
     const requestsSnap = await db

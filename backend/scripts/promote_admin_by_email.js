@@ -4,7 +4,11 @@ require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 const { getAdmin } = require('../src/firebase_admin');
 
 async function main() {
-  const email = process.argv[2] || 'admin@gmail.com';
+  const email = process.argv[2];
+  if (!email) {
+    process.stderr.write('Usage: node promote_admin_by_email.js <email>\n');
+    process.exit(1);
+  }
   const admin = getAdmin();
 
   const user = await admin.auth().getUserByEmail(email);

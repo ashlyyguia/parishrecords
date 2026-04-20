@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../providers/records_provider.dart';
 import '../../../providers/admin_providers.dart';
 import '../../../models/record.dart';
+import '../../../widgets/app_loading.dart';
 
 class EnhancedAnalyticsPage extends ConsumerStatefulWidget {
   const EnhancedAnalyticsPage({super.key});
@@ -166,10 +167,7 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
       loading: () => Card(
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const SizedBox(
-          height: 80,
-          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        ),
+        child: const SizedBox(height: 80, child: AppLoading()),
       ),
       error: (e, _) => Card(
         elevation: 2,
@@ -644,7 +642,7 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
         // Slightly taller cards to prevent vertical overflow on small screens
-        childAspectRatio: 1.25,
+        childAspectRatio: 1.8,
       ),
       itemCount: metrics.length,
       itemBuilder: (context, index) {

@@ -47,16 +47,19 @@ router.post('/', async (req, res) => {
       metadata = {}
     } = req.body;
 
+    console.log('[Households API] Creating household:', { familyName, address, barangay });
+
     // Validate required fields
-    if (!familyName || !address || !barangay || !city) {
+    if (!familyName || !address || !barangay) {
+      console.log('[Households API] Validation failed - missing fields');
       return res.status(400).json({
-        error: 'Missing required fields: familyName, address, barangay, city'
+        error: 'Missing required fields: familyName, address, barangay'
       });
     }
 
     const householdId = await generateHouseholdId();
     const docRef = admin.firestore().collection('households').doc();
-    
+
     const household = {
       id: docRef.id,
       householdId,
@@ -77,7 +80,8 @@ router.post('/', async (req, res) => {
     };
 
     await docRef.set(household);
-    
+    console.log('[Households API] Household created:', docRef.id);
+
     res.status(201).json({
       success: true,
       household: {
@@ -86,7 +90,7 @@ router.post('/', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error creating household:', error);
+    console.error('[Households API] Error creating household:', error);
     res.status(500).json({ error: 'Failed to create household' });
   }
 });
@@ -183,15 +187,19 @@ router.get('/members', async (req, res) => {
     const admin = getAdmin();
     const { search = '', sacramentStatus, limit = 200 } = req.query;
 
+    // Simplified query to avoid composite index requirement
+    // Fetch by orderBy only, filter isActive in memory
     let query = admin
       .firestore()
       .collection('household_members')
-      .where('isActive', '==', true)
       .orderBy('fullName')
-      .limit(Number(limit) || 200);
+      .limit(Number(limit) * 2 || 400); // Fetch more to account for filtering
 
     const snap = await query.get();
     let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    // Filter active members in memory
+    rows = rows.filter((m) => m.isActive === true);
 
     const q = String(search || '').trim().toLowerCase();
     if (q) {
@@ -199,6 +207,9 @@ router.get('/members', async (req, res) => {
         String(m.fullName || '').toLowerCase().includes(q),
       );
     }
+
+    // Re-apply limit after filtering
+    rows = rows.slice(0, Number(limit) || 200);
 
     if (sacramentStatus) {
       const status = String(sacramentStatus).toLowerCase();
@@ -227,45 +238,83 @@ router.get('/', async (req, res) => {
   try {
     const admin = getAdmin();
     const { barangay, includeArchived, search, limit = 50 } = req.query;
-    
+
+    console.log('[Households API] Fetching households:', { barangay, includeArchived, search, limit });
+
     let query = admin.firestore().collection('households');
-    
+
     // Apply filters
     if (includeArchived !== 'true') {
       query = query.where('isArchived', '==', false);
     }
-    
+
     if (barangay) {
       query = query.where('barangay', '==', barangay);
     }
-    
+
     query = query.orderBy('registeredAt', 'desc').limit(parseInt(limit));
-    
+
     const snapshot = await query.get();
     let households = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
-    
+
+    console.log('[Households API] Found', households.length, 'households');
+
     // Client-side search if provided
     if (search) {
       const lowerSearch = search.toLowerCase();
-      households = households.filter(h => 
+      households = households.filter(h =>
         h.familyName?.toLowerCase().includes(lowerSearch) ||
         h.householdId?.toLowerCase().includes(lowerSearch) ||
         h.address?.toLowerCase().includes(lowerSearch) ||
         h.contactNumber?.includes(search)
       );
     }
-    
+
     res.json({
       success: true,
       count: households.length,
       households
     });
   } catch (error) {
-    console.error('Error fetching households:', error);
+    console.error('[Households API] Error fetching households:', error);
     res.status(500).json({ error: 'Failed to fetch households' });
+  }
+});
+
+// Delete household and all its members
+router.delete('/:id', async (req, res) => {
+  try {
+    const admin = getAdmin();
+    const { id } = req.params;
+    
+    // Delete the household document
+    await admin.firestore().collection('households').doc(id).delete();
+    
+    // Find all members of this household
+    const membersSnap = await admin.firestore()
+      .collection('household_members')
+      .where('householdId', '==', id)
+      .get();
+      
+    // Delete all members in a batch (max 500 per batch)
+    if (!membersSnap.empty) {
+      const batch = admin.firestore().batch();
+      membersSnap.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+    }
+    
+    res.json({
+      success: true,
+      message: 'Household and members deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting household:', error);
+    res.status(500).json({ error: 'Failed to delete household' });
   }
 });
 
@@ -442,19 +491,29 @@ router.get('/:id/members', async (req, res) => {
   try {
     const admin = getAdmin();
     const { id } = req.params;
-    
+
+    // Simple where-only query — no orderBy to avoid composite index requirement.
+    // Sorting is done in memory after fetching.
     const snapshot = await admin.firestore()
       .collection('household_members')
       .where('householdId', '==', id)
-      .where('isActive', '==', true)
-      .orderBy('dateAdded')
       .get();
-    
-    const members = snapshot.docs.map(doc => ({
+
+    let members = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
-    
+
+    // Filter active members in memory
+    members = members.filter(m => m.isActive !== false);
+
+    // Sort by dateAdded ascending (in memory — no index needed)
+    members.sort((a, b) => {
+      const aTime = a.dateAdded?._seconds ?? a.dateAdded?.seconds ?? 0;
+      const bTime = b.dateAdded?._seconds ?? b.dateAdded?.seconds ?? 0;
+      return aTime - bTime;
+    });
+
     res.json({
       success: true,
       count: members.length,
@@ -546,14 +605,16 @@ router.get('/:id/stats', async (req, res) => {
     const admin = getAdmin();
     const { id } = req.params;
     
-    // Get members
+    // Get members - simplified query to avoid composite index
     const membersSnapshot = await admin.firestore()
       .collection('household_members')
       .where('householdId', '==', id)
-      .where('isActive', '==', true)
       .get();
-    
-    const members = membersSnapshot.docs.map(d => d.data());
+
+    let members = membersSnapshot.docs.map(d => d.data());
+
+    // Filter active members in memory
+    members = members.filter(m => m.isActive !== false);
     
     const stats = {
       totalMembers: members.length,

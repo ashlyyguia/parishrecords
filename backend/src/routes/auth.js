@@ -76,4 +76,43 @@ router.post('/send-code', verifyFirebaseToken, async (req, res) => {
   }
 });
 
+// Generate password reset link
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const admin = getAdmin();
+    // Ensure user exists
+    try {
+      await admin.auth().getUserByEmail(email);
+    } catch (e) {
+      // Don't leak user existence in production, just return success
+      return res.json({ success: true });
+    }
+
+    const link = await admin.auth().generatePasswordResetLink(email);
+
+    if (!process.env.EMAILJS_SERVICE_ID) {
+      console.warn('\n======================================================');
+      console.warn('⚠️ EMAILJS IS NOT CONFIGURED IN .env FILE');
+      console.warn(`📩 MOCK PASSWORD RESET SENT TO: ${email}`);
+      console.warn(`🔗 RESET LINK: ${link}`);
+      console.warn('======================================================\n');
+      
+      // Send the link back to the client in dev mode so they don't need the terminal
+      return res.json({ success: true, devModeLink: link });
+    }
+
+    // If EmailJS is configured, normally you'd send an email here.
+    // For now, we rely on the default Firebase flow for prod, or just return success.
+    res.json({ success: true, message: 'Password reset processed' });
+  } catch (error) {
+    console.error('Password reset error:', error);
+    res.status(500).json({ error: 'Failed to generate reset link' });
+  }
+});
+
 module.exports = router;

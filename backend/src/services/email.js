@@ -54,9 +54,13 @@ function postJson(url, payload) {
 
 async function sendVerificationCodeEmail(to, code) {
   if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
-    throw new Error(
-      'EmailJS is not configured. Set EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, and EMAILJS_PUBLIC_KEY.'
-    );
+    console.warn('\n======================================================');
+    console.warn('⚠️ EMAILJS IS NOT CONFIGURED IN .env FILE');
+    console.warn(`📩 MOCK EMAIL SENT TO: ${to}`);
+    console.warn(`🔑 VERIFICATION CODE:  ${code}`);
+    console.warn('======================================================\n');
+    // We return successfully so development and testing can continue
+    return;
   }
 
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);

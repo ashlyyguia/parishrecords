@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import '../../providers/records_provider.dart';
+
 import '../../models/record.dart';
+import '../../providers/records_provider.dart';
+import '../../widgets/app_loading.dart';
 import 'ocr_record_type_screen.dart';
 
 class RecordsListScreen extends ConsumerStatefulWidget {
@@ -175,7 +177,7 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                 ),
               ),
               title: Text(
-                'Parish Records',
+                'Parish Operational Management System with ML Kit OCR',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   color: colorScheme.onSurface,
@@ -412,7 +414,7 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
   }
 
   Widget _buildLoadingState(ColorScheme colorScheme) {
-    return const Center(child: CircularProgressIndicator());
+    return const AppLoading(message: 'Loading records...');
   }
 
   Widget _buildErrorState(ColorScheme colorScheme, Object? error) {

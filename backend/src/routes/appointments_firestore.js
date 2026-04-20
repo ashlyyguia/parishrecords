@@ -161,6 +161,16 @@ router.put('/:id', async (req, res) => {
 
     await ref.set(patch, { merge: true });
 
+    if (status && status !== data.status && owner) {
+      await db.collection('notifications').add({
+        title: 'Appointment Updated',
+        body: `Your appointment status is now: ${status}`,
+        user_id: owner,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+        created_by_uid: 'system',
+      });
+    }
+
     await logAudit(req, {
       action: 'Appointment Updated',
       resourceType: 'appointment',

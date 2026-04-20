@@ -1,5 +1,6 @@
 const admin = require('firebase-admin');
 const fs = require('fs');
+const path = require('path');
 
 let initialized = false;
 
@@ -19,14 +20,33 @@ function loadServiceAccountFromEnv() {
     return JSON.parse(serviceAccountJson);
   }
 
-  const serviceAccountPath =
-    process.env.FIREBASE_SERVICE_ACCOUNT_PATH || process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (serviceAccountPath) {
-    const raw = fs.readFileSync(serviceAccountPath, 'utf8');
-    return JSON.parse(raw);
+  const serviceAccountPaths = [
+    // Project root (where the service account file actually is)
+    path.join(process.cwd(), '..', 'holyparish-af472-firebase-adminsdk-fbsvc-5a570c992d.json'),
+    path.join(process.cwd(), 'holyparish-af472-firebase-adminsdk-fbsvc-5a570c992d.json'),
+    // Common fallback paths
+    path.join(__dirname, '..', '..', 'holyparish-af472-firebase-adminsdk-fbsvc-5a570c992d.json'),
+    path.join(__dirname, '../serviceAccountKey.json'),
+    path.join(process.cwd(), 'serviceAccountKey.json'),
+  ];
+
+  let serviceAccount = null;
+  let usedPath = null;
+
+  for (const servicePath of serviceAccountPaths) {
+    try {
+      if (fs.existsSync(servicePath)) {
+        serviceAccount = require(servicePath);
+        usedPath = servicePath;
+        console.log('Firebase Admin initialized with service account from:', servicePath);
+        break;
+      }
+    } catch (e) {
+      // Try next path
+    }
   }
 
-  return null;
+  return serviceAccount;
 }
 
 function init() {
@@ -41,8 +61,10 @@ function init() {
       projectId: projectId || undefined,
     });
   } else {
+    // Try to initialize without service account (uses Application Default Credentials)
+    console.log('Firebase Admin initializing with Application Default Credentials...');
     admin.initializeApp({
-      projectId: projectId || undefined,
+      projectId: projectId || 'holyparish-af472',
     });
   }
 
@@ -50,8 +72,14 @@ function init() {
 }
 
 function getAdmin() {
-  init();
-  return admin;
+  try {
+    // Check if Firebase Admin is already initialized
+    init();
+    return admin;
+  } catch (error) {
+    console.error('Failed to initialize Firebase Admin:', error);
+    throw error;
+  }
 }
 
 module.exports = {

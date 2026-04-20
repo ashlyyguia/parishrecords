@@ -1,18 +1,18 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import 'package:csv/csv.dart';
 import 'package:intl/intl.dart';
 import '../../../models/record.dart';
 import '../../../services/records_repository.dart';
 import '../../../services/admin_repository.dart';
+import '../../../services/export_service.dart';
+import '../admin_design_system.dart';
 
 class AdminRecordsPage extends StatefulWidget {
-  final Map<String, dynamic>? initialFilter;
-
-  const AdminRecordsPage({super.key, this.initialFilter});
+  const AdminRecordsPage({super.key});
 
   @override
   State<AdminRecordsPage> createState() => _AdminRecordsPageState();
@@ -20,116 +20,85 @@ class AdminRecordsPage extends StatefulWidget {
 
 class _AdminRecordsPageState extends State<AdminRecordsPage> {
   final _searchCtrl = TextEditingController();
-  String _selectedType = 'baptism';
-  final bool _desc = true;
+  String _type = 'all';
+  bool _desc = true;
   final _uuid = const Uuid();
+  final Set<String> _selected = <String>{};
+  String _parish = 'all';
   DateTime? _from;
   DateTime? _to;
   final _repo = RecordsRepository();
   final _adminRepo = AdminRepository();
   StreamSubscription<List<ParishRecord>>? _sub;
-  Timer? _timer;
   List<ParishRecord> _records = const [];
 
   @override
   void initState() {
     super.initState();
-    final f = widget.initialFilter;
-    if (f != null) {
-      final type = f['type']?.toString();
-      if (type != null && type.isNotEmpty) {
-        _selectedType = type;
-      }
-      final fromStr = f['from']?.toString();
-      final toStr = f['to']?.toString();
-      if (fromStr != null && fromStr.isNotEmpty) {
-        _from = DateTime.tryParse(fromStr);
-      }
-      if (toStr != null && toStr.isNotEmpty) {
-        _to = DateTime.tryParse(toStr);
-      }
-    }
-
     _loadFromBackend();
-    _timer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => _loadFromBackend(),
-    );
   }
 
   Future<void> _openNewRecord() async {
     final type = await showDialog<String>(
       context: context,
-      builder: (ctx) => SimpleDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('New Record'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'baptism'),
-            child: const Text('Baptism Record Entry'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'marriage'),
-            child: const Text('Marriage Record Entry'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'confirmation'),
-            child: const Text('Confirmation Record Entry'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(
-              ctx,
-              'funeral',
-            ), // Changed from 'death' to 'funeral'
-            child: const Text('Death / Burial Record Entry'),
-          ),
-        ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.water_drop_outlined, color: Colors.blue),
+              title: const Text('Baptism Record'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              onTap: () => Navigator.pop(ctx, 'baptism'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.favorite_border, color: Colors.pink),
+              title: const Text('Marriage Record'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              onTap: () => Navigator.pop(ctx, 'marriage'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.local_fire_department_outlined, color: Colors.orange),
+              title: const Text('Confirmation Record'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              onTap: () => Navigator.pop(ctx, 'confirmation'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.church_outlined, color: Colors.grey),
+              title: const Text('Funeral Record'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              onTap: () => Navigator.pop(ctx, 'death'),
+            ),
+          ],
+        ),
       ),
     );
     if (!mounted || type == null) return;
-
-    String? route;
     switch (type) {
       case 'baptism':
-        route = '/admin/records/new/baptism';
+        context.go('/admin/records/new/baptism');
         break;
       case 'marriage':
-        route = '/admin/records/new/marriage';
+        context.go('/admin/records/new/marriage');
         break;
       case 'confirmation':
-        route = '/admin/records/new/confirmation';
+        context.go('/admin/records/new/confirmation');
         break;
-      case 'funeral': // Changed from 'death' to 'funeral'
-        route =
-            '/admin/records/new/death'; // Keep route as 'death' if that's what your router expects
+      case 'death':
+        context.go('/admin/records/new/death');
         break;
-    }
-
-    if (route != null) {
-      final saved = await context.push(route);
-      if (saved == true && mounted) {
-        await _loadFromBackend();
-      }
     }
   }
 
   Future<void> _loadFromBackend() async {
     try {
-      // First try the main records repository
-      final primary = await _repo.list();
-      if (primary.isNotEmpty) {
-        if (mounted) setState(() => _records = primary);
-        developer.log(
-          'Admin loaded ${primary.length} records',
-          name: 'AdminRecordsPage',
-        );
-        return;
-      }
-
-      // If primary returned 0 records, also try the admin repo
-      final fallback = await _adminRepo.listRecent(limit: 100, days: 365);
-      if (mounted) setState(() => _records = fallback);
+      // Use the regular records repository that includes local storage
+      final list = await _repo.list();
+      if (mounted) setState(() => _records = list);
       developer.log(
-        'Admin primary list returned 0, loaded ${fallback.length} records from admin repo',
+        'Admin loaded ${list.length} records',
         name: 'AdminRecordsPage',
       );
     } catch (e) {
@@ -152,115 +121,45 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     }
   }
 
-  void _openRecordForm(ParishRecord rec) {
-    String route;
-    switch (rec.type) {
-      case RecordType.baptism:
-        route = '/admin/records/new/baptism';
-        break;
-      case RecordType.marriage:
-        route = '/admin/records/new/marriage';
-        break;
-      case RecordType.confirmation:
-        route = '/admin/records/new/confirmation';
-        break;
-      case RecordType.funeral:
-        route = '/admin/records/new/death';
-        break;
-    }
-
-    context.push(route, extra: rec);
-  }
-
-  // Helper method to convert RecordType to string
-  String _getRecordTypeString(RecordType type) {
-    switch (type) {
-      case RecordType.baptism:
-        return 'baptism';
-      case RecordType.marriage:
-        return 'marriage';
-      case RecordType.confirmation:
-        return 'confirmation';
-      case RecordType.funeral:
-        return 'funeral';
-    }
+  void _toggleSelectAll(List<Map<String, dynamic>> items) {
+    setState(() {
+      if (_selected.length == items.length && items.isNotEmpty) {
+        _selected.clear();
+      } else {
+        _selected
+          ..clear()
+          ..addAll(
+            items
+                .map((e) => e['id']?.toString() ?? '')
+                .where((id) => id.isNotEmpty),
+          );
+      }
+    });
   }
 
   List<Map<String, dynamic>> _load() {
-    // Transform backend records to the map structure the UI expects
-    final items = _records.map((r) {
-      final base = <String, dynamic>{
-        'id': r.id,
-        'name': r.name,
-        'type': _getRecordTypeString(
-          r.type,
-        ), // Use helper method instead of .name
-        'typeIndex': r.type.index,
-        'date': r.date.toIso8601String(),
-        'parish': r.parish,
-        'notes': r.notes,
-        'record': r,
-      };
-
-      final notesStr = r.notes;
-      if (notesStr != null && notesStr.isNotEmpty) {
-        try {
-          final decoded = json.decode(notesStr) as Map<String, dynamic>;
-          switch (r.type) {
-            case RecordType.baptism:
-              final registry =
-                  (decoded['registry'] as Map<String, dynamic>?) ?? {};
-              base['bookNo'] = registry['bookNo']?.toString();
-              base['pageNo'] = registry['pageNo']?.toString();
-              base['lineNo'] = registry['lineNo']?.toString();
-              break;
-            case RecordType.marriage:
-              final groom = (decoded['groom'] as Map<String, dynamic>?) ?? {};
-              final bride = (decoded['bride'] as Map<String, dynamic>?) ?? {};
-              final meta = (decoded['meta'] as Map<String, dynamic>?) ?? {};
-              base['groomName'] = groom['fullName']?.toString();
-              base['brideName'] = bride['fullName']?.toString();
-              base['bookNo'] = meta['bookNo']?.toString();
-              base['pageNo'] = meta['pageNo']?.toString();
-              base['lineNo'] = meta['lineNo']?.toString();
-              break;
-            case RecordType.confirmation:
-              final confirmand =
-                  (decoded['confirmand'] as Map<String, dynamic>?) ?? {};
-              final sponsor =
-                  (decoded['sponsor'] as Map<String, dynamic>?) ?? {};
-              final meta = (decoded['meta'] as Map<String, dynamic>?) ?? {};
-              base['confirmandName'] = confirmand['fullName']?.toString();
-              base['sponsorName'] = sponsor['fullName']?.toString();
-              base['bookNo'] = meta['bookNo']?.toString();
-              base['pageNo'] = meta['pageNo']?.toString();
-              base['lineNo'] = meta['lineNo']?.toString();
-              break;
-            case RecordType.funeral:
-              final deceased =
-                  (decoded['deceased'] as Map<String, dynamic>?) ?? {};
-              final burial = (decoded['burial'] as Map<String, dynamic>?) ?? {};
-              final meta = (decoded['meta'] as Map<String, dynamic>?) ?? {};
-              base['deceasedName'] = deceased['fullName']?.toString() ?? r.name;
-              base['dateOfDeath'] = deceased['dateOfDeath']?.toString();
-              base['dateOfBurial'] = burial['date']?.toString();
-              base['bookNo'] = meta['bookNo']?.toString();
-              base['pageNo'] = meta['pageNo']?.toString();
-              base['lineNo'] = meta['lineNo']?.toString();
-              break;
-          }
-        } catch (_) {
-          // Ignore JSON errors; fall back to base fields only
-        }
-      }
-
-      return base;
-    }).toList();
-    // filter by type, parish, search, and date
+    // Transform Firestore records to the map structure the UI expects
+    final items = _records
+        .map(
+          (r) => {
+            'id': r.id,
+            'name': r.name,
+            'type': r.type.name,
+            'typeIndex': r.type.index,
+            'date': r.date.toIso8601String(),
+            'parish': r.parish,
+            'notes': r.notes,
+          },
+        )
+        .toList();
+    // filter
     final q = _searchCtrl.text.trim().toLowerCase();
     Iterable<Map<String, dynamic>> it = items;
-    if (_selectedType.isNotEmpty) {
-      it = it.where((m) => (m['type'] ?? '').toString() == _selectedType);
+    if (_type != 'all') {
+      it = it.where((m) => (m['type'] ?? '').toString() == _type);
+    }
+    if (_parish != 'all') {
+      it = it.where((m) => (m['parish'] ?? '').toString() == _parish);
     }
     if (q.isNotEmpty) {
       it = it.where(
@@ -297,6 +196,64 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     return list;
   }
 
+  Future<void> _bulkDelete() async {
+    if (_selected.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete selected?'),
+        content: Text('This will delete ${_selected.length} record(s).'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    for (final id in _selected) {
+      await _adminRepo.delete(id);
+    }
+    setState(() => _selected.clear());
+  }
+
+  Future<void> _bulkExport(bool csv) async {
+    if (_selected.isEmpty) return;
+    final items = <Map<String, dynamic>>[];
+    final current = _load();
+    for (final id in _selected) {
+      final m = current.firstWhere(
+        (e) => (e['id']?.toString() ?? '') == id,
+        orElse: () => {},
+      );
+      if (m.isNotEmpty) items.add(m);
+    }
+    if (items.isEmpty) return;
+    final base =
+        'selected_${DateTime.now().toIso8601String().replaceAll(':', '-')}'
+            .replaceAll(' ', '_');
+    if (csv) {
+      // Build headers dynamically
+      final headers = <String>{};
+      for (final m in items) {
+        headers.addAll(m.keys.map((e) => e.toString()));
+      }
+      final cols = headers.toList();
+      final rows = <List<dynamic>>[cols];
+      for (final m in items) {
+        rows.add(cols.map((k) => m[k]).toList());
+      }
+      await ExportService.exportCsv('records_$base.csv', rows);
+    } else {
+      await ExportService.exportJson('records_$base.json', items);
+    }
+  }
+
   Future<void> _upsert({Map<String, dynamic>? existing}) async {
     final firstCtrl = TextEditingController(
       text: existing?['firstName']?.toString() ?? '',
@@ -324,6 +281,7 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) {
           return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Text(existing == null ? 'Add Record' : 'Edit Record'),
             content: SizedBox(
               width: 420,
@@ -469,464 +427,466 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     }
   }
 
-  Future<void> _delete(String key) async {
+  Future<void> _importCsvDialog() async {
+    final ctrl = TextEditingController();
+    int imported = 0;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Import CSV'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Paste CSV with headers: id(optional), name, type, date(YYYY-MM-DD)',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: ctrl,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'id,name,type,date',
+                ),
+                minLines: 8,
+                maxLines: 12,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
     try {
-      await _repo.delete(key);
-    } catch (_) {
-      await _adminRepo.delete(key);
+      final rows = const CsvToListConverter(
+        eol: '\n',
+      ).convert(ctrl.text.trim());
+      if (rows.isEmpty) return;
+      final headers = rows.first.map((e) => e.toString().trim()).toList();
+      final idxName = headers.indexOf('name');
+      final idxType = headers.indexOf('type');
+      final idxDate = headers.indexOf('date');
+      for (int i = 1; i < rows.length; i++) {
+        final r = rows[i];
+        if (r.isEmpty) continue;
+        final name = idxName >= 0 && idxName < r.length
+            ? r[idxName].toString().trim()
+            : '';
+        final type = idxType >= 0 && idxType < r.length
+            ? r[idxType].toString().trim().toLowerCase()
+            : '';
+        final dateStr = idxDate >= 0 && idxDate < r.length
+            ? r[idxDate].toString().trim()
+            : '';
+        if (name.isEmpty) continue;
+        if (!(type == 'baptism' ||
+            type == 'marriage' ||
+            type == 'funeral' ||
+            type == 'confirmation')) {
+          continue;
+        }
+        DateTime? d = DateTime.tryParse(dateStr);
+        d ??= DateTime.now();
+        await _repo.add(
+          _strToType(type),
+          name,
+          DateTime(d.year, d.month, d.day),
+        );
+        imported++;
+      }
+      if (mounted) setState(() {});
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Imported $imported records.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+      }
     }
-    if (mounted) {
-      await _loadFromBackend();
-    }
+  }
+
+  Future<void> _delete(String key) async {
+    await _adminRepo.delete(key);
+    setState(() {});
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     _sub?.cancel();
-    _timer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final items = _load();
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Records Management',
-                          style: theme.textTheme.headlineSmall,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _selectedType.isEmpty
-                              ? '${items.length} records'
-                              : '${items.length} ${_formatTypeLabel(_selectedType).toLowerCase()} records',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(
-                              alpha: 0.7,
+    final df = DateFormat.yMMMd();
+    final parishSet = <String>{};
+    for (final m in items) {
+      final p = (m['parish'] ?? '').toString();
+      if (p.isNotEmpty) parishSet.add(p);
+    }
+    final parishOptions = ['all', ...parishSet.toList()..sort()];
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      decoration: AdminDesignSystem.pageBackground(context),
+      child: Column(
+        children: [
+          AdminDesignSystem.pageHeader(
+            context,
+            title: 'Records Management',
+            subtitle: 'Manage, search, and export ${items.length} parish records securely.',
+            icon: Icons.folder_shared_outlined,
+            actions: [
+              AdminDesignSystem.actionButton(
+                context,
+                label: 'Import CSV',
+                icon: Icons.file_upload_outlined,
+                onPressed: _importCsvDialog,
+                isPrimary: false,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 12),
+              AdminDesignSystem.actionButton(
+                context,
+                label: 'Add Record',
+                icon: Icons.add,
+                onPressed: _openNewRecord,
+              ),
+            ],
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Container(
+                decoration: AdminDesignSystem.cardDecoration(context),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // FILTERS BAR
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 320,
+                            child: AdminDesignSystem.searchBar(
+                              context,
+                              controller: _searchCtrl,
+                              hint: 'Search records by name...',
+                              onChanged: (_) => setState(() {}),
+                              onClear: () {},
                             ),
                           ),
+                          _buildDropdownFilter(
+                            value: _type,
+                            items: const [
+                              DropdownMenuItem(value: 'all', child: Text('All Types')),
+                              DropdownMenuItem(value: 'baptism', child: Text('Baptism')),
+                              DropdownMenuItem(value: 'marriage', child: Text('Marriage')),
+                              DropdownMenuItem(value: 'funeral', child: Text('Funeral')),
+                              DropdownMenuItem(value: 'confirmation', child: Text('Confirmation')),
+                            ],
+                            onChanged: (v) => setState(() => _type = v ?? 'all'),
+                          ),
+                          _buildDropdownFilter(
+                            value: _parish,
+                            items: [
+                              for (final p in parishOptions)
+                                DropdownMenuItem(
+                                  value: p,
+                                  child: Text(p == 'all' ? 'All Parishes' : p),
+                                ),
+                            ],
+                            onChanged: (v) => setState(() => _parish = v ?? 'all'),
+                          ),
+                          _buildDateFilter(
+                            label: _from == null ? 'From Date' : df.format(_from!),
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _from ?? DateTime.now(),
+                                firstDate: DateTime(1900),
+                                lastDate: DateTime(2100),
+                              );
+                              if (picked != null) setState(() => _from = picked);
+                            },
+                          ),
+                          _buildDateFilter(
+                            label: _to == null ? 'To Date' : df.format(_to!),
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _to ?? DateTime.now(),
+                                firstDate: DateTime(1900),
+                                lastDate: DateTime(2100),
+                              );
+                              if (picked != null) setState(() => _to = picked);
+                            },
+                          ),
+                          if (_from != null || _to != null)
+                            IconButton(
+                              onPressed: () => setState(() { _from = null; _to = null; }),
+                              icon: const Icon(Icons.clear),
+                              tooltip: 'Clear Dates',
+                            ),
+                          IconButton(
+                            onPressed: () => setState(() => _desc = !_desc),
+                            icon: Icon(_desc ? Icons.arrow_downward : Icons.arrow_upward),
+                            tooltip: 'Toggle Sort',
+                          ),
+                          IconButton(
+                            onPressed: _loadFromBackend,
+                            icon: const Icon(Icons.refresh),
+                            tooltip: 'Refresh',
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_selected.isNotEmpty)
+                      Container(
+                        color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        child: Row(
+                          children: [
+                            Text(
+                              '${_selected.length} items selected',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary),
+                            ),
+                            const Spacer(),
+                            TextButton.icon(
+                              onPressed: () => _bulkExport(true),
+                              icon: const Icon(Icons.table_chart_outlined, size: 18),
+                              label: const Text('Export CSV'),
+                            ),
+                            const SizedBox(width: 12),
+                            FilledButton.icon(
+                              onPressed: _bulkDelete,
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                              label: const Text('Delete Selected'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: colorScheme.error,
+                                foregroundColor: colorScheme.onError,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const Divider(height: 1),
+                    // DATA TABLE
+                    Expanded(
+                      child: items.isEmpty
+                          ? AdminDesignSystem.emptyState(
+                              context,
+                              message: 'No records found matching your filters.',
+                              icon: Icons.search_off,
+                              actionLabel: 'Clear Search',
+                              onAction: () {
+                                _searchCtrl.clear();
+                                setState(() {
+                                  _type = 'all';
+                                  _parish = 'all';
+                                  _from = null;
+                                  _to = null;
+                                });
+                              },
+                            )
+                          : _buildTable(items, colorScheme),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDropdownFilter({
+    required String value,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          items: items,
+          onChanged: onChanged,
+          borderRadius: BorderRadius.circular(12),
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateFilter({required String label, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.calendar_today, size: 16, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTable(List<Map<String, dynamic>> items, ColorScheme colorScheme) {
+    final df = DateFormat.yMMMd();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.vertical,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: MediaQuery.of(context).size.width - 48),
+          child: DataTable(
+            headingRowColor: WidgetStateProperty.all(colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)),
+            dataRowMinHeight: 64,
+            dataRowMaxHeight: 64,
+            showCheckboxColumn: true,
+            onSelectAll: (val) => _toggleSelectAll(items),
+            columns: const [
+              DataColumn(label: Text('Record Date', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Full Name', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Sacrament Type', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Parish Location', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
+            ],
+            rows: items.map((m) {
+              final id = m['id']?.toString() ?? '';
+              final dateStr = m['date']?.toString() ?? '';
+              final date = DateTime.tryParse(dateStr) ?? DateTime.now();
+              final type = m['type']?.toString() ?? '';
+              
+              Color badgeColor;
+              switch (type) {
+                case 'baptism': badgeColor = Colors.blue; break;
+                case 'marriage': badgeColor = Colors.pink; break;
+                case 'funeral': badgeColor = Colors.grey; break;
+                default: badgeColor = Colors.orange; break;
+              }
+
+              return DataRow(
+                selected: _selected.contains(id),
+                onSelectChanged: (val) {
+                  setState(() {
+                    if (val == true) {
+                      _selected.add(id);
+                    } else {
+                      _selected.remove(id);
+                    }
+                  });
+                },
+                cells: [
+                  DataCell(Text(df.format(date))),
+                  DataCell(
+                    Text(
+                      m['name']?.toString() ?? 'Untitled',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  DataCell(AdminDesignSystem.statusBadge(context, type.toUpperCase(), badgeColor)),
+                  DataCell(Text(m['parish']?.toString() ?? '-')),
+                  DataCell(
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 20),
+                          tooltip: 'Edit',
+                          color: colorScheme.primary,
+                          onPressed: () => _upsert(existing: m),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 20),
+                          tooltip: 'Delete',
+                          color: colorScheme.error,
+                          onPressed: () async {
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Delete record?'),
+                                content: Text('Are you sure you want to delete "${m['name']}"?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                  FilledButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    style: FilledButton.styleFrom(backgroundColor: colorScheme.error),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (ok == true) await _delete(id);
+                          },
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  FilledButton.icon(
-                    onPressed: _openNewRecord,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add record'),
-                  ),
                 ],
-              ),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isNarrow = constraints.maxWidth < 720;
-                  final searchWidth = isNarrow ? constraints.maxWidth : 320.0;
-                  return Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 12,
-                    runSpacing: 8,
-                    children: [
-                      SizedBox(
-                        width: searchWidth,
-                        child: TextField(
-                          controller: _searchCtrl,
-                          decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.search),
-                            hintText: 'Search records',
-                          ),
-                          onChanged: (_) => setState(() {}),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 200,
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _selectedType,
-                          decoration: const InputDecoration(
-                            labelText: 'Record type',
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'baptism',
-                              child: Text('Baptism'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'marriage',
-                              child: Text('Marriage'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'confirmation',
-                              child: Text('Confirmation'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'funeral',
-                              child: Text('Death / Burial'),
-                            ),
-                          ],
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setState(() => _selectedType = v);
-                          },
-                        ),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _from ?? DateTime.now(),
-                            firstDate: DateTime(1900),
-                            lastDate: DateTime(2100),
-                          );
-                          if (picked != null) {
-                            setState(() {
-                              _from = DateTime(
-                                picked.year,
-                                picked.month,
-                                picked.day,
-                              );
-                            });
-                          }
-                        },
-                        icon: const Icon(Icons.calendar_today),
-                        label: Text(
-                          _from == null
-                              ? 'From date'
-                              : 'From: ${DateFormat.yMMMd().format(_from!)}',
-                        ),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _to ?? _from ?? DateTime.now(),
-                            firstDate: DateTime(1900),
-                            lastDate: DateTime(2100),
-                          );
-                          if (picked != null) {
-                            setState(() {
-                              _to = DateTime(
-                                picked.year,
-                                picked.month,
-                                picked.day,
-                              );
-                            });
-                          }
-                        },
-                        icon: const Icon(Icons.calendar_month),
-                        label: Text(
-                          _to == null
-                              ? 'To date'
-                              : 'To: ${DateFormat.yMMMd().format(_to!)}',
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Clear date filter',
-                        onPressed: () {
-                          if (_from == null && _to == null) return;
-                          setState(() {
-                            _from = null;
-                            _to = null;
-                          });
-                        },
-                        icon: const Icon(Icons.clear),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              const Divider(height: 0),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    if (items.isEmpty) {
-                      return _buildEmptyState(context);
-                    }
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildRecordsHeader(context, items.length),
-                        const Divider(height: 0),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(12),
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: DataTable(
-                                columns: const [
-                                  DataColumn(label: Text('Name')),
-                                  DataColumn(label: Text('Type')),
-                                  DataColumn(label: Text('Date')),
-                                  DataColumn(label: Text('Parish')),
-                                  DataColumn(label: Text('Actions')),
-                                ],
-                                rows: items.map((m) {
-                                  final key = m['id']?.toString() ?? '';
-                                  final type = (m['type'] ?? '').toString();
-                                  final typeLabel = _formatTypeLabel(type);
-                                  final rawParish = (m['parish'] ?? '')
-                                      .toString();
-                                  final parish = rawParish.isEmpty
-                                      ? 'Holy Rosary Parish – Oroquieta City'
-                                      : rawParish;
-                                  final dateRaw = (m['date'] ?? '').toString();
-                                  DateTime? d = DateTime.tryParse(
-                                    dateRaw.isEmpty ? '' : dateRaw,
-                                  );
-                                  final df = DateFormat.yMMMd();
-                                  final dateLabel = d == null
-                                      ? ''
-                                      : df.format(d.toLocal());
-                                  final name = (m['name'] ?? 'Untitled')
-                                      .toString();
-                                  final rec = m['record'] as ParishRecord?;
-
-                                  final cells = <DataCell>[
-                                    DataCell(
-                                      Text(
-                                        name,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _typeColor(
-                                            context,
-                                            type,
-                                          ).withValues(alpha: 0.12),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          typeLabel,
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                                color: _typeColor(
-                                                  context,
-                                                  type,
-                                                ),
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(Text(dateLabel)),
-                                    DataCell(Text(parish)),
-                                  ];
-
-                                  cells.add(
-                                    DataCell(
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            tooltip: 'Edit',
-                                            onPressed: () {
-                                              final recLocal =
-                                                  m['record'] as ParishRecord?;
-                                              if (recLocal == null) {
-                                                _upsert(existing: m);
-                                                return;
-                                              }
-
-                                              _openRecordForm(recLocal);
-                                            },
-                                            icon: const Icon(
-                                              Icons.edit_outlined,
-                                            ),
-                                          ),
-                                          IconButton(
-                                            tooltip: 'Delete',
-                                            onPressed: key.isEmpty
-                                                ? null
-                                                : () async {
-                                                    final ok = await showDialog<bool>(
-                                                      context: context,
-                                                      builder: (ctx) => AlertDialog(
-                                                        title: const Text(
-                                                          'Delete record?',
-                                                        ),
-                                                        content: Text(
-                                                          'Are you sure you want to delete "$key"?',
-                                                        ),
-                                                        actions: [
-                                                          TextButton(
-                                                            onPressed: () =>
-                                                                Navigator.pop(
-                                                                  ctx,
-                                                                  false,
-                                                                ),
-                                                            child: const Text(
-                                                              'Cancel',
-                                                            ),
-                                                          ),
-                                                          FilledButton(
-                                                            onPressed: () =>
-                                                                Navigator.pop(
-                                                                  ctx,
-                                                                  true,
-                                                                ),
-                                                            child: const Text(
-                                                              'Delete',
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    );
-                                                    if (ok == true) {
-                                                      await _delete(key);
-                                                    }
-                                                  },
-                                            icon: const Icon(
-                                              Icons.delete_outline,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-
-                                  return DataRow(
-                                    cells: cells,
-                                    onSelectChanged: (selected) {
-                                      if (selected != true) return;
-                                      if (rec == null) return;
-                                      context.push('/admin/records/${rec.id}');
-                                    },
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
+              );
+            }).toList(),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildRecordsHeader(BuildContext context, int count) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'Records',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              '$count total',
-              style: TextStyle(
-                fontSize: 12,
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.folder_off_outlined,
-            size: 48,
-            color: colorScheme.onSurface.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: 12),
-          Text('No records found', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            'Try adjusting filters or add a new record to get started.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurface.withValues(alpha: 0.7),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: _openNewRecord,
-            icon: const Icon(Icons.add),
-            label: const Text('Add first record'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatTypeLabel(String type) {
-    switch (type) {
+  RecordType _strToType(String s) {
+    switch (s.toLowerCase()) {
       case 'baptism':
-        return 'Baptism';
+        return RecordType.baptism;
       case 'marriage':
-        return 'Marriage';
-      case 'confirmation':
-        return 'Confirmation';
+        return RecordType.marriage;
       case 'funeral':
-        return 'Death / Burial';
-      default:
-        return type.isEmpty ? 'Unknown' : type;
-    }
-  }
-
-  Color _typeColor(BuildContext context, String type) {
-    switch (type) {
-      case 'baptism':
-        return Colors.blue;
-      case 'marriage':
-        return Colors.pink;
+        return RecordType.funeral;
       case 'confirmation':
-        return Colors.purple;
-      case 'funeral':
-        return Colors.grey;
+        return RecordType.confirmation;
       default:
-        return Theme.of(context).colorScheme.primary;
+        return RecordType.baptism;
     }
   }
 }

@@ -1,256 +1,393 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{db}/documents {
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{db}/documents {
 
-    // Helpers
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    function userRole(uid) {
-      return exists(/databases/$(db)/documents/users/$(uid))
-        ? get(/databases/$(db)/documents/users/$(uid)).data.role
-        : null;
-    }
-    function userDoc(uid) {
-      return get(/databases/$(db)/documents/users/$(uid));
-    }
-    function isAdmin() {
-      return isSignedIn() && (userRole(request.auth.uid) == 'admin');
-    }
-    function isStaff() {
-      return isSignedIn() && (userRole(request.auth.uid) == 'staff');
-    }
-    function isOwner(res) {
-      return isSignedIn() && res.data.createdBy == request.auth.uid;
-    }
-    function inviteValid(token, email) {
-      return true; // Simplified for now - validate invite token exists and matches email
-    }
-
-    // Invites (for no-functions staff onboarding)
-    // - Only admin can create invites
-    // - Reads are allowed for signed-in (to validate tokens client-side)
-    match /invites/{token} {
-      allow get: if true;
-      allow list: if isAdmin();
-      allow create: if isAdmin()
-        && request.resource.data.keys().hasOnly(['email','role','createdAt','expiresAt','used','usedBy','usedAt'])
-        && request.resource.data.role == 'staff'
-        && request.resource.data.used == false
-        && request.resource.data.email is string
-        && request.resource.data.expiresAt is timestamp;
-
-      // Only invited user can mark invite as used
-      allow update: if isSignedIn()
-        && resource.data.used == false
-        && request.resource.data.used == true
-        && request.resource.data.usedBy == request.auth.uid
-        && (request.resource.data.usedAt == request.time || request.resource.data.usedAt is timestamp)
-        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['used','usedBy','usedAt']);
-    }
-
-    // Users: only owner can read/write their own user doc
-    match /users/{uid} {
-      allow get: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      allow list: if isAdmin();
-
-      // Allow create by the authenticated user with a valid invite token OR by admin
-      allow create: if isSignedIn() && (
-        (request.auth.uid == uid &&
-         request.resource.data.keys().hasOnly(['id','uid','email','displayName','photoURL','role','createdAt','lastLogin','emailVerified','disabled','inviteToken','verificationCode','verificationCodeExpiresAt','verificationCodeVerified','fcmTokens','updatedAt']) &&
-         request.resource.data.email is string && request.resource.data.email == request.auth.token.email &&
-         request.resource.data.role is string &&
-         (request.resource.data.role == 'staff' || request.resource.data.role == 'admin') &&
-         (request.resource.data.role != 'admin') &&
-         inviteValid(request.resource.data.inviteToken, request.resource.data.email))
-        || isAdmin()
-      );
-
-      // Allow updates by owner or admin (e.g., profile updates)
-      allow update: if isSignedIn() && (
-        (request.auth.uid == uid &&
-          request.resource.data.role == resource.data.role &&
-          request.resource.data.email == resource.data.email &&
-          request.resource.data.disabled == resource.data.disabled &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['displayName','photoURL','lastLogin','emailVerified','verificationCode','verificationCodeExpiresAt','verificationCodeVerified','inviteToken','fcmTokens','updatedAt']))
-        || (isAdmin() && request.resource.data.diff(resource.data).changedKeys().hasOnly(['role','disabled','displayName','photoURL','lastLogin','emailVerified','updatedAt']))
-      );
-      allow delete: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-    }
-
-    // Settings
-    // - Signed-in: read
-    // - Admin: write
-    match /settings/{docId} {
-      allow get: if true;
-      allow list: if isAdmin();
-      allow create: if isSignedIn() && docId == 'app';
-      allow update: if isSignedIn() && docId == 'app'
-        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['themeMode','updatedAt']);
-      allow delete: if isAdmin();
-    }
-
-    match /baptism_records/{recordId} {
-      allow get, list: if isSignedIn() && (isAdmin() || isStaff());
-
-      allow create: if isSignedIn() && (isAdmin() || isStaff())
-        && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
-
-      allow update: if isSignedIn() && (
-        isAdmin() ||
-        (isStaff() && resource.data.created_by_uid == request.auth.uid)
-      );
-
-      allow delete: if isAdmin();
-    }
-
-    match /marriage_records/{recordId} {
-      allow get, list: if isSignedIn() && (isAdmin() || isStaff());
-
-      allow create: if isSignedIn() && (isAdmin() || isStaff())
-        && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
-
-      allow update: if isSignedIn() && (
-        isAdmin() ||
-        (isStaff() && resource.data.created_by_uid == request.auth.uid)
-      );
-
-      allow delete: if isAdmin();
-    }
-
-    match /confirmation_records/{recordId} {
-      allow get, list: if isSignedIn() && (isAdmin() || isStaff());
-
-      allow create: if isSignedIn() && (isAdmin() || isStaff())
-        && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
-
-      allow update: if isSignedIn() && (
-        isAdmin() ||
-        (isStaff() && resource.data.created_by_uid == request.auth.uid)
-      );
-
-      allow delete: if isAdmin();
-    }
-
-    match /funeral_records/{recordId} {
-      allow get, list: if isSignedIn() && (isAdmin() || isStaff());
-
-      allow create: if isSignedIn() && (isAdmin() || isStaff())
-        && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
-
-      allow update: if isSignedIn() && (
-        isAdmin() ||
-        (isStaff() && resource.data.created_by_uid == request.auth.uid)
-      );
-
-      allow delete: if isAdmin();
-    }
-
-    // Requests (certificate requests)
-    match /requests/{requestId} {
-      allow get, list: if isSignedIn();
-
-      allow create: if isSignedIn();
-
-      allow update, delete: if isAdmin();
-    }
-
-    // Analytics (server-generated counters)
-    match /analytics/{docId} {
-      allow get, list: if isAdmin();
-      allow create, update, delete: if false;
-    }
-
-    // Records:
-    // - Admin: full access
-    // - Staff: can create their own (createdBy == uid), read all, update/delete only their own
-    match /records/{recordId} {
-      allow get, list: if isSignedIn() && (
-        isAdmin() ||
-        userRole(request.auth.uid) == 'staff'
-      );
-
-      allow create: if isSignedIn() && (
-        isAdmin() || userRole(request.auth.uid) == 'staff'
-      ) && (
-        isAdmin() || request.resource.data.created_by_uid == request.auth.uid
-      );
-
-      allow update: if isSignedIn() && (
-        isAdmin() ||
-        (
-          userRole(request.auth.uid) == 'staff' &&
-          resource.data.created_by_uid == request.auth.uid &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly([
-            'type',
-            'text',
-            'source',
-            'image_ref',
-            'notes',
-            'certificate_status',
-            'updated_at'
-          ])
-        )
-      );
-
-      allow delete: if isAdmin();
-    }
-
-    // Logs
-    match /logs/{logId} {
-      allow get, list: if isAdmin();
-      allow create, update, delete: if false;
-    }
-
-    match /audit_logs/{logId} {
-      allow get, list: if isAdmin();
-      allow create: if isAdmin() || isStaff();
-      allow update, delete: if false;
-    }
-
-    // Notifications
-    match /notifications/{nid} {
-      allow get: if isSignedIn() && (
-        isAdmin() ||
-        (resource.data.user_id == null || resource.data.user_id == request.auth.uid)
-      );
-
-      // List allowed for signed-in; clients must query appropriately.
-      allow list: if isSignedIn();
-
-      allow create: if isAdmin();
-      allow update: if false;
-      allow delete: if isAdmin();
-
-      match /user_state/{uid} {
-        allow get, list: if isSignedIn() && request.auth.uid == uid;
-        allow create, update: if isSignedIn()
-          && request.auth.uid == uid
-          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['read','archived','updated_at']);
-        allow delete: if false;
+      // Helpers
+      function isSignedIn() {
+        return request.auth != null;
       }
-    }
+      function userRole(uid) {
+        return exists(/databases/$(db)/documents/users/$(uid))
+          ? get(/databases/$(db)/documents/users/$(uid)).data.role
+          : null;
+      }
+      function userDoc(uid) {
+        return get(/databases/$(db)/documents/users/$(uid));
+      }
+      function isAdmin() {
+        return isSignedIn() && (
+          request.auth.token.admin == true ||
+          request.auth.token.isAdmin == true ||
+          request.auth.token.role == 'admin' ||
+          userRole(request.auth.uid) == 'admin'
+        );
+      }
+      function isStaff() {
+        return isSignedIn() && (
+          isAdmin() ||
+          request.auth.token.role == 'staff' ||
+          request.auth.token.isStaff == true ||
+          userRole(request.auth.uid) == 'staff'
+        );
+      }
+      function isFinance() {
+        return isSignedIn() && (
+          isAdmin() ||
+          request.auth.token.role == 'finance' ||
+          request.auth.token.isFinance == true ||
+          userRole(request.auth.uid) == 'finance'
+        );
+      }
+      function isCreator(res) {
+        return isSignedIn() && (
+          res.data.created_by_uid == request.auth.uid ||
+          res.data.createdBy == request.auth.uid
+        );
+      }
+      function isRequester(res) {
+        return isSignedIn() && res.data.requester_uid == request.auth.uid;
+      }
+      function isOwnerUid(res) {
+        return isSignedIn() && res.data.owner_uid == request.auth.uid;
+      }
+      function isDonor(res) {
+        return isSignedIn() && res.data.donor_id == request.auth.uid;
+      }
+      function inviteValid(token, email) {
+        return true; // Simplified for now - validate invite token exists and matches email
+      }
 
-    // Announcements
-    // - Admin/Staff: full CRUD on all announcements
-    // - Public (no auth): read only active, upcoming announcements
-    match /announcements/{id} {
-      // Read access
-      allow get, list: if
-        // Admin or staff can read everything
-        isAdmin() || isStaff() ||
-        // Public can only read active + upcoming announcements
-        (
-          resource.data.status == 'active'
+      // Invites (for no-functions staff onboarding)
+      // - Only admin can create invites
+      // - Reads are allowed for signed-in (to validate tokens client-side)
+      match /invites/{token} {
+        allow get: if true;
+        allow list: if isAdmin();
+        allow create: if isAdmin()
+          && request.resource.data.keys().hasOnly(['email','role','createdAt','expiresAt','used','usedBy','usedAt'])
+          && (request.resource.data.role == 'staff' || request.resource.data.role == 'finance')
+          && request.resource.data.used == false
+          && request.resource.data.email is string
+          && request.resource.data.expiresAt is timestamp;
+
+        // Only invited user can mark invite as used
+        allow update: if isSignedIn()
+          && resource.data.used == false
+          && request.resource.data.used == true
+          && request.resource.data.usedBy == request.auth.uid
+          && (request.resource.data.usedAt == request.time || request.resource.data.usedAt is timestamp)
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['used','usedBy','usedAt']);
+      }
+
+      // Users: only owner can read/write their own user doc
+      match /users/{uid} {
+        // Allow get for own user doc - simple check without circular dependency
+        allow get: if isSignedIn() && request.auth.uid == uid;
+        allow list: if isAdmin();
+
+        // Allow create by the authenticated user with a valid invite token OR by admin
+        allow create: if isSignedIn() && (
+          (request.auth.uid == uid &&
+          request.resource.data.keys().hasOnly(['uid','email','displayName','photoURL','role','createdAt','lastLogin','emailVerified','disabled','inviteToken','verificationCode','verificationCodeExpiresAt','verificationCodeVerified','fcmTokens','updatedAt']) &&
+          request.resource.data.email is string &&
+          request.resource.data.role is string &&
+          (
+            // Admin bootstrap: allow admin users (by claim) to create their own doc
+            (request.resource.data.role == 'admin' && isAdmin()) ||
+            // Parishioner self signup (default) - email must match auth token OR be the same as request.auth.token.email if available
+            (request.resource.data.role == 'parishioner' && (
+              request.resource.data.email == request.auth.token.email || 
+              request.auth.token.email == null
+            )) ||
+            // Staff signup via invite
+            ((request.resource.data.role == 'staff' || request.resource.data.role == 'finance') && inviteValid(request.resource.data.inviteToken, request.resource.data.email))
+          )
+          )
+          || isAdmin()
         );
 
-      // Write access (create/update/delete) restricted to admin or staff
-      allow create, update, delete: if isAdmin() || isStaff();
-    }
+        // Allow updates by owner or admin (e.g., profile updates)
+        allow update: if isSignedIn() && (
+          (request.auth.uid == uid &&
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['displayName','photoURL','lastLogin','emailVerified','verificationCode','verificationCodeExpiresAt','verificationCodeVerified','inviteToken','fcmTokens','updatedAt']))
+          || (isAdmin() && request.resource.data.diff(resource.data).changedKeys().hasOnly(['role','disabled','displayName','photoURL','lastLogin','emailVerified','updatedAt']))
+        );
+        allow delete: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      }
 
-    // Default deny for everything else
-    match /{document=**} {
-      allow read, write: if false;
+      // Pending users (for admin-created accounts awaiting Firebase Auth creation)
+      match /pending_users/{docId} {
+        allow get: if isAdmin();
+        allow list: if isAdmin();
+        allow create: if isAdmin()
+          && request.resource.data.keys().hasOnly(['email','displayName','role','status','createdAt','createdBy'])
+          && request.resource.data.email is string
+          && request.resource.data.role is string
+          && request.resource.data.status == 'pending_creation';
+        allow update: if isAdmin();
+        allow delete: if isAdmin();
+      }
+
+      // Settings
+      // - Signed-in: read
+      // - Admin: write
+      match /settings/{docId} {
+        allow get: if true;
+        allow list: if isAdmin();
+        allow create: if isAdmin() && docId == 'app';
+        allow update: if isAdmin() && docId == 'app'
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['themeMode','updatedAt']);
+        allow delete: if isAdmin();
+      }
+
+      // Bookings (Appointments)
+      match /bookings/{bookingId} {
+        allow get, list: if isSignedIn() && (
+          isAdmin() || isStaff() ||
+          resource.data.requester_uid == request.auth.uid
+        );
+
+        allow create: if isSignedIn()
+          && request.resource.data.requester_uid == request.auth.uid;
+
+        allow update: if isSignedIn() && (
+          isAdmin() || isStaff() ||
+          (
+            resource.data.requester_uid == request.auth.uid &&
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['scheduled_for','notes','status','updated_at'])
+          )
+        );
+
+        allow delete: if isAdmin();
+      }
+
+      // Correction tickets
+      match /correction_tickets/{ticketId} {
+        allow get, list: if isSignedIn() && (
+          isAdmin() || isStaff() || isCreator(resource)
+        );
+
+        allow create: if isSignedIn()
+          && request.resource.data.created_by_uid == request.auth.uid;
+
+        allow update: if isSignedIn() && (
+          isAdmin() || isStaff()
+        );
+        allow delete: if isAdmin();
+      }
+
+      // OCR Jobs
+      match /ocr_jobs/{jobId} {
+        allow get, list: if isSignedIn() && (isAdmin() || isStaff());
+
+        allow create: if isSignedIn() && (isAdmin() || isStaff())
+          && (isAdmin() || request.resource.data.assigned_to == request.auth.uid || request.resource.data.assigned_to == null);
+
+        allow update: if isSignedIn() && (isAdmin() || isStaff());
+
+        allow delete: if isAdmin();
+      }
+
+      match /baptism_records/{recordId} {
+        allow get, list: if isSignedIn() && (isAdmin() || isStaff());
+
+        allow create: if isSignedIn() && (isAdmin() || isStaff())
+          && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
+
+        allow update: if isSignedIn() && (
+          isAdmin() ||
+          (isStaff() && resource.data.created_by_uid == request.auth.uid)
+        );
+
+        allow delete: if isAdmin();
+      }
+
+      match /marriage_records/{recordId} {
+        allow get, list: if isSignedIn() && (isAdmin() || isStaff());
+
+        allow create: if isSignedIn() && (isAdmin() || isStaff())
+          && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
+
+        allow update: if isSignedIn() && (
+          isAdmin() ||
+          (isStaff() && resource.data.created_by_uid == request.auth.uid)
+        );
+
+        allow delete: if isAdmin();
+      }
+
+      match /confirmation_records/{recordId} {
+        allow get, list: if isSignedIn() && (isAdmin() || isStaff());
+
+        allow create: if isSignedIn() && (isAdmin() || isStaff())
+          && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
+
+        allow update: if isSignedIn() && (
+          isAdmin() ||
+          (isStaff() && resource.data.created_by_uid == request.auth.uid)
+        );
+
+        allow delete: if isAdmin();
+      }
+
+      match /funeral_records/{recordId} {
+        allow get, list: if isSignedIn() && (isAdmin() || isStaff());
+
+        allow create: if isSignedIn() && (isAdmin() || isStaff())
+          && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
+
+        allow update: if isSignedIn() && (
+          isAdmin() ||
+          (isStaff() && resource.data.created_by_uid == request.auth.uid)
+        );
+
+        allow delete: if isAdmin();
+      }
+
+      // Requests (certificate requests)
+      match /requests/{requestId} {
+        allow get, list: if isSignedIn() && (
+          isAdmin() || isStaff() ||
+          resource.data.created_by_uid == request.auth.uid
+        );
+
+        allow create: if isSignedIn()
+          && request.resource.data.created_by_uid == request.auth.uid;
+
+        allow update: if isSignedIn() && (
+          isAdmin() || isStaff() ||
+          (
+            // Owner can only cancel their own request
+            resource.data.created_by_uid == request.auth.uid &&
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updated_at']) &&
+            request.resource.data.status == 'cancelled'
+          )
+        );
+
+        allow delete: if isAdmin();
+      }
+
+      // Donations
+      match /donations/{donationId} {
+        // Finance/Admin can read and reconcile.
+        allow get, list: if isFinance();
+
+        // Any authenticated user can create a donation tied to themselves.
+        allow create: if isSignedIn()
+          && request.resource.data.donor_id == request.auth.uid
+          && request.resource.data.reconciled == false;
+
+        // Finance/Admin can update reconciliation fields.
+        allow update: if isFinance();
+        allow delete: if isAdmin();
+      }
+
+      // Analytics (server-generated counters)
+      match /analytics/{docId} {
+        allow get, list: if isAdmin();
+        allow create, update, delete: if false;
+      }
+
+      // Records:
+      // - Admin: full access
+      // - Staff: can create their own (createdBy == uid), read all, update/delete only their own
+      match /records/{recordId} {
+        allow get, list: if isSignedIn() && (
+          isAdmin() ||
+          userRole(request.auth.uid) == 'staff' ||
+          resource.data.owner_uid == request.auth.uid
+        );
+
+        allow create: if isSignedIn() && (
+          isAdmin() || userRole(request.auth.uid) == 'staff'
+        ) && (
+          isAdmin() || request.resource.data.created_by_uid == request.auth.uid
+        );
+
+        allow update: if isSignedIn() && (
+          isAdmin() ||
+          (
+            userRole(request.auth.uid) == 'staff' &&
+            resource.data.created_by_uid == request.auth.uid &&
+            request.resource.data.diff(resource.data).changedKeys().hasOnly([
+              'type',
+              'text',
+              'source',
+              'image_ref',
+              'notes',
+              'certificate_status',
+              'updated_at'
+            ])
+          )
+        );
+
+        allow delete: if isAdmin();
+      }
+
+      // Logs
+      match /logs/{logId} {
+        allow get, list: if isAdmin();
+        allow create, update, delete: if false;
+      }
+
+      match /audit_logs/{logId} {
+        allow get, list: if isAdmin();
+        allow create: if isAdmin() || isStaff();
+        allow update, delete: if false;
+      }
+
+      // Notifications
+      match /notifications/{nid} {
+        allow get, list: if isSignedIn();
+
+        allow create: if isAdmin();
+        allow update: if false;
+        allow delete: if isAdmin();
+
+        match /user_state/{uid} {
+          allow get, list: if isSignedIn() && request.auth.uid == uid;
+          allow create, update: if isSignedIn()
+            && request.auth.uid == uid
+            && request.resource.data.diff(resource.data).changedKeys().hasOnly(['read','archived','updated_at']);
+          allow delete: if false;
+        }
+      }
+
+      // Announcements
+      // - Admin/Staff: full CRUD on all announcements
+      // - Public (no auth): read only active announcements
+      match /announcements/{id} {
+        // Read access
+        allow read: if true;
+
+        // Write access (create/update/delete) restricted to admin or staff
+        allow create, update, delete: if isAdmin() || isStaff();
+      }
+
+      // Parish households - allow access for owners/members
+      match /households/{householdId} {
+        allow get, list: if isSignedIn() && (
+          isAdmin() || isStaff() || resource.data.userId == request.auth.uid
+        );
+        allow create: if isSignedIn();
+        allow update, delete: if isSignedIn() && (
+          isAdmin() || isStaff() || resource.data.userId == request.auth.uid
+        );
+      }
+
+      match /household_members/{memberId} {
+        allow get, list: if isSignedIn() && (
+          isAdmin() || isStaff() || resource.data.userId == request.auth.uid
+        );
+        allow create: if isSignedIn();
+        allow update, delete: if isSignedIn() && (
+          isAdmin() || isStaff() || resource.data.userId == request.auth.uid
+        );
+      }
+
+      // Default deny for everything else
+      match /{document=**} {
+        allow read, write: if false;
+      }
     }
   }
-}

@@ -1,43 +1,95 @@
-import 'dart:async';
+import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/record.dart';
+import '../config/backend.dart';
 
 class AdminRepository {
-  static const Duration _timeout = Duration(seconds: 20);
+  String get _base => BackendConfig.baseUrl;
 
-  FirebaseFirestore get _db => FirebaseFirestore.instance;
-
-  String _requireUid() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || uid.isEmpty) {
-      throw Exception('Not authenticated');
+  ParishRecord _fromBackend(Map<String, dynamic> r) {
+    final createdAt = r['created_at'];
+    DateTime date;
+    if (createdAt is String) {
+      date = DateTime.tryParse(createdAt) ?? DateTime.now();
+    } else if (createdAt is DateTime) {
+      date = createdAt;
+    } else {
+      date = DateTime.now();
     }
-    return uid;
-  }
-
-  Future<bool> _isAdmin() async {
-    final uid = _requireUid();
-    final snap = await _db
-        .collection('users')
-        .doc(uid)
-        .get()
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Role lookup timed out'),
-        );
-    final role = (snap.data()?['role'] ?? '').toString().trim().toLowerCase();
-    return role == 'admin';
+    final name = (r['text'] as String?) ?? 'Unnamed Record';
+    final typeStr = (r['type'] as String?)?.toLowerCase() ?? 'baptism';
+    final type = RecordType.values.firstWhere(
+      (e) => e.name.toLowerCase() == typeStr,
+      orElse: () => RecordType.baptism,
+    );
+    return ParishRecord(
+      id: (r['id'] as String?) ?? (r['record_id'] as String?) ?? '',
+      type: type,
+      name: name,
+      date: date,
+      imagePath: r['image_ref'] as String?,
+      parish: null,
+      notes: r['source'] as String?,
+    );
   }
 
   Future<List<ParishRecord>> listRecent({int limit = 50, int days = 7}) async {
-    throw UnimplementedError('Firebase-only: listRecent not implemented yet');
+    List<ParishRecord> records = [];
+
+    // First, try to load from backend admin API
+    try {
+      final headers = await _authHeader();
+      final uri = Uri.parse(
+        '$_base/api/admin/records/recent?limit=$limit&days=$days',
+      );
+      final resp = await http.get(uri, headers: headers);
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        final rows = (body['rows'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>();
+        records = rows.map(_fromBackend).toList();
+      }
+    } catch (e) {
+      developer.log(
+        'Admin listRecent backend load failed: $e',
+        name: 'AdminRepository',
+      );
+    }
+
+    // Sort by date descending and limit results
+    final sortedRecords = records..sort((a, b) => b.date.compareTo(a.date));
+
+    return sortedRecords.take(limit).toList();
+  }
+
+  Future<Map<String, String>> _authHeader() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('Not authenticated');
+    final token = await user.getIdToken();
+    return {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
   }
 
   Future<List<ParishRecord>> listByUser(String userId, {int limit = 50}) async {
-    throw UnimplementedError('Firebase-only: listByUser not implemented yet');
+    final headers = await _authHeader();
+    final uri = Uri.parse(
+      '$_base/api/admin/records?user_id=$userId&limit=$limit',
+    );
+    final resp = await http.get(uri, headers: headers);
+    if (resp.statusCode != 200) {
+      throw Exception('Admin list failed: ${resp.statusCode} ${resp.body}');
+    }
+    final body = json.decode(resp.body) as Map<String, dynamic>;
+    final rows = (body['rows'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    return rows.map(_fromBackend).toList();
   }
 
   Future<void> update(
@@ -46,43 +98,54 @@ class AdminRepository {
     String? parish,
     String? imagePath,
   }) async {
-    throw UnimplementedError('Firebase-only: update record not implemented');
+    final headers = await _authHeader();
+    final data = <String, dynamic>{};
+    if (name != null) data['text'] = name;
+    if (imagePath != null) data['image_ref'] = imagePath;
+    if (parish != null) data['source'] = parish;
+    if (data.isEmpty) return;
+    final resp = await http.put(
+      Uri.parse('$_base/api/admin/records/$id'),
+      headers: headers,
+      body: json.encode(data),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Admin update failed: ${resp.statusCode} ${resp.body}');
+    }
   }
 
   Future<void> delete(String id) async {
-    throw UnimplementedError('Firebase-only: delete record not implemented');
-  }
-
-  Future<void> deleteUser(String id) async {
-    throw UnimplementedError('Firebase-only: deleteUser not implemented');
+    final headers = await _authHeader();
+    final resp = await http.delete(
+      Uri.parse('$_base/api/admin/records/$id'),
+      headers: headers,
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Admin delete failed: ${resp.statusCode} ${resp.body}');
+    }
   }
 
   Future<Map<String, dynamic>> getSettings() async {
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-
-    final snap = await _db
-        .collection('settings')
-        .doc('app')
-        .get()
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Settings load timed out'),
-        );
-    final d = snap.data();
-    if (d == null) {
-      return {
-        'language': 'en',
-        'timezone': 'UTC',
-        'notify': true,
-        'auto_backup': false,
-      };
+    try {
+      final headers = await _authHeader();
+      final resp = await http.get(
+        Uri.parse('$_base/api/admin/settings'),
+        headers: headers,
+      );
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        return body;
+      }
+    } catch (e) {
+      developer.log('Admin settings API failed: $e', name: 'AdminRepository');
     }
+
+    // Fallback: return default settings
     return {
-      'language': d['language'] ?? 'en',
-      'timezone': d['timezone'] ?? 'UTC',
-      'notify': d['notify'] == null ? true : d['notify'] == true,
-      'auto_backup': d['auto_backup'] == true,
+      'language': 'en',
+      'timezone': 'UTC',
+      'notify': true,
+      'auto_backup': false,
     };
   }
 
@@ -92,232 +155,280 @@ class AdminRepository {
     required bool notify,
     required bool autoBackup,
   }) async {
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-
-    await _db
-        .collection('settings')
-        .doc('app')
-        .set({
-          'language': language,
-          'timezone': timezone,
-          'notify': notify,
-          'auto_backup': autoBackup,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true))
-        .timeout(
-          _timeout,
-          onTimeout: () =>
-              throw TimeoutException('Admin settings save timed out'),
-        );
+    final headers = await _authHeader();
+    final payload = json.encode({
+      'language': language,
+      'timezone': timezone,
+      'notify': notify,
+      'auto_backup': autoBackup,
+    });
+    final resp = await http.put(
+      Uri.parse('$_base/api/admin/settings'),
+      headers: headers,
+      body: payload,
+    );
+    if (resp.statusCode != 200) {
+      throw Exception(
+        'Failed to save settings: ${resp.statusCode} ${resp.body}',
+      );
+    }
   }
 
   Future<List<Map<String, dynamic>>> getLogs({
     int limit = 100,
     int days = 7,
   }) async {
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-
-    final cutoff = DateTime.now().subtract(Duration(days: days));
-    final snap = await _db
-        .collection('audit_logs')
-        .orderBy('created_at', descending: true)
-        .limit(limit)
-        .get()
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Audit logs timed out'),
-        );
-
-    String toIso(dynamic v) {
-      if (v == null) return '';
-      if (v is Timestamp) return v.toDate().toIso8601String();
-      if (v is DateTime) return v.toIso8601String();
-      return v.toString();
+    // Try backend API first
+    try {
+      final headers = await _authHeader();
+      final uri = Uri.parse('$_base/api/admin/logs?limit=$limit&days=$days');
+      final resp = await http.get(uri, headers: headers);
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        final rows = (body['rows'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>();
+        return rows;
+      }
+    } catch (e) {
+      developer.log(
+        'Backend getLogs failed, using Firestore fallback: $e',
+        name: 'AdminRepository',
+      );
     }
 
-    final rows = <Map<String, dynamic>>[];
-    for (final doc in snap.docs) {
-      final d = doc.data();
-      final createdAt = d['created_at'];
-      DateTime created = DateTime.tryParse(toIso(createdAt)) ?? DateTime.now();
-      if (created.isBefore(cutoff)) continue;
-      rows.add({
-        'id': doc.id,
-        'user_id': d['user_id'],
-        'action': d['action'],
-        'details': d['details'],
-        'new_values': d['new_values'],
-        'timestamp': d['timestamp'] ?? toIso(createdAt),
-        'created_at': toIso(createdAt),
-        'resource_id': d['resource_id'],
-        'resource_type': d['resource_type'],
-      });
+    // Fallback: read directly from Firestore (no Firebase Function needed)
+    try {
+      final since = DateTime.now().subtract(Duration(days: days));
+      final snap = await FirebaseFirestore.instance
+          .collection('audit_logs')
+          .orderBy('timestamp', descending: true)
+          .limit(limit)
+          .get();
+
+      return snap.docs
+          .where((doc) {
+            final data = doc.data();
+            final ts = data['timestamp'];
+            if (ts == null) return false;
+            DateTime? date;
+            if (ts is Timestamp) {
+              date = ts.toDate();
+            } else if (ts is String) {
+              date = DateTime.tryParse(ts);
+            }
+            return date != null && date.isAfter(since);
+          })
+          .map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'user_id': data['user_id'] ?? '',
+              'action': data['action'] ?? '',
+              'details': data['details'] ?? data['new_values'] ?? '',
+              'resource_id': data['resource_id'],
+              'timestamp': data['timestamp'] is Timestamp
+                  ? (data['timestamp'] as Timestamp).toDate().toIso8601String()
+                  : (data['timestamp'] ?? ''),
+            };
+          })
+          .toList();
+    } catch (e) {
+      developer.log('Firestore fallback failed: $e', name: 'AdminRepository');
+      throw Exception('Failed to load audit logs: $e');
     }
-    return rows;
-  }
-
-  Future<List<Map<String, dynamic>>> getRecordHistory(
-    String recordId, {
-    int limit = 50,
-  }) async {
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-
-    final snap = await _db
-        .collection('audit_logs')
-        .where('resource_id', isEqualTo: recordId)
-        .orderBy('created_at', descending: true)
-        .limit(limit)
-        .get()
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Record history timed out'),
-        );
-
-    String toIso(dynamic v) {
-      if (v == null) return '';
-      if (v is Timestamp) return v.toDate().toIso8601String();
-      if (v is DateTime) return v.toIso8601String();
-      return v.toString();
-    }
-
-    return snap.docs.map((doc) {
-      final d = doc.data();
-      final createdAt = d['created_at'];
-      return <String, dynamic>{
-        'id': doc.id,
-        'user_id': d['user_id'],
-        'action': d['action'],
-        'details': d['details'],
-        'new_values': d['new_values'],
-        'timestamp': d['timestamp'] ?? toIso(createdAt),
-        'created_at': toIso(createdAt),
-        'resource_id': d['resource_id'],
-        'resource_type': d['resource_type'],
-      };
-    }).toList();
   }
 
   Future<void> deleteLog(String id) async {
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-    await _db
-        .collection('audit_logs')
-        .doc(id)
-        .delete()
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Delete log timed out'),
-        );
+    // Try backend API first
+    try {
+      final headers = await _authHeader();
+      final resp = await http.delete(
+        Uri.parse('$_base/api/admin/logs/$id'),
+        headers: headers,
+      );
+      if (resp.statusCode == 200) return;
+    } catch (e) {
+      developer.log(
+        'Backend deleteLog failed, using Firestore: $e',
+        name: 'AdminRepository',
+      );
+    }
+
+    // Fallback: delete directly from Firestore
+    try {
+      await FirebaseFirestore.instance
+          .collection('audit_logs')
+          .doc(id)
+          .delete();
+    } catch (e) {
+      developer.log('Firestore deleteLog failed: $e', name: 'AdminRepository');
+      throw Exception('Delete log failed: $e');
+    }
   }
 
   Future<List<Map<String, dynamic>>> getUsers(
     String? role, {
     int limit = 100,
   }) async {
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-
-    Query<Map<String, dynamic>> q = _db
-        .collection('users')
-        .orderBy('createdAt', descending: true);
-    if (role != null && role.trim().isNotEmpty) {
-      q = q.where('role', isEqualTo: role.trim());
+    final headers = await _authHeader();
+    final uri = (role == null || role.isEmpty)
+        ? Uri.parse('$_base/api/admin/users?limit=$limit')
+        : Uri.parse('$_base/api/admin/users?role=$role&limit=$limit');
+    final resp = await http.get(uri, headers: headers);
+    if (resp.statusCode != 200) {
+      throw Exception('Get users failed: ${resp.statusCode} ${resp.body}');
     }
-
-    final snap = await q
-        .limit(limit)
-        .get()
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Get users timed out'),
-        );
-    return snap.docs
-        .map((d) => <String, dynamic>{'uid': d.id, ...d.data()})
-        .toList();
+    final body = json.decode(resp.body) as Map<String, dynamic>;
+    final rows = (body['rows'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    return rows;
   }
 
   Future<void> setUserRole(String uid, String role) async {
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-    await _db.collection('users').doc(uid).set({
-      'role': role,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    final headers = await _authHeader();
+    final payload = json.encode({'role': role});
+    final resp = await http.patch(
+      Uri.parse('$_base/api/admin/users/$uid/role'),
+      headers: headers,
+      body: payload,
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Set user role failed: ${resp.statusCode} ${resp.body}');
+    }
   }
 
   Future<void> setUserStatus(String uid, bool disabled) async {
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-    await _db.collection('users').doc(uid).set({
-      'disabled': disabled,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    final headers = await _authHeader();
+    final payload = json.encode({'disabled': disabled});
+    final resp = await http.patch(
+      Uri.parse('$_base/api/admin/users/$uid/status'),
+      headers: headers,
+      body: payload,
+    );
+    if (resp.statusCode != 200) {
+      throw Exception(
+        'Set user status failed: ${resp.statusCode} ${resp.body}',
+      );
+    }
   }
 
   Future<List<Map<String, dynamic>>> getDailyCounts({int days = 14}) async {
-    throw UnimplementedError(
-      'Firebase-only: daily record metrics not implemented yet',
+    final headers = await _authHeader();
+    final resp = await http.get(
+      Uri.parse('$_base/api/admin/metrics/records/daily?days=$days'),
+      headers: headers,
     );
+    if (resp.statusCode != 200) {
+      throw Exception(
+        'Get daily metrics failed: ${resp.statusCode} ${resp.body}',
+      );
+    }
+    final body = json.decode(resp.body) as Map<String, dynamic>;
+    final rows = (body['days'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    return rows;
   }
 
-  Future<List<Map<String, dynamic>>> getAnalytics({
-    int days = 30,
-    String? metricType,
-  }) async {
-    // Firebase-only: no backend analytics yet.
-    // Keep signature for UI compatibility.
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-    return const <Map<String, dynamic>>[];
+  Future<List<Map<String, dynamic>>> getRecordHistory(String recordId) async {
+    try {
+      final headers = await _authHeader();
+      final uri = Uri.parse(
+        '$_base/api/admin/logs?limit=50&days=365&resource_id=$recordId',
+      );
+      final resp = await http.get(uri, headers: headers);
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        final rows = (body['rows'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>();
+        return rows;
+      }
+    } catch (e) {
+      developer.log('getRecordHistory failed: $e', name: 'AdminRepository');
+    }
+    return [];
+  }
+
+  Future<List<Map<String, dynamic>>> getAnalytics({int days = 7}) async {
+    try {
+      final headers = await _authHeader();
+      final resp = await http.get(
+        Uri.parse('$_base/api/admin/analytics?days=$days'),
+        headers: headers,
+      );
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        final rows = (body['rows'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>();
+        return rows;
+      }
+    } catch (e) {
+      developer.log('getAnalytics failed: $e', name: 'AdminRepository');
+    }
+    return [];
   }
 
   Future<Map<String, dynamic>> getSummary({int days = 7}) async {
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
+    try {
+      final headers = await _authHeader();
+      final resp = await http.get(
+        Uri.parse('$_base/api/admin/summary?days=$days'),
+        headers: headers,
+      );
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        developer.log(
+          'Admin summary loaded from backend: $body',
+          name: 'AdminRepository',
+        );
+        return body;
+      } else {
+        developer.log(
+          'Admin summary API returned ${resp.statusCode}: ${resp.body}',
+          name: 'AdminRepository',
+        );
+      }
+    } catch (e) {
+      developer.log('Admin summary API failed: $e', name: 'AdminRepository');
+    }
+
+    // Fallback: generate summary from Firestore only
+    developer.log('Using fallback summary data', name: 'AdminRepository');
     return await _generateLocalSummary(days: days);
   }
 
   Future<bool> usersHealth() async {
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-    final snap = await _db
-        .collection('users')
-        .limit(1)
-        .get()
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Get users health timed out'),
-        );
-    return snap.docs.isNotEmpty || snap.size == 0;
+    final headers = await _authHeader();
+    final resp = await http.get(
+      Uri.parse('$_base/api/admin/users/health'),
+      headers: headers,
+    );
+    if (resp.statusCode == 200) return true;
+    return false;
   }
 
   Future<int> usersSync() async {
-    // Firebase-only: no sync job needed.
-    final isAdmin = await _isAdmin();
-    if (!isAdmin) throw Exception('Admin access required');
-    final snap = await _db
-        .collection('users')
-        .get()
-        .timeout(
-          _timeout,
-          onTimeout: () => throw TimeoutException('Get users sync timed out'),
-        );
-    return snap.docs.length;
+    final headers = await _authHeader();
+    final resp = await http.post(
+      Uri.parse('$_base/api/admin/users/sync'),
+      headers: headers,
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Users sync failed: ${resp.statusCode} ${resp.body}');
+    }
+    final body = json.decode(resp.body) as Map<String, dynamic>;
+    return (body['total'] as int?) ?? 0;
   }
 
   Future<Map<String, dynamic>> _generateLocalSummary({int days = 7}) async {
     try {
-      // Get user counts from Firestore only (no local records cache)
+      // Get user counts from Firestore only
       final usersSnapshot = await FirebaseFirestore.instance
           .collection('users')
           .get();
       final usersByRole = <String, int>{};
 
       for (final doc in usersSnapshot.docs) {
-        final role = doc.data()['role'] as String? ?? 'staff';
+        final role = doc.data()['role'] as String? ?? 'volunteer';
         usersByRole[role] = (usersByRole[role] ?? 0) + 1;
       }
 
@@ -325,16 +436,17 @@ class AdminRepository {
         'total_records_last_days': 0,
         'users_by_role': usersByRole.isNotEmpty
             ? usersByRole
-            : {'admin': 1, 'staff': 2},
+            : {'admin': 1, 'staff': 2, 'volunteer': 1},
         'total_users': usersSnapshot.docs.isNotEmpty
             ? usersSnapshot.docs.length
             : 4,
         'generated_at': DateTime.now().toIso8601String(),
       };
     } catch (e) {
+      developer.log('Error generating summary: $e', name: 'AdminRepository');
       return {
         'total_records_last_days': 0,
-        'users_by_role': {'admin': 0, 'staff': 0},
+        'users_by_role': {'admin': 0, 'staff': 0, 'volunteer': 0},
         'total_users': 0,
         'error': e.toString(),
       };
