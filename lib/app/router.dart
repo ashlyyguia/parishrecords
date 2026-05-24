@@ -261,8 +261,13 @@ GoRouter createRouter() {
           ),
           GoRoute(
             path: '/records/:id',
-            builder: (context, state) =>
-                RecordDetailScreen(recordId: state.pathParameters['id'] ?? ''),
+            builder: (context, state) {
+              final extra = state.extra;
+              return RecordDetailScreen(
+                recordId: state.pathParameters['id'] ?? '',
+                initialRecord: extra is ParishRecord ? extra : null,
+              );
+            },
           ),
           GoRoute(
             path: '/records/:id/certificate',
@@ -517,8 +522,13 @@ GoRouter createRouter() {
           ),
           GoRoute(
             path: '/staff/records/:id',
-            builder: (context, state) =>
-                RecordDetailScreen(recordId: state.pathParameters['id'] ?? ''),
+            builder: (context, state) {
+              final extra = state.extra;
+              return RecordDetailScreen(
+                recordId: state.pathParameters['id'] ?? '',
+                initialRecord: extra is ParishRecord ? extra : null,
+              );
+            },
           ),
           GoRoute(
             path: '/staff/records/:id/certificate',
@@ -597,21 +607,6 @@ GoRouter createRouter() {
           GoRoute(
             path: '/admin/records',
             builder: (context, state) => const AdminRecordsPage(),
-          ),
-          GoRoute(
-            path: '/admin/records/:id',
-            builder: (context, state) =>
-                RecordDetailScreen(recordId: state.pathParameters['id'] ?? ''),
-          ),
-          GoRoute(
-            path: '/admin/records/:id/certificate',
-            builder: (context, state) {
-              final extra = state.extra;
-              return CertificateTemplateScreen(
-                recordId: state.pathParameters['id'] ?? '',
-                recordType: extra is RecordType ? extra : RecordType.baptism,
-              );
-            },
           ),
           GoRoute(
             path: '/admin/requests',
@@ -760,6 +755,26 @@ GoRouter createRouter() {
               return DeathFormScreen(
                 existing: extra is ParishRecord ? extra : null,
                 fromAdmin: true,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/admin/records/:id',
+            builder: (context, state) {
+              final extra = state.extra;
+              return RecordDetailScreen(
+                recordId: state.pathParameters['id'] ?? '',
+                initialRecord: extra is ParishRecord ? extra : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/admin/records/:id/certificate',
+            builder: (context, state) {
+              final extra = state.extra;
+              return CertificateTemplateScreen(
+                recordId: state.pathParameters['id'] ?? '',
+                recordType: extra is RecordType ? extra : RecordType.baptism,
               );
             },
           ),

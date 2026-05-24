@@ -138,7 +138,7 @@ class _FinanceReportsPageState extends ConsumerState<FinanceReportsPage> {
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,48 +159,72 @@ class _FinanceReportsPageState extends ConsumerState<FinanceReportsPage> {
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      DropdownButtonFormField<String>(
-                        initialValue: _template,
-                        decoration: const InputDecoration(labelText: 'Template'),
-                        items: const [
-                          DropdownMenuItem(value: 'pnl', child: Text('P&L')),
-                          DropdownMenuItem(value: 'donor_statements', child: Text('Donor Statements')),
-                        ],
-                        onChanged: (v) => setState(() => _template = v ?? 'pnl'),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final stackDates = constraints.maxWidth < 520;
+                      return Column(
                         children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _busy ? null : _pickFrom,
-                              icon: const Icon(Icons.date_range_outlined),
-                              label: Text('From: ${_from.toIso8601String().split('T').first}'),
-                            ),
+                          DropdownButtonFormField<String>(
+                            initialValue: _template,
+                            decoration: const InputDecoration(labelText: 'Template'),
+                            items: const [
+                              DropdownMenuItem(value: 'pnl', child: Text('P&L')),
+                              DropdownMenuItem(value: 'donor_statements', child: Text('Donor Statements')),
+                            ],
+                            onChanged: (v) => setState(() => _template = v ?? 'pnl'),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _busy ? null : _pickTo,
-                              icon: const Icon(Icons.event_outlined),
-                              label: Text('To: ${_to.toIso8601String().split('T').first}'),
+                          const SizedBox(height: 12),
+                          if (stackDates) ...[
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _busy ? null : _pickFrom,
+                                icon: const Icon(Icons.date_range_outlined),
+                                label: Text('From: ${_from.toIso8601String().split('T').first}'),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _busy ? null : _pickTo,
+                                icon: const Icon(Icons.event_outlined),
+                                label: Text('To: ${_to.toIso8601String().split('T').first}'),
+                              ),
+                            ),
+                          ] else
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _busy ? null : _pickFrom,
+                                    icon: const Icon(Icons.date_range_outlined),
+                                    label: Text('From: ${_from.toIso8601String().split('T').first}'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _busy ? null : _pickTo,
+                                    icon: const Icon(Icons.event_outlined),
+                                    label: Text('To: ${_to.toIso8601String().split('T').first}'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: _busy ? null : _run,
+                              child: _busy
+                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : const Text('Run & Download'),
                             ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: _busy ? null : _run,
-                          child: _busy
-                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Text('Run & Download'),
-                        ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
               ),

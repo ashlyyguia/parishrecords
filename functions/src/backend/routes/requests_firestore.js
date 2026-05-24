@@ -280,6 +280,21 @@ router.post('/', requireAuth, async (req, res) => {
       newValues: { requestType, requesterName, recordId },
     });
 
+    const typeLabel =
+      requestType.length > 0
+        ? requestType.charAt(0).toUpperCase() + requestType.slice(1)
+        : 'Certificate';
+    await db.collection('notifications').add({
+      title: 'New certificate request',
+      body: `${requesterName} submitted a ${typeLabel} certificate request.`,
+      audience: ['admin', 'staff'],
+      type: 'request',
+      route: '/staff/requests',
+      resource_id: requestId,
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_by_uid: req.user && req.user.uid ? req.user.uid.toString() : 'system',
+    });
+
     return res.json({ ok: true, request_id: requestId });
   } catch (error) {
     console.error('Create certificate request error:', error);

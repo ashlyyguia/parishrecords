@@ -163,7 +163,7 @@ class NotificationsScreen extends ConsumerWidget {
           data: (rows) {
             final visible = rows.where((n) => !n.archived).toList();
             if (visible.isEmpty) {
-              return const _NotificationsEmptyState();
+              return _NotificationsEmptyState(onRefresh: () => _refresh(ref));
             }
             return ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -389,49 +389,67 @@ Widget _buildSkeletonNotifications(ColorScheme colorScheme) {
 }
 
 class _NotificationsEmptyState extends StatelessWidget {
-  const _NotificationsEmptyState();
+  const _NotificationsEmptyState({this.onRefresh});
+
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: colorScheme.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Icon(
-                Icons.notifications_none_rounded,
-                size: 44,
-                color: colorScheme.primary,
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(
+          height: MediaQuery.of(context).size.height * 0.55,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.notifications_none_rounded,
+                      size: 44,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'No notifications yet',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'New alerts for requests and parish activity will appear here.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (onRefresh != null) ...[
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: onRefresh,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Refresh'),
+                    ),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(height: 14),
-            Text(
-              'No notifications yet',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Pull down to refresh.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurface.withValues(alpha: 0.7),
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

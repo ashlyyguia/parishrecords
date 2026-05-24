@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../providers/notification_provider.dart';
+
 class StaffShell extends ConsumerWidget {
   final Widget child;
   const StaffShell({super.key, required this.child});
@@ -17,16 +19,6 @@ class StaffShell extends ConsumerWidget {
       '/staff/ocr/upload',
     ),
     _NavItem(
-      'Preprocess',
-      Icons.tune_outlined,
-      '/staff/ocr/preprocess',
-    ),
-    _NavItem(
-      'OCR Verify',
-      Icons.fact_check_outlined,
-      '/staff/ocr/verify',
-    ),
-    _NavItem(
       'Notifications',
       Icons.notifications_outlined,
       '/staff/notifications',
@@ -35,6 +27,11 @@ class StaffShell extends ConsumerWidget {
   ];
 
   int _indexFromLocation(String location) {
+    if (location.startsWith('/staff/ocr/')) {
+      for (int i = 0; i < _items.length; i++) {
+        if (_items[i].route == '/staff/ocr/upload') return i;
+      }
+    }
     for (int i = _items.length - 1; i >= 0; i--) {
       if (location.startsWith(_items[i].route)) return i;
     }
@@ -45,7 +42,11 @@ class StaffShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).uri.toString();
     final idx = _indexFromLocation(location);
-    final isWide = MediaQuery.of(context).size.width >= 1000;
+    final isWide = MediaQuery.of(context).size.width >= 1024;
+    final unreadCount = ref.watch(unreadNotificationsCountStreamProvider).maybeWhen(
+          data: (count) => count,
+          orElse: () => 0,
+        );
 
     void goSafe(String route) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -170,6 +171,9 @@ class StaffShell extends ConsumerWidget {
                         itemBuilder: (context, i) {
                           final item = _items[i];
                           final isSelected = i == idx;
+                          final showBadge =
+                              item.route == '/staff/notifications' &&
+                                  unreadCount > 0;
 
                           return Padding(
                             padding: const EdgeInsets.symmetric(
@@ -233,6 +237,31 @@ class StaffShell extends ConsumerWidget {
                                             alpha: 0.8,
                                           ),
                                           size: 18,
+                                        ),
+                                      if (showBadge)
+                                        Container(
+                                          margin: const EdgeInsets.only(left: 8),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 7,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                          ),
+                                          child: Text(
+                                            unreadCount > 99
+                                                ? '99+'
+                                                : '$unreadCount',
+                                            style: TextStyle(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
                                         ),
                                     ],
                                   ),
@@ -319,58 +348,69 @@ class StaffShell extends ConsumerWidget {
       );
     }
 
-    // Mobile bottom nav — manual register via Records screen button
-    final mobileItems = [
-      _items[0], // Dashboard
-      _items[1], // Households
-      _items[2], // Records
-      _items[3], // Requests
-      _items[4], // OCR Upload
-    ];
-
-    // Map current index to mobile index
-    int mobileIdx = 0;
-    final currentRoute = _items[idx].route;
-    for (int i = 0; i < mobileItems.length; i++) {
-      if (currentRoute.startsWith(mobileItems[i].route)) {
-        mobileIdx = i;
-        break;
-      }
-    }
-
+    // Mobile / tablet: drawer navigation (all staff routes in one menu).
     return Scaffold(
-      appBar: AppBar(title: Text(_items[idx].label), actions: [], elevation: 0),
-      body: SafeArea(child: wrapContent(child)),
-      bottomNavigationBar: NavigationBarTheme(
-        data:
-            const NavigationBarThemeData(
-              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-              height: 72,
-            ).copyWith(
-              labelTextStyle: WidgetStateProperty.resolveWith((states) {
-                final isSelected = states.contains(WidgetState.selected);
-                return TextStyle(
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                );
-              }),
-            ),
-        child: NavigationBar(
-          selectedIndex: mobileIdx,
-          onDestinationSelected: (i) => context.go(mobileItems[i].route),
-          destinations: [
-            for (final item in mobileItems)
-              NavigationDestination(
-                icon: Icon(item.icon),
-                label: item.route.startsWith('/staff/ocr')
-                    ? 'OCR'
-                    : (item.route.startsWith('/staff/households')
-                          ? 'Homes'
-                          : item.label),
+      appBar: AppBar(
+        title: Text(_items[idx].label),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        elevation: 0,
+      ),
+      drawer: Drawer(
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const ListTile(
+                leading: Icon(Icons.work_outline),
+                title: Text('Staff Portal'),
+                subtitle: Text('Parish Management'),
               ),
-          ],
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _items.length,
+                  itemBuilder: (context, i) {
+                    final item = _items[i];
+                    final selected = i == idx;
+                    final showBadge =
+                        item.route == '/staff/notifications' && unreadCount > 0;
+                    return ListTile(
+                      selected: selected,
+                      leading: Icon(item.icon),
+                      title: Text(item.label),
+                      trailing: showBadge
+                          ? CircleAvatar(
+                              radius: 12,
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.primary,
+                              child: Text(
+                                unreadCount > 99 ? '99+' : '$unreadCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            )
+                          : null,
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        goSafe(item.route);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+      body: SafeArea(child: wrapContent(child)),
     );
   }
 }

@@ -20,55 +20,73 @@ class NotificationsRepository {
     return uid;
   }
 
+  Future<String> _resolveUserRole({String? roleHint}) async {
+    final hint = (roleHint ?? '').trim().toLowerCase();
+    if (hint == 'admin' || hint == 'staff' || hint == 'finance') {
+      return hint;
+    }
+
+    final uid = _requireUid();
+    try {
+      final snap = await _db
+          .collection('users')
+          .doc(uid)
+          .get()
+          .timeout(
+            _timeout,
+            onTimeout: () => throw TimeoutException('Role lookup timed out'),
+          );
+      final docRole = (snap.data()?['role'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      if (docRole == 'admin' || docRole == 'staff' || docRole == 'finance') {
+        return docRole;
+      }
+    } catch (e) {
+      developer.log('Role doc lookup failed: $e', name: 'NotificationsRepository');
+    }
+
+    try {
+      final token = await FirebaseAuth.instance.currentUser
+          ?.getIdTokenResult()
+          .timeout(_timeout);
+      final claims = token?.claims ?? {};
+      if (claims['admin'] == true ||
+          claims['isAdmin'] == true ||
+          claims['role']?.toString().trim().toLowerCase() == 'admin') {
+        return 'admin';
+      }
+      if (claims['staff'] == true ||
+          claims['isStaff'] == true ||
+          claims['role']?.toString().trim().toLowerCase() == 'staff') {
+        return 'staff';
+      }
+      if (claims['finance'] == true ||
+          claims['isFinance'] == true ||
+          claims['role']?.toString().trim().toLowerCase() == 'finance') {
+        return 'finance';
+      }
+    } catch (e) {
+      developer.log('Role claims lookup failed: $e', name: 'NotificationsRepository');
+    }
+
+    return hint;
+  }
+
   /// Admin, staff, and finance can see broadcast notifications in the inbox.
-  Future<bool> _hasBroadInboxAccess() async {
-    final uid = _requireUid();
-    try {
-      final snap = await _db
-          .collection('users')
-          .doc(uid)
-          .get()
-          .timeout(
-            _timeout,
-            onTimeout: () => throw TimeoutException('Role lookup timed out'),
-          );
-      final role = (snap.data()?['role'] ?? '').toString().trim().toLowerCase();
-      return role == 'admin' || role == 'staff' || role == 'finance';
-    } catch (e) {
-      developer.log('Role lookup failed: $e', name: 'NotificationsRepository');
-      return false;
-    }
+  Future<bool> _hasBroadInboxAccess({String? roleHint}) async {
+    final role = await _resolveUserRole(roleHint: roleHint);
+    return role == 'admin' || role == 'staff' || role == 'finance';
   }
 
-  Future<bool> _isAdmin() async {
-    final uid = _requireUid();
-    try {
-      final snap = await _db
-          .collection('users')
-          .doc(uid)
-          .get()
-          .timeout(
-            _timeout,
-            onTimeout: () => throw TimeoutException('Role lookup timed out'),
-          );
-      final role = (snap.data()?['role'] ?? '').toString().trim().toLowerCase();
-      return role == 'admin' || role == 'staff';
-    } catch (e) {
-      developer.log('Role lookup failed: $e', name: 'NotificationsRepository');
-      return false;
-    }
+  Future<bool> _isAdmin({String? roleHint}) async {
+    final role = await _resolveUserRole(roleHint: roleHint);
+    return role == 'admin' || role == 'staff';
   }
 
-  Future<String> _currentUserRole() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || uid.isEmpty) return '';
-    try {
-      final snap = await _db.collection('users').doc(uid).get().timeout(_timeout);
-      return (snap.data()?['role'] ?? '').toString().trim().toLowerCase();
-    } catch (_) {
-      return '';
-    }
-  }
+  Future<String> _currentUserRole({String? roleHint}) =>
+      _resolveUserRole(roleHint: roleHint);
 
   /// Whether [data] is visible to the signed-in user ([uid], [role]).
   bool _matchesInbox(
@@ -194,6 +212,81 @@ class NotificationsRepository {
     );
   }
 
+  /// Staff/admin operational alerts (new requests, OCR queue, etc.).
+  Future<void> notifyStaffAudience({
+    required String title,
+    required String body,
+    required String type,
+    required String route,
+    String? resourceId,
+    String? createdByUid,
+  }) async {
+    final authUid = FirebaseAuth.instance.currentUser?.uid;
+    final createdBy = createdByUid ??
+        ((authUid != null && authUid.isNotEmpty) ? authUid : 'system');
+
+    await _db.collection('notifications').add({
+      'title': title,
+      'body': body,
+      'audience': ['admin', 'staff'],
+      'type': type,
+      'route': route,
+      if (resourceId != null && resourceId.isNotEmpty)
+        'resource_id': resourceId,
+      'created_at': FieldValue.serverTimestamp(),
+      'created_by_uid': createdBy,
+    }).timeout(
+      _timeout,
+      onTimeout: () =>
+          throw TimeoutException('Staff notification create timed out'),
+    );
+  }
+
+  Future<void> notifyStaffOnNewRequest({
+    required String requestId,
+    required String requesterName,
+    required String requestType,
+    String? createdByUid,
+  }) async {
+    final typeLabel = requestType.trim().isEmpty
+        ? 'Certificate'
+        : '${requestType[0].toUpperCase()}${requestType.substring(1).toLowerCase()}';
+    await notifyStaffAudience(
+      title: 'New certificate request',
+      body: '$requesterName submitted a $typeLabel certificate request.',
+      type: 'request',
+      route: '/staff/requests',
+      resourceId: requestId,
+      createdByUid: createdByUid,
+    );
+  }
+
+  Future<void> notifyUser({
+    required String userId,
+    required String title,
+    required String body,
+    required String type,
+    String? route,
+    String? resourceId,
+  }) async {
+    if (userId.trim().isEmpty) return;
+    await _db.collection('notifications').add({
+      'title': title,
+      'body': body,
+      'user_id': userId,
+      'type': type,
+      if (route != null && route.isNotEmpty) 'route': route,
+      if (resourceId != null && resourceId.isNotEmpty)
+        'resource_id': resourceId,
+      'created_at': FieldValue.serverTimestamp(),
+      'created_by_uid': 'system',
+    }).timeout(
+      _timeout,
+      onTimeout: () =>
+          throw TimeoutException('User notification create timed out'),
+    );
+  }
+
   Future<void> bulkSetRead(List<String> ids, bool read) async {
     if (ids.isEmpty) return;
     final uid = _requireUid();
@@ -274,10 +367,13 @@ class NotificationsRepository {
     );
   }
 
-  Future<List<LocalNotification>> list({int limit = 100}) async {
+  Future<List<LocalNotification>> list({
+    int limit = 100,
+    String? roleHint,
+  }) async {
     final uid = _requireUid();
-    final broadInbox = await _hasBroadInboxAccess();
-    final role = await _currentUserRole();
+    final broadInbox = await _hasBroadInboxAccess(roleHint: roleHint);
+    final role = await _currentUserRole(roleHint: roleHint);
 
     final snap = await _db
         .collection('notifications')
@@ -326,8 +422,11 @@ class NotificationsRepository {
     return results;
   }
 
-  Future<List<LocalNotification>> listStrict({int limit = 100}) async {
-    return list(limit: limit);
+  Future<List<LocalNotification>> listStrict({
+    int limit = 100,
+    String? roleHint,
+  }) async {
+    return list(limit: limit, roleHint: roleHint);
   }
 
   Future<void> setRead(String id, bool read) async {

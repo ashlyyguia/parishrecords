@@ -40,7 +40,8 @@ class FinanceShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).uri.toString();
     final idx = _indexFromLocation(location);
-    final isWide = MediaQuery.of(context).size.width >= 1000;
+    final width = MediaQuery.of(context).size.width;
+    final isWide = width >= 1024;
     final unread = ref.watch(unreadNotificationsCountStreamProvider).maybeWhen(
           data: (n) => n,
           orElse: () => 0,
@@ -56,7 +57,7 @@ class FinanceShell extends ConsumerWidget {
       return LayoutBuilder(
         builder: (context, constraints) {
           final w = constraints.maxWidth;
-          final pad = w < 480 ? 12.0 : 16.0;
+          final pad = w < 480 ? 12.0 : (w < 768 ? 14.0 : 16.0);
           final content = Padding(padding: EdgeInsets.all(pad), child: child);
 
           if (w >= 1400) {
@@ -74,12 +75,46 @@ class FinanceShell extends ConsumerWidget {
       );
     }
 
+  Widget navList({required void Function() onNavigate}) {
+      return ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: _items.length,
+        itemBuilder: (context, i) {
+          final item = _items[i];
+          final selected = i == idx;
+          return ListTile(
+            selected: selected,
+            leading: _navIcon(item, unread),
+            title: Text(item.label),
+            trailing: item.route == '/finance/notifications' && unread > 0
+                ? CircleAvatar(
+                    radius: 10,
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    child: Text(
+                      unread > 9 ? '9+' : '$unread',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onError,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 10,
+                          ),
+                    ),
+                  )
+                : null,
+            onTap: () {
+              onNavigate();
+              goSafe(item.route);
+            },
+          );
+        },
+      );
+    }
+
     if (isWide) {
       return Scaffold(
         body: Row(
           children: [
             SizedBox(
-              width: 270,
+              width: width >= 1280 ? 270 : 240,
               child: _Sidebar(
                 selectedIndex: idx,
                 unread: unread,
@@ -94,19 +129,49 @@ class FinanceShell extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(_items[idx].label), actions: []),
-      body: wrapContent(child),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: idx,
-        onDestinationSelected: (i) => goSafe(_items[i].route),
-        destinations: [
-          for (final item in _items)
-            NavigationDestination(
-              icon: _navIcon(item, unread),
-              label: item.label,
-            ),
-        ],
+      appBar: AppBar(
+        title: Text(_items[idx].label),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
       ),
+      drawer: Drawer(
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.account_balance_outlined,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Finance',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: navList(
+                  onNavigate: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      body: wrapContent(child),
     );
   }
 }

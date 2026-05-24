@@ -95,7 +95,7 @@ class LandingCommon {
 
         // Responsive padding
         final horizontalPadding = isMobile ? 24.0 : 48.0;
-        final topPadding = isMobile ? 100.0 : 120.0;
+        final topPadding = isMobile ? 88.0 : (isCompact ? 100.0 : 120.0);
         final titleSize = isMobile ? 32.0 : 42.0;
         final subtitleSize = isMobile ? 14.0 : 16.0;
 

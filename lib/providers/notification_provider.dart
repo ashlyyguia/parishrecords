@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/notification.dart';
 import '../services/notifications_repository.dart';
+import 'auth_provider.dart';
 
 /// Provides a singleton instance of [NotificationsRepository].
 final notificationsRepositoryProvider = Provider<NotificationsRepository>((
@@ -18,8 +19,10 @@ final notificationsRepositoryProvider = Provider<NotificationsRepository>((
 final notificationsProvider = FutureProvider<List<LocalNotification>>((
   ref,
 ) async {
+  final auth = ref.watch(authProvider);
+  if (!auth.initialized || auth.user == null) return [];
   final repo = ref.watch(notificationsRepositoryProvider);
-  return await repo.listStrict(limit: 100);
+  return repo.listStrict(limit: 100, roleHint: auth.user!.role);
 });
 
 /// Derived provider that exposes the unread notifications count
@@ -30,11 +33,11 @@ final unreadNotificationsCountProvider = FutureProvider<int>((ref) async {
 });
 
 /// Unread count via repository so audience / role filtering stays consistent.
-Future<int> _fetchUnreadCount() async {
+Future<int> _fetchUnreadCount(String? roleHint) async {
   if (FirebaseAuth.instance.currentUser?.uid == null) return 0;
   try {
     final repo = NotificationsRepository();
-    final list = await repo.list(limit: 50);
+    final list = await repo.list(limit: 50, roleHint: roleHint);
     return list.where((n) => !n.read && !n.archived).length;
   } catch (_) {
     return 0;
@@ -44,11 +47,14 @@ Future<int> _fetchUnreadCount() async {
 /// Stream that polls unread notification count every 5 seconds.
 /// Uses a lightweight Firestore query instead of the full listStrict.
 final unreadNotificationsCountStreamProvider = StreamProvider<int>((ref) async* {
+  final auth = ref.watch(authProvider);
+  final roleHint = auth.user?.role;
+
   // Emit initial value immediately
-  yield await _fetchUnreadCount();
+  yield await _fetchUnreadCount(roleHint);
 
   // Poll every 5 seconds
   yield* Stream.periodic(const Duration(seconds: 5))
-      .asyncMap((_) => _fetchUnreadCount())
+      .asyncMap((_) => _fetchUnreadCount(roleHint))
       .distinct();
 });

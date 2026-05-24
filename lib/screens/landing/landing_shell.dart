@@ -62,15 +62,19 @@ class _GlassNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isCompact = MediaQuery.of(context).size.width < 1000;
+    final width = MediaQuery.of(context).size.width;
+    final isCompact = width < 1200;
+    final isTiny = width < 480;
     final topPadding = MediaQuery.of(context).padding.top;
+    final barHeight = (isTiny ? 64.0 : 80.0) + topPadding;
+    final navPadding = width >= 1400 ? 16.0 : 10.0;
 
     return ClipRRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
           padding: EdgeInsets.only(top: topPadding),
-          height: 80 + topPadding,
+          height: barHeight,
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.7),
             border: Border(
@@ -81,34 +85,49 @@ class _GlassNavBar extends StatelessWidget {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: EdgeInsets.symmetric(horizontal: isTiny ? 12 : 24),
             child: Row(
               children: [
-                _BrandMark(),
-                const SizedBox(width: 16),
-                Text(
-                  'HOLY ROSARY',
-                  style: LandingCommon.titleStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
+                _BrandMark(size: isTiny ? 40 : 48),
+                if (!isTiny) ...[
+                  SizedBox(width: isCompact ? 8 : 16),
+                  Text(
+                    'HOLY ROSARY',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: LandingCommon.titleStyle(
+                      fontSize: isCompact ? 16 : 20,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                ),
+                ],
                 const Spacer(),
                 if (!isCompact)
-                  Row(
-                    children: [
-                      for (int i = 0; i < items.length; i++)
-                        _NavTextButton(
-                          label: items[i].label,
-                          isActive: i == currentIndex,
-                          onPressed: () => context.go(items[i].path),
-                        ),
-                    ],
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (int i = 0; i < items.length; i++)
+                            _NavTextButton(
+                              label: items[i].label,
+                              isActive: i == currentIndex,
+                              horizontalPadding: navPadding,
+                              onPressed: () => context.go(items[i].path),
+                            ),
+                        ],
+                      ),
+                    ),
                   )
                 else
                   _CompactNav(items: items, currentIndex: currentIndex),
-                const SizedBox(width: 24),
-                _LoginButton(onPressed: () => context.go('/login')),
+                SizedBox(width: isTiny ? 8 : 16),
+                _LoginButton(
+                  onPressed: () => context.go('/login'),
+                  compact: isTiny,
+                ),
               ],
             ),
           ),
@@ -119,12 +138,16 @@ class _GlassNavBar extends StatelessWidget {
 }
 
 class _BrandMark extends StatelessWidget {
+  const _BrandMark({this.size = 48});
+
+  final double size;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 48,
-      height: 48,
-      padding: const EdgeInsets.all(8),
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(size * 0.16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Colors.white, Color(0xFFF1F5F9)],
@@ -141,8 +164,8 @@ class _BrandMark extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.asset('assets/icons/app_icon.png', fit: BoxFit.cover),
+        borderRadius: BorderRadius.circular(size * 0.16),
+        child: Image.asset('assets/images/image2.png', fit: BoxFit.contain),
       ),
     );
   }
@@ -153,11 +176,13 @@ class _NavTextButton extends StatefulWidget {
     required this.label,
     required this.isActive,
     required this.onPressed,
+    this.horizontalPadding = 16,
   });
 
   final String label;
   final bool isActive;
   final VoidCallback onPressed;
+  final double horizontalPadding;
 
   @override
   State<_NavTextButton> createState() => _NavTextButtonState();
@@ -174,7 +199,10 @@ class _NavTextButtonState extends State<_NavTextButton> {
       child: GestureDetector(
         onTap: widget.onPressed,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: widget.horizontalPadding,
+            vertical: 8,
+          ),
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -277,9 +305,10 @@ class _CompactNav extends StatelessWidget {
 }
 
 class _LoginButton extends StatelessWidget {
-  const _LoginButton({required this.onPressed});
+  const _LoginButton({required this.onPressed, this.compact = false});
 
   final VoidCallback onPressed;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -305,25 +334,32 @@ class _LoginButton extends StatelessWidget {
           backgroundColor: Colors.transparent,
           foregroundColor: Colors.white,
           shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 12 : 24,
+            vertical: compact ? 12 : 16,
+          ),
+          minimumSize: Size(compact ? 44 : 0, compact ? 44 : 48),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
         ),
-        child: Row(
-          children: [
-            const Icon(Icons.login_rounded, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              'Portal Login',
-              style: LandingCommon.bodyStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+        child: compact
+            ? const Icon(Icons.login_rounded, size: 20)
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.login_rounded, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Portal Login',
+                    style: LandingCommon.bodyStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

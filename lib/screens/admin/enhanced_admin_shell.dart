@@ -166,40 +166,61 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
     final selectedIndex = _getIndexFromLocation(location);
     final currentItem = _getItemFromLocation(location);
     final colorScheme = Theme.of(context).colorScheme;
-    final isWide = MediaQuery.of(context).size.width >= 1200;
-    final isMedium = MediaQuery.of(context).size.width >= 800;
+    final width = MediaQuery.of(context).size.width;
+    final isMobile = width < 800;
+    final isWide = width >= 1200;
 
-    // Auto-collapse sidebar on medium screens
-    if (!isMedium && _sidebarExpanded) {
+    // Drawer uses full-width labels; desktop/tablet keeps collapse behavior.
+    if (isMobile) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        setState(() => _sidebarExpanded = false);
+        if (mounted && !_sidebarExpanded) {
+          setState(() => _sidebarExpanded = true);
+        }
       });
+    }
+
+    final sidebar = _buildSidebar(
+      colorScheme,
+      selectedIndex,
+      location,
+      isWide,
+      onNavigate: isMobile ? () => Navigator.of(context).pop() : null,
+    );
+
+    final content = Column(
+      children: [
+        _buildTopBar(
+          colorScheme,
+          currentItem,
+          location,
+          showMenuButton: isMobile,
+        ),
+        Expanded(child: _buildContentArea(context, widget.child)),
+      ],
+    );
+
+    if (isMobile) {
+      return Scaffold(
+        backgroundColor: colorScheme.surfaceContainerLowest,
+        drawer: Drawer(
+          width: 280,
+          child: sidebar,
+        ),
+        body: content,
+      );
     }
 
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerLowest,
       body: Row(
         children: [
-          // Animated Sidebar
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
             width: _sidebarExpanded ? 280 : 72,
-            child: _buildSidebar(colorScheme, selectedIndex, location, isWide),
+            child: sidebar,
           ),
-
-          // Main Content Area
-          Expanded(
-            child: Column(
-              children: [
-                // Enhanced Top Bar
-                _buildTopBar(colorScheme, currentItem, location),
-
-                // Page Content
-                Expanded(child: _buildContentArea(context, widget.child)),
-              ],
-            ),
-          ),
+          Expanded(child: content),
         ],
       ),
     );
@@ -209,8 +230,9 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
     ColorScheme colorScheme,
     int selectedIndex,
     String location,
-    bool isWide,
-  ) {
+    bool isWide, {
+    VoidCallback? onNavigate,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
@@ -253,6 +275,7 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
                       colorScheme,
                       selectedIndex,
                       location,
+                      onNavigate: onNavigate,
                     ),
                   ],
                 ],
@@ -337,8 +360,9 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
     _NavGroup group,
     ColorScheme colorScheme,
     int selectedIndex,
-    String location,
-  ) {
+    String location, {
+    VoidCallback? onNavigate,
+  }) {
     int runningIndex = 0;
     for (final g in _navGroups) {
       if (g == group) break;
@@ -372,6 +396,7 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
             onExit: (_) => setState(() => _hoveredIndex = -1),
             child: GestureDetector(
               onTap: () {
+                onNavigate?.call();
                 if (!location.startsWith(item.route)) {
                   context.go(item.route);
                 }
@@ -550,67 +575,77 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
   Widget _buildTopBar(
     ColorScheme colorScheme,
     _NavItem? currentItem,
-    String location,
-  ) {
-    return Container(
-      height: 70,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+    String location, {
+    bool showMenuButton = false,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+
+        return Container(
+          height: compact ? 56 : 70,
+          padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 24),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            border: Border(
+              bottom: BorderSide(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+            ),
           ),
-        ),
-      ),
-      child: Row(
-        children: [
-          // Breadcrumbs
-          if (currentItem != null)
-            Row(
-              children: [
-                Icon(currentItem.icon, size: 18, color: colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  currentItem.label,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
+          child: Row(
+            children: [
+              if (showMenuButton)
+                IconButton(
+                  icon: const Icon(Icons.menu),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                  tooltip: 'Menu',
+                ),
+              if (currentItem != null)
+                Flexible(
+                  child: Row(
+                    children: [
+                      Icon(currentItem.icon, size: 18, color: colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          currentItem.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: compact ? 16 : 20,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              const Spacer(),
+              if (!compact) ...[
+                _buildTopBarButton(
+                  icon: Icons.search,
+                  onTap: () => context.go('/admin/records'),
+                  colorScheme: colorScheme,
+                ),
+                const SizedBox(width: 8),
               ],
-            ),
-
-          const Spacer(),
-
-          // Search Button - Navigate to records page for searching
-          _buildTopBarButton(
-            icon: Icons.search,
-            onTap: () => context.go('/admin/records'),
-            colorScheme: colorScheme,
+              _buildTopBarButton(
+                icon: Icons.notifications_outlined,
+                onTap: () => context.go('/admin/notifications'),
+                colorScheme: colorScheme,
+              ),
+              const SizedBox(width: 8),
+              if (!compact) ...[
+                _buildQuickActionsMenu(colorScheme),
+                const SizedBox(width: 8),
+              ],
+              _buildUserMenu(colorScheme),
+            ],
           ),
-
-          const SizedBox(width: 8),
-
-          // Notifications - Navigate to notifications page
-          _buildTopBarButton(
-            icon: Icons.notifications_outlined,
-            onTap: () => context.go('/admin/notifications'),
-            colorScheme: colorScheme,
-          ),
-
-          const SizedBox(width: 8),
-
-          // Quick Actions Menu
-          _buildQuickActionsMenu(colorScheme),
-
-          const SizedBox(width: 8),
-
-          // User Menu with Logout
-          _buildUserMenu(colorScheme),
-        ],
-      ),
+        );
+      },
     );
   }
 

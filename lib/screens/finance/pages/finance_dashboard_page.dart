@@ -56,9 +56,9 @@ class _FinanceDashboardPageState extends ConsumerState<FinanceDashboardPage> {
           orElse: () => 0,
         );
 
-    return Scaffold(
-      backgroundColor: FinanceDashboardDesign.background,
-      body: RefreshIndicator(
+    return ColoredBox(
+      color: FinanceDashboardDesign.background,
+      child: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(financeOverviewProvider(_days));
           ref.invalidate(donationsStreamProvider(120));
@@ -116,7 +116,7 @@ class _FinanceDashboardPageState extends ConsumerState<FinanceDashboardPage> {
                           const SizedBox(height: 20),
                           LayoutBuilder(
                             builder: (context, constraints) {
-                              final wide = constraints.maxWidth >= 900;
+                              final wide = constraints.maxWidth >= 768;
                               if (wide) {
                                 return Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,7 +143,7 @@ class _FinanceDashboardPageState extends ConsumerState<FinanceDashboardPage> {
                           const SizedBox(height: 16),
                           LayoutBuilder(
                             builder: (context, constraints) {
-                              final wide = constraints.maxWidth >= 900;
+                              final wide = constraints.maxWidth >= 768;
                               if (wide) {
                                 return IntrinsicHeight(
                                   child: Row(
@@ -319,9 +319,9 @@ class _FinanceDashboardPageState extends ConsumerState<FinanceDashboardPage> {
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final cols = constraints.maxWidth >= 1100
+        final cols = constraints.maxWidth >= 1024
             ? 4
-            : constraints.maxWidth >= 640
+            : constraints.maxWidth >= 600
                 ? 2
                 : 1;
         final cards = [

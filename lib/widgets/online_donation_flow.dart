@@ -546,7 +546,7 @@ class _OnlineDonationFlowState extends State<OnlineDonationFlow> {
         if (payment != null)
           LayoutBuilder(
             builder: (context, constraints) {
-              final qrSize = (constraints.maxWidth * 0.92).clamp(280.0, 360.0);
+              final qrSize = (constraints.maxWidth * 0.92).clamp(160.0, 360.0);
               return Center(
                 child: PaymentQrCard(method: payment, qrSize: qrSize),
               );

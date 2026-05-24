@@ -386,6 +386,12 @@
            request.resource.data.user_id == request.auth.uid &&
            request.resource.data.type == 'system') ||
           (isSignedIn() &&
+           request.resource.data.type == 'request' &&
+           request.resource.data.audience is list &&
+           request.resource.data.resource_id is string &&
+           exists(/databases/$(db)/documents/requests/$(request.resource.data.resource_id)) &&
+           get(/databases/$(db)/documents/requests/$(request.resource.data.resource_id)).data.created_by_uid == request.auth.uid) ||
+          (isSignedIn() &&
            request.resource.data.type == 'online_donation' &&
            request.resource.data.created_by_uid == request.auth.uid &&
            request.resource.data.audience is list &&

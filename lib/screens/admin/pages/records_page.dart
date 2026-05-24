@@ -564,7 +564,11 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                           color: colorScheme.secondary,
                           onPressed: () {
                             if (id.isNotEmpty) {
-                              context.push('/admin/records/$id');
+                              final record = m['record'];
+                              context.push(
+                                '/admin/records/$id',
+                                extra: record is ParishRecord ? record : null,
+                              );
                             }
                           },
                         ),

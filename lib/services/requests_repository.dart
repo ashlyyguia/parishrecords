@@ -102,7 +102,7 @@ class RequestsRepository {
   }) async {
     final uid = _requireUid();
     final submitted = submittedByName?.trim() ?? '';
-    await _db
+    final docRef = await _db
         .collection('requests')
         .add({
           'request_type': requestType,
@@ -121,6 +121,15 @@ class RequestsRepository {
           _timeout,
           onTimeout: () => throw TimeoutException('Create request timed out'),
         );
+
+    try {
+      await _notifications.notifyStaffOnNewRequest(
+        requestId: docRef.id,
+        requesterName: requesterName,
+        requestType: requestType,
+        createdByUid: uid,
+      );
+    } catch (_) {}
   }
 
   static String personOnCertificate(Map<String, dynamic> request) {

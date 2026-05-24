@@ -14,7 +14,6 @@ class DonationsSection extends StatelessWidget {
           'Online giving via GCash. Select a type, enter your name, scan the QR, and pay in the GCash app.',
       left: LandingCommon.churchImageCard(),
       right: LandingCommon.contentCard(
-        padding: const EdgeInsets.all(32),
         child: const OnlineDonationFlow(
           visualStyle: OnlineDonationVisualStyle.landing,
         ),

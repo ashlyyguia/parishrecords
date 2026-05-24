@@ -551,20 +551,6 @@ class StaffDashboardPage extends ConsumerWidget {
         onTap: () => context.go('/staff/ocr/upload'),
       ),
       _ActionData(
-        icon: Icons.tune_outlined,
-        label: 'Preprocess',
-        description: 'Enhance image before OCR',
-        color: const Color(0xFF6366F1),
-        onTap: () => context.go('/staff/ocr/preprocess'),
-      ),
-      _ActionData(
-        icon: Icons.fact_check_outlined,
-        label: 'Verify OCR',
-        description: 'Review & lock OCR jobs',
-        color: const Color(0xFF0EA5E9),
-        onTap: () => context.go('/staff/ocr/verify'),
-      ),
-      _ActionData(
         icon: Icons.people_outline,
         label: 'Requests',
         description: 'Certificate requests',

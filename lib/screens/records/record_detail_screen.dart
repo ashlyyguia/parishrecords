@@ -16,10 +16,20 @@ import '../../utils/manual_register_notes.dart';
 
 class RecordDetailScreen extends ConsumerWidget {
   final String recordId;
-  const RecordDetailScreen({super.key, required this.recordId});
+  final ParishRecord? initialRecord;
+
+  const RecordDetailScreen({
+    super.key,
+    required this.recordId,
+    this.initialRecord,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (initialRecord != null && initialRecord!.id == recordId) {
+      return _RecordDetailBody(rec: initialRecord!);
+    }
+
     final recordAsync = ref.watch(recordByIdProvider(recordId));
 
     return recordAsync.when(
