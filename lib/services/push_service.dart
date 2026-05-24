@@ -18,6 +18,17 @@ class PushService {
   static Future<void> init() async {
     if (_inited) return;
     _inited = true;
+
+    // Firebase Messaging is not supported on Windows/Linux natively.
+    final isSupported = kIsWeb || 
+        defaultTargetPlatform == TargetPlatform.iOS || 
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+        
+    if (!isSupported) {
+      return;
+    }
+
     // Request permissions (iOS/Web), Android 13+ uses POST_NOTIFICATIONS runtime permission
     await _requestPermission();
 

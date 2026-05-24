@@ -3,12 +3,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:universal_html/html.dart' as html;
-import 'package:url_launcher/url_launcher.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
-import '../../providers/auth_provider.dart';
 import '../../providers/user_providers.dart';
 import '../../providers/household_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../models/household.dart';
 import '../../widgets/app_loading.dart';
 
@@ -22,28 +22,39 @@ class UserProfileHouseholdScreen extends ConsumerStatefulWidget {
 
 class _UserProfileHouseholdScreenState
     extends ConsumerState<UserProfileHouseholdScreen> {
+  // Personal Info / Head of Family
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  String? _gender;
+  DateTime? _dateOfBirth;
+  String? _civilStatus;
+
+  // Household Info
+  final _householdNameCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
-  final _messageCtrl = TextEditingController();
+  final _barangayCtrl = TextEditingController();
+  final _householdContactCtrl = TextEditingController();
+
   final _formKey = GlobalKey<FormState>();
   bool _consent = false;
   bool _saving = false;
   bool _initialized = false;
-  bool _sendingMessage = false;
   Household? _household;
   String? _linkedHouseholdId;
   List<HouseholdMember> _members = [];
   List<Map<String, dynamic>> _sacraments = const [];
   List<Map<String, dynamic>> _requests = const [];
-  List<Map<String, dynamic>> _activities = const [];
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
+    _emailCtrl.dispose();
+    _householdNameCtrl.dispose();
     _addressCtrl.dispose();
-    _messageCtrl.dispose();
+    _barangayCtrl.dispose();
+    _householdContactCtrl.dispose();
     super.dispose();
   }
 
@@ -56,18 +67,77 @@ class _UserProfileHouseholdScreenState
     setState(() => _saving = true);
     debugPrint('[Profile Save] Household data: $_household');
     try {
+      final repo = ref.read(householdRepositoryProvider);
+
+      // Create or update household in households collection
+      final headName = _nameCtrl.text.trim();
+      final headMeta = <String, dynamic>{
+        if (_household != null) ..._household!.metadata,
+        if (headName.isNotEmpty) 'headOfFamilyName': headName,
+      };
+
+      Household householdToSave;
+      if (_linkedHouseholdId != null && _household != null) {
+        // Update existing household
+        householdToSave = _household!.copyWith(
+          familyName: _householdNameCtrl.text.trim().isNotEmpty
+              ? _householdNameCtrl.text.trim()
+              : _nameCtrl.text.trim(),
+          address: _addressCtrl.text.trim(),
+          barangay: _barangayCtrl.text.trim(),
+          contactNumber: _householdContactCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          metadata: headMeta,
+          updatedAt: DateTime.now(),
+        );
+        await repo.updateHousehold(householdToSave);
+      } else {
+        // Create new household
+        final householdId = await repo.generateHouseholdId();
+        householdToSave = Household(
+          id: '', // Will be set by Firestore
+          householdId: householdId,
+          familyName: _householdNameCtrl.text.trim().isNotEmpty
+              ? _householdNameCtrl.text.trim()
+              : _nameCtrl.text.trim(),
+          headOfFamilyId: '',
+          address: _addressCtrl.text.trim(),
+          barangay: _barangayCtrl.text.trim(),
+          city: '',
+          contactNumber: _householdContactCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          metadata: headMeta,
+          registeredAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        final createdHousehold = await repo.createHousehold(householdToSave);
+        _linkedHouseholdId = createdHousehold.id;
+        _household = createdHousehold;
+        householdToSave = createdHousehold;
+      }
+
+      // Update user profile with household info
       await ref.read(userProfileRepositoryProvider).updateMyProfile({
         'displayName': _nameCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim(),
+        'email': _emailCtrl.text.trim(),
+        'gender': _gender,
+        'dateOfBirth': _dateOfBirth?.toIso8601String(),
+        'civilStatus': _civilStatus,
         'address': _addressCtrl.text.trim(),
-        'household': _household,
+        'householdName': _householdNameCtrl.text.trim(),
+        'barangay': _barangayCtrl.text.trim(),
+        'householdContact': _householdContactCtrl.text.trim(),
+        'linkedHouseholdId': _linkedHouseholdId,
+        'household': householdToSave.toFirestore(),
         'privacy_consent': _consent,
       });
+
       ref.invalidate(myProfileProvider);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Profile updated.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile and household updated.')),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -101,23 +171,51 @@ class _UserProfileHouseholdScreenState
     }
   }
 
+  String _linkedSacramentsMessage(HouseholdMember? member) {
+    if (member == null) return '';
+    final linked = <String>[];
+    if (member.baptismRecordId != null && member.baptismRecordId!.isNotEmpty) {
+      linked.add('Baptism');
+    }
+    if (member.confirmationRecordId != null &&
+        member.confirmationRecordId!.isNotEmpty) {
+      linked.add('Confirmation');
+    }
+    if (member.marriageRecordId != null && member.marriageRecordId!.isNotEmpty) {
+      linked.add('Marriage');
+    }
+    if (member.deathRecordId != null && member.deathRecordId!.isNotEmpty) {
+      linked.add('Death');
+    }
+    if (linked.isEmpty) {
+      final meta = member.metadata['autoLinkedSacraments'];
+      if (meta is Map) {
+        var bestScore = 0;
+        String? bestName;
+        for (final key in ['baptism', 'confirmation', 'marriage', 'funeral']) {
+          final entry = meta[key];
+          if (entry is Map) {
+            final score = (entry['score'] as num?)?.toInt() ?? 0;
+            if (score > bestScore) {
+              bestScore = score;
+              bestName = entry['matchedName']?.toString();
+            }
+          }
+        }
+        if (bestScore >= 50 && bestName != null && bestName.isNotEmpty) {
+          return ' Closest parish match was "$bestName" (not linked — try the exact spelling from the register).';
+        }
+      }
+      return ' No matching parish records were found automatically.';
+    }
+    return ' Linked sacrament record(s): ${linked.join(', ')}.';
+  }
+
   Future<void> _openMemberDialog({HouseholdMember? initial, int? index}) async {
     final firstNameCtrl = TextEditingController(text: initial?.firstName ?? '');
-    final middleNameCtrl = TextEditingController(
-      text: initial?.middleName ?? '',
-    );
-    final lastNameCtrl = TextEditingController(text: initial?.lastName ?? '');
-    final suffixCtrl = TextEditingController(text: initial?.suffix ?? '');
-    final birthPlaceCtrl = TextEditingController(
-      text: initial?.birthPlace ?? '',
-    );
-    final occupationCtrl = TextEditingController(
-      text: initial?.occupation ?? '',
-    );
     final contactCtrl = TextEditingController(
       text: initial?.contactNumber ?? '',
     );
-    final emailCtrl = TextEditingController(text: initial?.email ?? '');
 
     String selectedRole = initial?.role ?? 'Child';
     String selectedGender = initial?.gender ?? 'Male';
@@ -139,77 +237,93 @@ class _UserProfileHouseholdScreenState
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Role Dropdown
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primaryContainer
+                            .withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.link_rounded,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'After saving, we automatically search parish '
+                              'records (baptism, confirmation, marriage, death) '
+                              'and link matches by name and birth date.',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: selectedRole,
                       decoration: const InputDecoration(
-                        labelText: 'Role in Family *',
+                        labelText: 'Relationship *',
                         prefixIcon: Icon(Icons.family_restroom_outlined),
                         border: OutlineInputBorder(),
                       ),
-                      items:
-                          [
-                                'Father',
-                                'Mother',
-                                'Son',
-                                'Daughter',
-                                'Grandfather',
-                                'Grandmother',
-                                'Other',
-                              ]
-                              .map(
-                                (r) =>
-                                    DropdownMenuItem(value: r, child: Text(r)),
-                              )
-                              .toList(),
+                      items: const [
+                        DropdownMenuItem(value: 'Head', child: Text('Head')),
+                        DropdownMenuItem(
+                          value: 'Spouse',
+                          child: Text('Spouse'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Father',
+                          child: Text('Father'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Mother',
+                          child: Text('Mother'),
+                        ),
+                        DropdownMenuItem(value: 'Son', child: Text('Son')),
+                        DropdownMenuItem(
+                          value: 'Daughter',
+                          child: Text('Daughter'),
+                        ),
+                        DropdownMenuItem(value: 'Child', child: Text('Child')),
+                        DropdownMenuItem(
+                          value: 'Brother',
+                          child: Text('Brother'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Sister',
+                          child: Text('Sister'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Grandparent',
+                          child: Text('Grandparent'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Relative',
+                          child: Text('Relative'),
+                        ),
+                        DropdownMenuItem(value: 'Other', child: Text('Other')),
+                      ],
                       onChanged: (v) => setDialogState(() => selectedRole = v!),
                     ),
                     const SizedBox(height: 12),
-                    // First Name
+                    // Full Name (single field)
                     TextFormField(
                       controller: firstNameCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'First Name *',
+                        labelText: 'Full Name *',
                         prefixIcon: Icon(Icons.person_outline),
                         border: OutlineInputBorder(),
+                        hintText: 'Enter complete name',
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Middle Name
-                    TextFormField(
-                      controller: middleNameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Middle Name',
-                        prefixIcon: Icon(Icons.person_outline),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: TextFormField(
-                            controller: lastNameCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Last Name *',
-                              prefixIcon: Icon(Icons.person_outline),
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextFormField(
-                            controller: suffixCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Suffix',
-                              hintText: 'Jr, Sr',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
                     const SizedBox(height: 12),
                     // Gender Dropdown
@@ -220,41 +334,18 @@ class _UserProfileHouseholdScreenState
                         prefixIcon: Icon(Icons.wc_outlined),
                         border: OutlineInputBorder(),
                       ),
-                      items: ['Male', 'Female']
-                          .map(
-                            (g) => DropdownMenuItem(value: g, child: Text(g)),
-                          )
-                          .toList(),
+                      items: const [
+                        DropdownMenuItem(value: 'Male', child: Text('Male')),
+                        DropdownMenuItem(
+                          value: 'Female',
+                          child: Text('Female'),
+                        ),
+                      ],
                       onChanged: (v) =>
                           setDialogState(() => selectedGender = v!),
                     ),
                     const SizedBox(height: 12),
-                    // Civil Status
-                    DropdownButtonFormField<String>(
-                      value: selectedCivilStatus,
-                      decoration: const InputDecoration(
-                        labelText: 'Civil Status',
-                        prefixIcon: Icon(Icons.favorite_border),
-                        border: OutlineInputBorder(),
-                      ),
-                      items:
-                          [
-                                'Single',
-                                'Married',
-                                'Widowed',
-                                'Separated',
-                                'Divorced',
-                              ]
-                              .map(
-                                (s) =>
-                                    DropdownMenuItem(value: s, child: Text(s)),
-                              )
-                              .toList(),
-                      onChanged: (v) =>
-                          setDialogState(() => selectedCivilStatus = v!),
-                    ),
-                    const SizedBox(height: 12),
-                    // Birth Date
+                    // Date of Birth
                     InkWell(
                       onTap: () async {
                         final picked = await showDatePicker(
@@ -269,7 +360,7 @@ class _UserProfileHouseholdScreenState
                       },
                       child: InputDecorator(
                         decoration: const InputDecoration(
-                          labelText: 'Birth Date',
+                          labelText: 'Date of Birth',
                           prefixIcon: Icon(Icons.cake_outlined),
                           border: OutlineInputBorder(),
                         ),
@@ -287,27 +378,37 @@ class _UserProfileHouseholdScreenState
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // Birth Place
-                    TextFormField(
-                      controller: birthPlaceCtrl,
+                    // Civil Status
+                    DropdownButtonFormField<String>(
+                      value: selectedCivilStatus,
                       decoration: const InputDecoration(
-                        labelText: 'Birth Place',
-                        prefixIcon: Icon(Icons.location_on_outlined),
+                        labelText: 'Civil Status',
+                        prefixIcon: Icon(Icons.favorite_border),
                         border: OutlineInputBorder(),
                       ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Single',
+                          child: Text('Single'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Married',
+                          child: Text('Married'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Widowed',
+                          child: Text('Widowed'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Separated',
+                          child: Text('Separated'),
+                        ),
+                      ],
+                      onChanged: (v) =>
+                          setDialogState(() => selectedCivilStatus = v!),
                     ),
                     const SizedBox(height: 12),
-                    // Occupation
-                    TextFormField(
-                      controller: occupationCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Occupation',
-                        prefixIcon: Icon(Icons.work_outline),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Contact
+                    // Contact Number
                     TextFormField(
                       controller: contactCtrl,
                       decoration: const InputDecoration(
@@ -316,17 +417,6 @@ class _UserProfileHouseholdScreenState
                         border: OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.phone,
-                    ),
-                    const SizedBox(height: 12),
-                    // Email
-                    TextFormField(
-                      controller: emailCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Email Address',
-                        prefixIcon: Icon(Icons.email_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: TextInputType.emailAddress,
                     ),
                   ],
                 ),
@@ -338,33 +428,30 @@ class _UserProfileHouseholdScreenState
                 ),
                 FilledButton(
                   onPressed: () {
-                    final firstName = firstNameCtrl.text.trim();
-                    final lastName = lastNameCtrl.text.trim();
-                    if (firstName.isEmpty || lastName.isEmpty) return;
+                    final fullName = firstNameCtrl.text.trim();
+                    if (fullName.isEmpty) return;
 
-                    final fullName = HouseholdMember.generateFullName(
-                      firstName,
-                      middleNameCtrl.text.trim(),
-                      lastName,
-                      suffixCtrl.text.trim(),
-                    );
+                    // Split full name into first and last name
+                    final nameParts = fullName.split(' ');
+                    final firstName = nameParts.first;
+                    final lastName = nameParts.length > 1 ? nameParts.last : '';
 
                     final member = HouseholdMember(
                       id: initial?.id ?? '',
                       householdId: _linkedHouseholdId ?? '',
                       firstName: firstName,
-                      middleName: middleNameCtrl.text.trim(),
+                      middleName: '',
                       lastName: lastName,
-                      suffix: suffixCtrl.text.trim(),
+                      suffix: '',
                       fullName: fullName,
                       role: selectedRole,
                       gender: selectedGender,
                       civilStatus: selectedCivilStatus,
                       birthDate: birthDate,
-                      birthPlace: birthPlaceCtrl.text.trim(),
-                      occupation: occupationCtrl.text.trim(),
+                      birthPlace: '',
+                      occupation: '',
                       contactNumber: contactCtrl.text.trim(),
-                      email: emailCtrl.text.trim(),
+                      email: '',
                       dateAdded: initial?.dateAdded ?? DateTime.now(),
                       isActive: true,
                     );
@@ -384,12 +471,49 @@ class _UserProfileHouseholdScreenState
     // Save to household_members collection via repository
     try {
       final repo = ref.read(householdRepositoryProvider);
+      HouseholdMember? savedMember;
       if (index == null) {
-        // Add new member
-        await repo.addMember(saved);
+        savedMember = await repo.addMember(saved);
+
+        if (_linkedHouseholdId != null &&
+            _household != null &&
+            _household!.headOfFamilyId.isEmpty) {
+          final role = savedMember.role.trim().toLowerCase();
+          if (role.contains('head') ||
+              role == 'father' ||
+              role == 'mother' ||
+              role == 'parent') {
+            await repo.setHeadOfFamily(
+              _linkedHouseholdId!,
+              savedMember.id,
+              headName: savedMember.fullName,
+            );
+          }
+        }
+
+        // Send system notification to the user
+        try {
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          if (uid != null) {
+            await ref
+                .read(notificationsRepositoryProvider)
+                .createSystemNotification(
+                  title: 'Household Member Added',
+                  body:
+                      '${saved.firstName} ${saved.lastName} has been successfully added to your household.',
+                  userId: uid,
+                  type: 'household',
+                  route: '/user/profile',
+                );
+            // Invalidate notifications provider to update the bell immediately
+            ref.invalidate(notificationsProvider);
+          }
+        } catch (e) {
+          debugPrint('Failed to create notification: $e');
+        }
       } else if (initial != null) {
-        // Update existing
         await repo.updateMember(saved);
+        savedMember = await repo.getMember(saved.id);
       }
 
       // Refresh members list
@@ -399,8 +523,15 @@ class _UserProfileHouseholdScreenState
       }
 
       if (mounted) {
+        final linkMsg = _linkedSacramentsMessage(savedMember);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Member saved successfully')),
+          SnackBar(
+            content: Text(
+              index == null
+                  ? 'Member added.$linkMsg'
+                  : 'Member updated.$linkMsg',
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -412,308 +543,58 @@ class _UserProfileHouseholdScreenState
     }
   }
 
-  Widget _buildStatsCard(ThemeData theme, ColorScheme colorScheme) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.primaryContainer.withValues(alpha: 0.3),
-            colorScheme.secondaryContainer.withValues(alpha: 0.3),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      padding: const EdgeInsets.all(16),
+  Widget _buildMembersCard(ThemeData theme, ColorScheme cs) {
+    return _ProfileSectionCard(
+      icon: Icons.people_alt_rounded,
+      iconColor: Colors.teal,
+      title: 'Household members',
+      subtitle: _members.isEmpty
+          ? 'Add family members linked to your household'
+          : '${_members.length} member${_members.length == 1 ? '' : 's'}',
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.analytics_outlined,
-                color: colorScheme.primary,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Household Stats',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
+          if (_members.isEmpty)
+            _ProfileEmptyHint(
+              icon: Icons.people_outline_rounded,
+              message: 'No household members yet',
+            )
+          else
+            ...List.generate(_members.length, (i) {
+              final member = _members[i];
+              final name = member.fullName;
+              final relationship = member.role;
+              final birthDate = member.birthDate != null
+                  ? DateFormat.yMMMd().format(member.birthDate!)
+                  : '';
+              final avatarColor = _ProfileUi.avatarColor(name);
+
+              return Padding(
+                padding: EdgeInsets.only(bottom: i < _members.length - 1 ? 8 : 0),
+                child: _MemberTile(
+                  name: name,
+                  subtitle: [relationship, birthDate]
+                      .where((s) => s.isNotEmpty)
+                      .join(' · '),
+                  avatarColor: avatarColor,
+                  onSacraments: () => _viewMemberSacraments(member.toJson()),
+                  onEdit: () => _openMemberDialog(initial: member, index: i),
+                  onRemove: () => _removeMember(i),
                 ),
+              );
+            }),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _members.length >= 20 ? null : () => _openMemberDialog(),
+            icon: const Icon(Icons.person_add_alt_1_rounded, size: 20),
+            label: const Text('Add member'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 44),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _StatItem(
-                  icon: Icons.people_outline,
-                  value: '${_members.length}',
-                  label: 'Members',
-                  color: Colors.blue,
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 40,
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
-              Expanded(
-                child: _StatItem(
-                  icon: Icons.pending_actions_outlined,
-                  value:
-                      '${_requests.where((r) => r['status']?.toString().toLowerCase() == 'pending').length}',
-                  label: 'Pending',
-                  color: Colors.orange,
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 40,
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
-              Expanded(
-                child: _StatItem(
-                  icon: Icons.verified_outlined,
-                  value:
-                      '${_sacraments.where((s) => s['status']?.toString().toLowerCase() == 'completed').length}',
-                  label: 'Sacraments',
-                  color: Colors.green,
-                ),
-              ),
-            ],
+            ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildMembersCard(ThemeData theme, ColorScheme colorScheme) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.people_alt_outlined,
-                  color: colorScheme.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Household Members',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-                if (_members.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${_members.length}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_members.isEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.people_outline,
-                        size: 48,
-                        color: colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'No household members added yet.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else
-              ...List.generate(_members.length, (i) {
-                final member = _members[i];
-                final name = member.fullName;
-                final relationship = member.role;
-                final birthDate = member.birthDate != null
-                    ? '${member.birthDate!.month}/${member.birthDate!.day}/${member.birthDate!.year}'
-                    : '';
-
-                // Generate avatar color based on name
-                final colors = [
-                  Colors.blue,
-                  Colors.green,
-                  Colors.orange,
-                  Colors.purple,
-                  Colors.teal,
-                  Colors.pink,
-                ];
-                final avatarColor = colors[name.hashCode.abs() % colors.length];
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.5,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    leading: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            avatarColor.withValues(alpha: 0.8),
-                            avatarColor,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          name.isNotEmpty ? name[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                    title: Text(
-                      name,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: relationship.isEmpty && birthDate.isEmpty
-                        ? null
-                        : Text(
-                            [
-                              relationship,
-                              birthDate,
-                            ].where((s) => s.isNotEmpty).join(' · '),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: 'View Sacraments',
-                          onPressed: () =>
-                              _viewMemberSacraments(member.toJson()),
-                          icon: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.purple.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.church_outlined,
-                              color: Colors.purple,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Edit',
-                          onPressed: () =>
-                              _openMemberDialog(initial: member, index: i),
-                          icon: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: colorScheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              Icons.edit_outlined,
-                              color: colorScheme.primary,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Remove',
-                          onPressed: () => _removeMember(i),
-                          icon: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: colorScheme.errorContainer,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              Icons.delete_outline,
-                              color: colorScheme.error,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _members.length >= 20
-                    ? null
-                    : () => _openMemberDialog(),
-                icon: const Icon(Icons.person_add_alt_1_outlined),
-                label: const Text('Add member'),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -768,37 +649,6 @@ class _UserProfileHouseholdScreenState
     }
   }
 
-  Future<void> _export() async {
-    try {
-      final resp = await ref.read(userProfileRepositoryProvider).exportMyData();
-      final file = resp['file'] is Map ? (resp['file'] as Map) : const {};
-      final url = (file['download_url'] ?? '').toString();
-      final name = (file['name'] ?? 'export.json').toString();
-      if (url.isEmpty) throw Exception('Missing download url');
-
-      if (kIsWeb && url.startsWith('data:')) {
-        (html.AnchorElement(href: url)..setAttribute('download', name)).click();
-      } else {
-        final uri = Uri.tryParse(url);
-        if (uri == null) throw Exception('Invalid download url');
-        final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-        if (!ok) throw Exception('Could not open export link');
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Export generated.')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
-      }
-    }
-  }
-
   List<Map<String, dynamic>> _normalizeSacraments(dynamic raw) {
     if (raw is! List) return const [];
     return raw.whereType<Map<String, dynamic>>().toList();
@@ -807,44 +657,6 @@ class _UserProfileHouseholdScreenState
   List<Map<String, dynamic>> _normalizeRequests(dynamic raw) {
     if (raw is! List) return const [];
     return raw.whereType<Map<String, dynamic>>().toList();
-  }
-
-  List<Map<String, dynamic>> _generateActivities() {
-    final activities = <Map<String, dynamic>>[];
-
-    for (final s in _sacraments) {
-      activities.add({
-        'type': 'sacrament',
-        'title': s['type']?.toString() ?? 'Sacrament',
-        'date': s['date']?.toString() ?? '',
-        'status': s['status']?.toString() ?? 'completed',
-        'icon': Icons.church_outlined,
-        'color': Colors.purple,
-      });
-    }
-
-    for (final r in _requests) {
-      activities.add({
-        'type': 'request',
-        'title': r['title']?.toString() ?? 'Request',
-        'date': r['submittedAt']?.toString() ?? '',
-        'status': r['status']?.toString() ?? 'pending',
-        'icon': Icons.assignment_outlined,
-        'color': _getStatusColor(r['status']?.toString() ?? 'pending'),
-      });
-    }
-
-    DateTime parseDate(dynamic v) {
-      if (v == null) return DateTime.fromMillisecondsSinceEpoch(0);
-      if (v is DateTime) return v;
-      final s = v.toString();
-      return DateTime.tryParse(s) ?? DateTime.fromMillisecondsSinceEpoch(0);
-    }
-
-    activities.sort(
-      (a, b) => parseDate(b['date']).compareTo(parseDate(a['date'])),
-    );
-    return activities.take(10).toList();
   }
 
   Color _getStatusColor(String status) {
@@ -861,61 +673,6 @@ class _UserProfileHouseholdScreenState
         return Colors.red;
       default:
         return Colors.orange;
-    }
-  }
-
-  Future<void> _sendMessage() async {
-    if (_sendingMessage || _messageCtrl.text.trim().isEmpty) return;
-
-    if (_nameCtrl.text.trim().isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter your full name first.')),
-        );
-      }
-      return;
-    }
-
-    setState(() => _sendingMessage = true);
-
-    try {
-      final auth = ref.read(authProvider);
-      final user = auth.user;
-
-      await ref.read(userRequestsRepositoryProvider).createRequest({
-        'type': 'parish_message',
-        'subject': 'Message from Household: ${_nameCtrl.text.trim()}',
-        'message': _messageCtrl.text.trim(),
-        'senderInfo': {
-          'name': _nameCtrl.text.trim(),
-          'email': user?.email ?? '',
-          'phone': _phoneCtrl.text.trim(),
-          'address': _addressCtrl.text.trim(),
-          'householdCount': _members.length,
-        },
-        'submittedAt': DateTime.now().toIso8601String(),
-        'status': 'pending',
-      });
-
-      _messageCtrl.clear();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Message sent to parish office. We\'ll respond soon!',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to send message: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _sendingMessage = false);
     }
   }
 
@@ -970,277 +727,269 @@ class _UserProfileHouseholdScreenState
     );
   }
 
+  String? _phoneValidator(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return null;
+    final ok = RegExp(r'^[0-9+()\-\s]{7,}$').hasMatch(value);
+    if (!ok) return 'Please enter a valid contact number';
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
+    final cs = theme.colorScheme;
     final async = ref.watch(myProfileProvider);
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        title: const Text('My Profile & Household'),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: () {
-              setState(() => _initialized = false);
-              ref.invalidate(myProfileProvider);
-            },
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+      backgroundColor: const Color(0xFFF6F7FB),
       body: async.when(
         data: (m) {
           if (!_initialized) {
             _initialized = true;
             _nameCtrl.text = (m['displayName'] ?? '').toString();
             _phoneCtrl.text = (m['phone'] ?? '').toString();
+            _emailCtrl.text = (m['email'] ?? '').toString();
+            _gender = m['gender']?.toString();
+            _dateOfBirth = m['dateOfBirth'] != null
+                ? DateTime.tryParse(m['dateOfBirth'].toString())
+                : null;
+            _civilStatus = m['civilStatus']?.toString();
+            _householdNameCtrl.text = (m['householdName'] ?? '').toString();
             _addressCtrl.text = (m['address'] ?? '').toString();
+            _barangayCtrl.text = (m['barangay'] ?? '').toString();
+            _householdContactCtrl.text =
+                (m['householdContact'] ?? '').toString();
             _consent = (m['privacy_consent'] == true);
-            // Load linked household from collection
-            _loadLinkedHousehold().then((_) => setState(() {}));
+            _loadLinkedHousehold().then((_) {
+              if (mounted) setState(() {});
+            });
             _sacraments = _normalizeSacraments(m['sacraments']);
             _requests = _normalizeRequests(m['requests']);
-            _activities = _generateActivities();
           }
+
+          final displayName = _nameCtrl.text.trim().isNotEmpty
+              ? _nameCtrl.text.trim()
+              : 'Parishioner';
+          final email = _emailCtrl.text.trim().isNotEmpty
+              ? _emailCtrl.text.trim()
+              : (m['email'] ?? '').toString();
 
           return Form(
             key: _formKey,
-            child: ListView(
-              padding: const EdgeInsets.all(16),
+            child: Column(
               children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      setState(() => _initialized = false);
+                      ref.invalidate(myProfileProvider);
+                    },
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
                       children: [
-                        Text(
-                          'Personal Info',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _nameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Full name',
-                          ),
-                          textInputAction: TextInputAction.next,
-                          validator: (v) {
-                            final value = (v ?? '').trim();
-                            if (value.isEmpty) return 'Full name is required';
-                            if (value.length < 2)
-                              return 'Please enter a valid name';
-                            return null;
+                        _ProfileHeroHeader(
+                          name: displayName,
+                          email: email,
+                          memberCount: _members.length,
+                          householdName: _householdNameCtrl.text.trim(),
+                          onRefresh: () {
+                            setState(() => _initialized = false);
+                            ref.invalidate(myProfileProvider);
                           },
                         ),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: _phoneCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Contact number',
-                          ),
-                          textInputAction: TextInputAction.next,
-                          keyboardType: TextInputType.phone,
-                          validator: (v) {
-                            final value = (v ?? '').trim();
-                            if (value.isEmpty) return null;
-                            // Basic sanity check: allow digits + common phone symbols
-                            final ok = RegExp(
-                              r'^[0-9+()\-\s]{7,}$',
-                            ).hasMatch(value);
-                            if (!ok)
-                              return 'Please enter a valid contact number';
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: _addressCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Address',
-                          ),
-                          maxLines: 2,
-                          textInputAction: TextInputAction.newline,
-                        ),
-                        const SizedBox(height: 12),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          value: _consent,
-                          onChanged: (v) => setState(() => _consent = v),
-                          title: const Text('Privacy consent'),
-                          subtitle: const Text(
-                            'Allow the parish to store and process my data for parish services.',
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(
-                            onPressed: _saving ? null : _save,
-                            child: _saving
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text('Save changes'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Quick Stats Card
-                _buildStatsCard(theme, colorScheme),
-                const SizedBox(height: 16),
-                // Household Members Card
-                _buildMembersCard(theme, colorScheme),
-                const SizedBox(height: 12),
-                // Activity History Card
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Recent Activity',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            if (_activities.isNotEmpty)
-                              TextButton(
-                                onPressed: () {
-                                  // Navigate to full activity history
+                        const SizedBox(height: 20),
+                        _ProfileSectionCard(
+                          icon: Icons.person_rounded,
+                          iconColor: cs.primary,
+                          title: 'Personal information',
+                          subtitle: 'Head of family details',
+                          child: Column(
+                            children: [
+                              TextFormField(
+                                controller: _nameCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Full name *',
+                                  prefixIcon: Icon(Icons.badge_outlined),
+                                ),
+                                textInputAction: TextInputAction.next,
+                                validator: (v) {
+                                  final value = (v ?? '').trim();
+                                  if (value.isEmpty) {
+                                    return 'Full name is required';
+                                  }
+                                  if (value.length < 2) {
+                                    return 'Please enter a valid name';
+                                  }
+                                  return null;
                                 },
-                                child: const Text('View all'),
                               ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        if (_activities.isEmpty)
-                          Text(
-                            'No recent activity.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onSurface.withValues(
-                                alpha: 0.7,
-                              ),
-                            ),
-                          )
-                        else
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _activities.length > 5
-                                ? 5
-                                : _activities.length,
-                            itemBuilder: (context, i) {
-                              final activity = _activities[i];
-                              return ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                dense: true,
-                                leading: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: (activity['color'] as Color)
-                                        .withValues(alpha: 0.1),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    activity['icon'] as IconData,
-                                    color: activity['color'] as Color,
-                                    size: 20,
-                                  ),
-                                ),
-                                title: Text(
-                                  activity['title']?.toString() ?? '',
-                                ),
-                                subtitle: Text(
-                                  activity['date']?.toString() ?? '',
-                                ),
-                                trailing: Chip(
-                                  label: Text(
-                                    activity['status']?.toString() ?? '',
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                  backgroundColor: (activity['color'] as Color)
-                                      .withValues(alpha: 0.1),
-                                  side: BorderSide.none,
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              );
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Direct Messaging Card
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Message Parish Office',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Send a direct message to the parish office. We\'ll respond as soon as possible.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface.withValues(alpha: 0.7),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _messageCtrl,
-                          decoration: const InputDecoration(
-                            hintText: 'Type your message here...',
-                            border: OutlineInputBorder(),
-                          ),
-                          maxLines: 3,
-                          maxLength: 500,
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: _sendingMessage ? null : _sendMessage,
-                            icon: _sendingMessage
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: _gender,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Gender',
+                                        prefixIcon: Icon(Icons.wc_outlined),
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(
+                                          value: 'Male',
+                                          child: Text('Male'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'Female',
+                                          child: Text('Female'),
+                                        ),
+                                      ],
+                                      onChanged: (v) =>
+                                          setState(() => _gender = v),
                                     ),
-                                  )
-                                : const Icon(Icons.send_outlined),
-                            label: Text(
-                              _sendingMessage ? 'Sending...' : 'Send Message',
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: _civilStatus,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Civil status',
+                                        prefixIcon:
+                                            Icon(Icons.favorite_border),
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(
+                                          value: 'Single',
+                                          child: Text('Single'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'Married',
+                                          child: Text('Married'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'Widowed',
+                                          child: Text('Widowed'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'Separated',
+                                          child: Text('Separated'),
+                                        ),
+                                      ],
+                                      onChanged: (v) =>
+                                          setState(() => _civilStatus = v),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              _DatePickerField(
+                                label: 'Date of birth',
+                                value: _dateOfBirth,
+                                onPick: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: _dateOfBirth ?? DateTime(1990),
+                                    firstDate: DateTime(1900),
+                                    lastDate: DateTime.now(),
+                                  );
+                                  if (picked != null) {
+                                    setState(() => _dateOfBirth = picked);
+                                  }
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _phoneCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Contact number',
+                                  prefixIcon: Icon(Icons.phone_outlined),
+                                ),
+                                keyboardType: TextInputType.phone,
+                                validator: _phoneValidator,
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _emailCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Email',
+                                  prefixIcon: Icon(Icons.email_outlined),
+                                ),
+                                keyboardType: TextInputType.emailAddress,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _ProfileSectionCard(
+                          icon: Icons.home_work_rounded,
+                          iconColor: Colors.orange.shade700,
+                          title: 'Household information',
+                          subtitle: 'Address and parish registration',
+                          child: Column(
+                            children: [
+                              TextFormField(
+                                controller: _householdNameCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Household name',
+                                  prefixIcon: Icon(Icons.family_restroom),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _addressCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Address',
+                                  prefixIcon: Icon(Icons.location_on_outlined),
+                                ),
+                                maxLines: 2,
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _barangayCtrl,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Barangay',
+                                        prefixIcon:
+                                            Icon(Icons.map_outlined),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _householdContactCtrl,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Household contact',
+                                        prefixIcon: Icon(Icons.call_outlined),
+                                      ),
+                                      keyboardType: TextInputType.phone,
+                                      validator: _phoneValidator,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildMembersCard(theme, cs),
+                        const SizedBox(height: 16),
+                        _ProfileSectionCard(
+                          icon: Icons.privacy_tip_outlined,
+                          iconColor: Colors.blueGrey,
+                          title: 'Privacy',
+                          child: SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            value: _consent,
+                            onChanged: (v) => setState(() => _consent = v),
+                            title: const Text(
+                              'Data processing consent',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: const Text(
+                              'Allow the parish to store and process my data for parish services.',
                             ),
                           ),
                         ),
@@ -1248,36 +997,7 @@ class _UserProfileHouseholdScreenState
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Data Export',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Request a copy of your data. A file will be generated for download.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface.withValues(alpha: 0.7),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        FilledButton.tonalIcon(
-                          onPressed: _export,
-                          icon: const Icon(Icons.download_outlined),
-                          label: const Text('Generate export'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                _ProfileSaveBar(saving: _saving, onSave: _save),
               ],
             ),
           );
@@ -1289,8 +1009,8 @@ class _UserProfileHouseholdScreenState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.error_outline, size: 64, color: colorScheme.error),
-                const SizedBox(height: 16),
+                Icon(Icons.error_outline, size: 56, color: cs.error),
+                const SizedBox(height: 12),
                 Text(
                   'Failed to load profile',
                   style: theme.textTheme.titleMedium?.copyWith(
@@ -1302,17 +1022,17 @@ class _UserProfileHouseholdScreenState
                   e.toString(),
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
+                    color: cs.onSurfaceVariant,
                     fontSize: 13,
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
                 FilledButton.icon(
                   onPressed: () {
                     setState(() => _initialized = false);
                     ref.invalidate(myProfileProvider);
                   },
-                  icon: const Icon(Icons.refresh),
+                  icon: const Icon(Icons.refresh_rounded),
                   label: const Text('Retry'),
                 ),
               ],
@@ -1324,46 +1044,452 @@ class _UserProfileHouseholdScreenState
   }
 }
 
-class _StatItem extends StatelessWidget {
-  final IconData icon;
-  final String value;
-  final String label;
-  final Color color;
+// ── Profile UI components ─────────────────────────────────────────────────────
 
-  const _StatItem({
-    required this.icon,
-    required this.value,
-    required this.label,
-    required this.color,
+class _ProfileUi {
+  static const _avatarColors = [
+    Color(0xFF6C63FF),
+    Color(0xFF26A69A),
+    Color(0xFFFF7043),
+    Color(0xFF7E57C2),
+    Color(0xFF42A5F5),
+    Color(0xFFEC407A),
+  ];
+
+  static Color avatarColor(String name) =>
+      _avatarColors[name.hashCode.abs() % _avatarColors.length];
+}
+
+class _ProfileHeroHeader extends StatelessWidget {
+  const _ProfileHeroHeader({
+    required this.name,
+    required this.email,
+    required this.memberCount,
+    required this.householdName,
+    required this.onRefresh,
   });
+
+  final String name;
+  final String email;
+  final int memberCount;
+  final String householdName;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.primary.withValues(alpha: 0.92),
+            const Color(0xFF8B83FF),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: cs.primary.withValues(alpha: 0.25),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
-          child: Icon(icon, color: color, size: 24),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+            ),
+            child: Center(
+              child: Text(
+                initial,
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'My Profile',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: onRefresh,
+                      icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+                      tooltip: 'Refresh',
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+                Text(
+                  name,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (email.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    email,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _HeroChip(
+                      icon: Icons.people_rounded,
+                      label: '$memberCount members',
+                    ),
+                    if (householdName.isNotEmpty)
+                      _HeroChip(
+                        icon: Icons.home_rounded,
+                        label: householdName,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroChip extends StatelessWidget {
+  const _HeroChip({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileSectionCard extends StatelessWidget {
+  const _ProfileSectionCard({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.child,
+    this.subtitle,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String? subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: iconColor, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.onSurface.withValues(alpha: 0.55),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: child,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DatePickerField extends StatelessWidget {
+  const _DatePickerField({
+    required this.label,
+    required this.value,
+    required this.onPick,
+  });
+
+  final String label;
+  final DateTime? value;
+  final VoidCallback onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = value != null ? DateFormat.yMMMd().format(value!) : 'Select date';
+
+    return InkWell(
+      onTap: onPick,
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: const Icon(Icons.calendar_today_outlined),
+          suffixIcon: const Icon(Icons.chevron_right_rounded),
         ),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: color,
+        child: Text(
+          text,
+          style: TextStyle(
+            color: value != null ? null : Theme.of(context).hintColor,
           ),
         ),
-        Text(
-          label,
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+      ),
+    );
+  }
+}
+
+class _ProfileEmptyHint extends StatelessWidget {
+  const _ProfileEmptyHint({required this.icon, required this.message});
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Column(
+        children: [
+          Icon(icon, size: 40, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemberTile extends StatelessWidget {
+  const _MemberTile({
+    required this.name,
+    required this.subtitle,
+    required this.avatarColor,
+    required this.onSacraments,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  final String name;
+  final String subtitle;
+  final Color avatarColor;
+  final VoidCallback onSacraments;
+  final VoidCallback onEdit;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: avatarColor.withValues(alpha: 0.15),
+            child: Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: TextStyle(
+                color: avatarColor,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (subtitle.isNotEmpty)
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Sacraments',
+            onPressed: onSacraments,
+            icon: Icon(Icons.church_outlined, color: Colors.purple.shade400, size: 20),
+            visualDensity: VisualDensity.compact,
+          ),
+          IconButton(
+            tooltip: 'Edit',
+            onPressed: onEdit,
+            icon: Icon(Icons.edit_outlined, color: cs.primary, size: 20),
+            visualDensity: VisualDensity.compact,
+          ),
+          IconButton(
+            tooltip: 'Remove',
+            onPressed: onRemove,
+            icon: Icon(Icons.delete_outline, color: cs.error, size: 20),
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileSaveBar extends StatelessWidget {
+  const _ProfileSaveBar({required this.saving, required this.onSave});
+  final bool saving;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: FilledButton(
+          onPressed: saving ? null : onSave,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(double.infinity, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          child: saving
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Save profile'),
         ),
-      ],
+      ),
     );
   }
 }

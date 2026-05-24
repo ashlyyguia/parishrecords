@@ -33,6 +33,61 @@ function toIso(val) {
   }
 }
 
+function certificateTypeLabel(requestType) {
+  const t = (requestType || '').toString().trim().toLowerCase();
+  switch (t) {
+    case 'baptism':
+      return 'Baptism';
+    case 'marriage':
+      return 'Marriage';
+    case 'confirmation':
+      return 'Confirmation';
+    case 'death':
+    case 'funeral':
+      return 'Death / Funeral';
+    default:
+      return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'Certificate';
+  }
+}
+
+function notificationCopyForStatus(status, requestType, requesterName) {
+  const typeLabel = certificateTypeLabel(requestType);
+  const name = (requesterName || '').toString().trim();
+  const greeting = name ? `Hi ${name}, ` : '';
+  const s = (status || '').toString().trim().toLowerCase();
+
+  switch (s) {
+    case 'approved':
+      return {
+        title: 'Certificate request approved',
+        body:
+          `${greeting}your ${typeLabel} certificate request has been approved. ` +
+          'In about 5 minutes you may come to the parish office to receive your certificate, ' +
+          'or open My Requests in the app for details.',
+      };
+    case 'rejected':
+      return {
+        title: 'Certificate request update',
+        body:
+          `${greeting}your ${typeLabel} certificate request was not approved. ` +
+          'Please contact the parish office for assistance.',
+      };
+    case 'completed':
+    case 'ready':
+      return {
+        title: 'Your certificate is ready',
+        body:
+          `${greeting}your ${typeLabel} certificate is ready for pickup. ` +
+          'Please visit the parish office during office hours.',
+      };
+    default:
+      return {
+        title: 'Certificate request updated',
+        body: `${greeting}your ${typeLabel} certificate request status is now: ${status}.`,
+      };
+  }
+}
+
 function normalizeRequestDoc(doc) {
   const data = doc.data() || {};
   return {
@@ -273,18 +328,30 @@ router.put('/:id', requireStaff, async (req, res) => {
       }
     }
 
-    if (notificationSent !== null) {
+    const statusChanged =
+      status && status.toString().toLowerCase() !== (data.status || 'pending').toString().toLowerCase();
+
+    if (statusChanged && ownerUid) {
+      updates.notification_sent = true;
+    } else if (notificationSent !== null) {
       updates.notification_sent = notificationSent;
     }
 
     await ref.set(updates, { merge: true });
 
-    // Send automated notification to the user if status changed
-    if (status && status !== data.status && ownerUid) {
+    if (statusChanged && ownerUid) {
+      const copy = notificationCopyForStatus(
+        status,
+        data.request_type,
+        data.requester_name,
+      );
       await db.collection('notifications').add({
-        title: 'Certificate Request Updated',
-        body: `Your request status is now: ${status}`,
+        title: copy.title,
+        body: copy.body,
         user_id: ownerUid,
+        type: 'request',
+        route: `/user/requests/${requestId}`,
+        resource_id: requestId,
         created_at: admin.firestore.FieldValue.serverTimestamp(),
         created_by_uid: 'system',
       });

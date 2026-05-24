@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../providers/requests_provider.dart';
 import '../../../services/requests_repository.dart';
 import '../../../services/audit_service.dart';
+import 'package:go_router/go_router.dart';
+import '../../../models/record.dart';
 
 class StaffRequestsInboxPage extends ConsumerStatefulWidget {
   const StaffRequestsInboxPage({super.key});
@@ -36,8 +38,9 @@ class _StaffRequestsInboxPageState
     final repo = RequestsRepository();
     await repo.updateStatus(id, status: status, notificationSent: true);
 
-    final requester = (row['requester_name'] ?? '').toString();
+    final requester = RequestsRepository.personOnCertificate(row);
     final type = (row['request_type'] ?? '').toString();
+
     try {
       await AuditService.log(
         action: 'request_status_change',
@@ -49,12 +52,58 @@ class _StaffRequestsInboxPageState
     _reload();
 
     if (!mounted) return;
+    final snackMessage = status == 'approved'
+        ? 'Approved. User notified: certificate ready for pickup in ~5 minutes.'
+        : 'Request updated: ${status.toUpperCase()}';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Request updated: ${status.toUpperCase()}'),
+        content: Text(snackMessage),
         backgroundColor: status == 'approved' ? Colors.green : Colors.orange,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  void _viewRequestDetails(BuildContext context, Map<String, dynamic> request) {
+    final type = request['request_type']?.toString() ?? 'Certificate';
+    final typeLabel = RequestsRepository.certificateTypeLabel(type);
+    final personName = RequestsRepository.personOnCertificate(request);
+    final submittedBy = RequestsRepository.submittedByName(request);
+    final status = request['status']?.toString() ?? 'pending';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('$typeLabel certificate request'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (personName.isNotEmpty)
+                Text(
+                  'Person on certificate: $personName',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              if (submittedBy.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('Requested by: $submittedBy'),
+              ],
+              const SizedBox(height: 8),
+              Text('Status: ${status.toUpperCase()}'),
+              const SizedBox(height: 8),
+              if (request['purpose'] != null)
+                Text('Purpose: ${request['purpose']}'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
@@ -66,28 +115,24 @@ class _StaffRequestsInboxPageState
     final width = MediaQuery.of(context).size.width;
     final isMobile = width < 768;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: EdgeInsets.all(isMobile ? 16.0 : 24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildHeader(colorScheme, theme, isMobile),
-                const SizedBox(height: 16),
-                _buildFilterChips(colorScheme, theme),
-                const SizedBox(height: 16),
-                _buildSearchBar(colorScheme, theme),
-                const SizedBox(height: 16),
-                _buildRequestsList(colorScheme, theme),
-              ],
-            ),
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.all(isMobile ? 16.0 : 24.0),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              _buildHeader(colorScheme, theme, isMobile),
+              const SizedBox(height: 16),
+              _buildFilterChips(colorScheme, theme),
+              const SizedBox(height: 16),
+              _buildSearchBar(colorScheme, theme),
+              const SizedBox(height: 16),
+            ]),
           ),
         ),
-      ),
+        _buildRequestsSliver(colorScheme, theme, isMobile),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
     );
   }
 
@@ -150,7 +195,13 @@ class _StaffRequestsInboxPageState
                   ),
                 ),
                 const SizedBox(height: 12),
-                _buildRefreshButton(colorScheme, isMobile),
+                Row(
+                  children: [
+                    _buildRefreshButton(colorScheme, isMobile),
+                    const SizedBox(width: 12),
+                    _buildCreateButton(colorScheme, isMobile),
+                  ],
+                ),
               ],
             )
           : Row(
@@ -197,7 +248,13 @@ class _StaffRequestsInboxPageState
                     ],
                   ),
                 ),
-                _buildRefreshButton(colorScheme, isMobile),
+                Row(
+                  children: [
+                    _buildRefreshButton(colorScheme, isMobile),
+                    const SizedBox(width: 12),
+                    _buildCreateButton(colorScheme, isMobile),
+                  ],
+                ),
               ],
             ),
     );
@@ -215,6 +272,67 @@ class _StaffRequestsInboxPageState
         padding: isMobile
             ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
             : const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _buildCreateButton(ColorScheme colorScheme, bool isMobile) {
+    return FilledButton.icon(
+      onPressed: () => _showCreateCertificateOptions(context),
+      icon: Icon(Icons.add_circle_outline, size: isMobile ? 16 : 18),
+      label: Text(isMobile ? 'Create' : 'Create Certificate'),
+      style: FilledButton.styleFrom(
+        backgroundColor: colorScheme.primary,
+        foregroundColor: colorScheme.onPrimary,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: isMobile
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
+            : const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+  }
+
+  void _showCreateCertificateOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                child: Text(
+                  'Select Certificate Template',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.water_drop, color: Colors.blue),
+                title: const Text('Baptism'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/staff/records/new/certificate',
+                      extra: RecordType.baptism);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.church, color: Colors.purple),
+                title: const Text('Confirmation'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  context.push('/staff/records/new/certificate',
+                      extra: RecordType.confirmation);
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -288,64 +406,59 @@ class _StaffRequestsInboxPageState
     );
   }
 
-  Widget _buildRequestsList(ColorScheme colorScheme, ThemeData theme) {
+  Widget _buildRequestsSliver(
+    ColorScheme colorScheme,
+    ThemeData theme,
+    bool isMobile,
+  ) {
     return ref
         .watch(certificateRequestsProvider(100))
         .when(
-          loading: () => Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(
-                  strokeWidth: 3,
-                  color: colorScheme.primary,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Loading requests...',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
+          loading: () => const SliverFillRemaining(
+            child: Center(child: CircularProgressIndicator()),
           ),
-          error: (e, _) => Center(
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.error_outline, color: colorScheme.error, size: 48),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Failed to load requests',
-                    style: theme.textTheme.titleMedium?.copyWith(
+          error: (e, _) => SliverFillRemaining(
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
                       color: colorScheme.error,
-                      fontWeight: FontWeight.bold,
+                      size: 48,
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    e.toString(),
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onErrorContainer.withValues(
-                        alpha: 0.8,
+                    const SizedBox(height: 16),
+                    Text(
+                      'Failed to load requests',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: colorScheme.error,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: _reload,
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Retry'),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      e.toString(),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onErrorContainer.withValues(
+                          alpha: 0.8,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _reload,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -354,10 +467,12 @@ class _StaffRequestsInboxPageState
             var filtered = query.isEmpty
                 ? rows
                 : rows.where((r) {
-                    final name = (r['requester_name'] ?? '').toString();
+                    final person = RequestsRepository.personOnCertificate(r);
+                    final submitted = RequestsRepository.submittedByName(r);
                     final type = (r['request_type'] ?? '').toString();
                     final status = (r['status'] ?? '').toString();
-                    return name.toLowerCase().contains(query) ||
+                    return person.toLowerCase().contains(query) ||
+                        submitted.toLowerCase().contains(query) ||
                         type.toLowerCase().contains(query) ||
                         status.toLowerCase().contains(query);
                   }).toList();
@@ -371,66 +486,102 @@ class _StaffRequestsInboxPageState
             }
 
             if (filtered.isEmpty) {
-              return Center(
-                child: Container(
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerLowest,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.inbox_outlined,
-                        size: 64,
-                        color: colorScheme.onSurface.withValues(alpha: 0.3),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No requests found',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+              return SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(32),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.inbox_outlined,
+                          size: 64,
+                          color: colorScheme.onSurface.withValues(alpha: 0.3),
                         ),
-                      ),
-                      if (query.isNotEmpty)
+                        const SizedBox(height: 16),
                         Text(
-                          'Try adjusting your search',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurface.withValues(alpha: 0.5),
+                          'No requests found',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
-                    ],
+                        if (query.isNotEmpty)
+                          Text(
+                            'Try adjusting your search',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.5,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               );
             }
 
-            return ListView.separated(
-              itemCount: filtered.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, i) {
-                final r = filtered[i];
-                final name = (r['requester_name'] ?? 'Requester').toString();
-                final type = (r['request_type'] ?? 'certificate').toString();
-                final status = (r['status'] ?? 'pending').toString();
-                final createdAt = (r['created_at'] ?? '').toString();
+            return SliverPadding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 16.0 : 24.0),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate((context, i) {
+                  final r = filtered[i];
+                  final personName =
+                      RequestsRepository.personOnCertificate(r);
+                  final submittedBy = RequestsRepository.submittedByName(r);
+                  final type = (r['request_type'] ?? 'certificate').toString();
+                  final status = (r['status'] ?? 'pending').toString();
+                  final createdAt = (r['created_at'] ?? '').toString();
 
-                return _RequestCard(
-                  name: name,
-                  type: type,
-                  status: status,
-                  createdAt: createdAt,
-                  onApprove: status == 'pending'
-                      ? () => _setStatus(r, 'approved')
-                      : null,
-                  onReject: status == 'pending'
-                      ? () => _setStatus(r, 'rejected')
-                      : null,
-                  colorScheme: colorScheme,
-                  theme: theme,
-                );
-              },
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _RequestCard(
+                      personName: personName.isNotEmpty
+                          ? personName
+                          : 'Unknown',
+                      submittedByName: submittedBy,
+                      type: type,
+                      status: status,
+                      createdAt: createdAt,
+                      onTap: () => _viewRequestDetails(context, r),
+                      onApprove: status == 'pending'
+                          ? () => _setStatus(r, 'approved')
+                          : null,
+                      onReject: status == 'pending'
+                          ? () => _setStatus(r, 'rejected')
+                          : null,
+                      onCreateCertificate: status == 'approved'
+                          ? () {
+                              RecordType rType = RecordType.baptism;
+                              final typeLower = type.toLowerCase();
+                              if (typeLower.contains('marriage')) {
+                                rType = RecordType.marriage;
+                              } else if (typeLower.contains('confirm')) {
+                                rType = RecordType.confirmation;
+                              } else if (typeLower.contains('death') ||
+                                  typeLower.contains('funeral')) {
+                                rType = RecordType.funeral;
+                              }
+                              final recordId =
+                                  (r['record_id'] ?? 'new').toString();
+                              final targetId = recordId.isEmpty ? 'new' : recordId;
+                              context.push(
+                                '/staff/records/$targetId/certificate',
+                                extra: rType,
+                              );
+                            }
+                          : null,
+                      colorScheme: colorScheme,
+                      theme: theme,
+                    ),
+                  );
+                }, childCount: filtered.length),
+              ),
             );
           },
         );
@@ -438,22 +589,28 @@ class _StaffRequestsInboxPageState
 }
 
 class _RequestCard extends StatelessWidget {
-  final String name;
+  final String personName;
+  final String submittedByName;
   final String type;
   final String status;
   final String createdAt;
+  final VoidCallback onTap;
   final VoidCallback? onApprove;
   final VoidCallback? onReject;
+  final VoidCallback? onCreateCertificate;
   final ColorScheme colorScheme;
   final ThemeData theme;
 
   const _RequestCard({
-    required this.name,
+    required this.personName,
+    required this.submittedByName,
     required this.type,
     required this.status,
     required this.createdAt,
+    required this.onTap,
     this.onApprove,
     this.onReject,
+    this.onCreateCertificate,
     required this.colorScheme,
     required this.theme,
   });
@@ -469,7 +626,7 @@ class _RequestCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {},
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -491,7 +648,7 @@ class _RequestCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          name,
+                          RequestsRepository.certificateTypeLabel(type),
                           style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -500,7 +657,26 @@ class _RequestCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '$type • ${status.toUpperCase()}',
+                          'Person: $personName',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurface.withValues(alpha: 0.75),
+                          ),
+                        ),
+                        if (submittedByName.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Requested by: $submittedByName',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.75,
+                              ),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 2),
+                        Text(
+                          status.toUpperCase(),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
@@ -589,6 +765,24 @@ class _RequestCard extends StatelessWidget {
                         ),
                       ),
                   ],
+                ),
+              ],
+              if (onCreateCertificate != null) ...[
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: onCreateCertificate,
+                    icon: const Icon(Icons.card_membership, size: 18),
+                    label: const Text('Create Certificate'),
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ],

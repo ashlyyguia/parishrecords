@@ -87,36 +87,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       }
 
       if (mounted) {
-        // Wait briefly for authProvider to finish loading user + role
-        for (int i = 0; i < 20; i++) {
-          final s = ref.read(authProvider);
-          if (s.initialized && s.user != null) {
-            break;
-          }
-          await Future.delayed(const Duration(milliseconds: 100));
-          if (!mounted) return;
-        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          final user = ref.read(authProvider).user;
-          final role = user?.role.trim().toLowerCase() ?? '';
-
-          // Debug logging to help diagnose routing issues
-          debugPrint('Login redirect - User: ${user?.email}, Role: "$role"');
-
-          if (role == 'admin') {
-            context.go('/admin/dashboard');
-          } else if (role == 'finance') {
-            context.go('/finance/dashboard');
-          } else if (role == 'staff') {
-            context.go('/staff/dashboard');
-          } else if (role.isNotEmpty) {
-            context.go('/home');
-          } else {
-            // Role not loaded yet, show error or retry
-            debugPrint('Warning: User role not loaded after login');
-            context.go('/home');
-          }
+          context.go('/dashboard');
         });
       }
     } catch (e) {

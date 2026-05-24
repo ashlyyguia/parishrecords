@@ -28,7 +28,7 @@ class StaffSchedulePage extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildHeader(colorScheme, theme, isMobile),
+                _buildHeader(context, colorScheme, theme, isMobile),
                 const SizedBox(height: 16),
                 _buildScheduleCard(
                   eventsAsync,
@@ -45,7 +45,12 @@ class StaffSchedulePage extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader(ColorScheme colorScheme, ThemeData theme, bool isMobile) {
+  Widget _buildHeader(
+    BuildContext context,
+    ColorScheme colorScheme,
+    ThemeData theme,
+    bool isMobile,
+  ) {
     final now = DateTime.now();
     final dateFormat = DateFormat('EEEE, MMMM d, yyyy');
     final padding = isMobile ? 16.0 : 24.0;
@@ -106,7 +111,7 @@ class StaffSchedulePage extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                _buildCalendarButton(colorScheme, isMobile),
+                _buildCalendarButton(context, colorScheme, isMobile),
               ],
             )
           : Row(
@@ -153,15 +158,23 @@ class StaffSchedulePage extends ConsumerWidget {
                     ],
                   ),
                 ),
-                _buildCalendarButton(colorScheme, isMobile),
+                _buildCalendarButton(context, colorScheme, isMobile),
               ],
             ),
     );
   }
 
-  Widget _buildCalendarButton(ColorScheme colorScheme, bool isMobile) {
+  Widget _buildCalendarButton(
+    BuildContext context,
+    ColorScheme colorScheme,
+    bool isMobile,
+  ) {
     return OutlinedButton.icon(
-      onPressed: () {},
+      onPressed: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Calendar view coming soon')),
+        );
+      },
       icon: Icon(Icons.calendar_today, size: isMobile ? 16 : 18),
       label: const Text('Calendar'),
       style: OutlinedButton.styleFrom(

@@ -166,6 +166,9 @@ router.put('/:id', async (req, res) => {
         title: 'Appointment Updated',
         body: `Your appointment status is now: ${status}`,
         user_id: owner,
+        type: 'appointment',
+        route: '/user/mass-schedule',
+        resource_id: id,
         created_at: admin.firestore.FieldValue.serverTimestamp(),
         created_by_uid: 'system',
       });

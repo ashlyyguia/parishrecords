@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -7,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/auth_provider.dart';
-import '../../services/verification_service.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -26,7 +23,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _loading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _notRobotChecked = false;
   String? _error;
 
   @override
@@ -40,13 +36,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    if (!_notRobotChecked) {
-      setState(() {
-        _error = 'Please confirm that you are not a robot.';
-      });
       return;
     }
     final email = _emailCtrl.text.trim();
@@ -64,7 +53,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           .registerWithEmailAndPassword(email, password, fullName);
 
       final currentUser = FirebaseAuth.instance.currentUser;
-      String? generatedCode;
       if (currentUser != null) {
         final usersRef = FirebaseFirestore.instance
             .collection('users')
@@ -84,15 +72,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Registration successful! (Auto-verified in DEV MODE)',
-          ),
+          content: Text('Registration successful! (Auto-verified in DEV MODE)'),
           duration: Duration(seconds: 4),
         ),
       );
 
-      // Redirect directly to home instead of verify-code
-      context.go('/home');
+      // Redirect to dashboard (role-based redirect will send to correct portal)
+      context.go('/dashboard');
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -180,28 +166,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           _buildPasswordField(colorScheme),
                           const SizedBox(height: 16),
                           _buildConfirmPasswordField(colorScheme),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: _notRobotChecked,
-                                onChanged: _loading
-                                    ? null
-                                    : (v) {
-                                        setState(() {
-                                          _notRobotChecked = v ?? false;
-                                        });
-                                      },
-                              ),
-                              const SizedBox(width: 8),
-                              const Expanded(
-                                child: Text(
-                                  "I'm not a robot",
-                                  style: TextStyle(fontSize: 14),
-                                ),
-                              ),
-                            ],
-                          ),
                           if (_error != null) ...[
                             const SizedBox(height: 16),
                             Container(

@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:universal_html/html.dart' as html;
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../providers/finance_providers.dart';
 
@@ -50,22 +53,65 @@ class _FinanceReportsPageState extends ConsumerState<FinanceReportsPage> {
             to: _to,
           );
 
-      final report = resp['report'] is Map ? (resp['report'] as Map) : const {};
-      final url = (report['download_url'] ?? '').toString();
-      final name = (report['name'] ?? 'report.json').toString();
+      final pdf = pw.Document();
 
-      if (url.isEmpty) {
-        throw Exception('Missing download_url');
-      }
+      final byMethod = resp['by_method'] as Map<String, dynamic>? ?? {};
+      final byCampaign = resp['by_campaign'] as Map<String, dynamic>? ?? {};
 
-      if (kIsWeb && url.startsWith('data:')) {
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (context) => [
+            pw.Header(
+              level: 0,
+              child: pw.Text('Financial Report', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+            ),
+            pw.SizedBox(height: 20),
+            pw.TableHelper.fromTextArray(
+              context: context,
+              data: <List<String>>[
+                ['Template', resp['template'].toString().toUpperCase()],
+                ['From', resp['from'].toString().split('T').first],
+                ['To', resp['to'].toString().split('T').first],
+                ['Generated At', resp['generated_at'].toString().split('T').first],
+              ],
+            ),
+            pw.SizedBox(height: 20),
+            pw.Header(level: 1, text: 'OVERVIEW'),
+            pw.TableHelper.fromTextArray(
+              context: context,
+              data: <List<String>>[
+                ['Total Amount', 'PHP ${resp['total_amount']}'],
+                ['Total Donations', '${resp['donation_count']}'],
+              ],
+            ),
+            pw.SizedBox(height: 20),
+            pw.Header(level: 1, text: 'BY PAYMENT METHOD'),
+            pw.TableHelper.fromTextArray(
+              context: context,
+              headers: const ['Method', 'Amount'],
+              data: byMethod.entries.map((e) => [e.key.toUpperCase(), 'PHP ${e.value}']).toList(),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Header(level: 1, text: 'BY CAMPAIGN / CATEGORY'),
+            pw.TableHelper.fromTextArray(
+              context: context,
+              headers: const ['Category', 'Amount'],
+              data: byCampaign.entries.map((e) => [e.key, 'PHP ${e.value}']).toList(),
+            ),
+          ],
+        ),
+      );
+
+      final bytes = await pdf.save();
+      final base64Str = base64Encode(bytes);
+      final url = 'data:application/pdf;base64,$base64Str';
+      final name = 'financial_report_${_template}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+
+      if (kIsWeb) {
         (html.AnchorElement(href: url)..setAttribute('download', name)).click();
       } else {
-        final uri = Uri.parse(url);
-        final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-        if (!ok) {
-          throw Exception('Unable to open download link');
-        }
+        await Printing.sharePdf(bytes: bytes, filename: name);
       }
 
       if (mounted) {

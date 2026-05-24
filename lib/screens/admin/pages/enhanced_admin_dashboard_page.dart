@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../providers/admin_analytics_provider.dart';
-import '../../../providers/admin_providers.dart' hide adminAnalyticsProvider;
+import '../../../providers/admin_providers.dart';
 import '../../../providers/auth_provider.dart';
 
 /// Enhanced Admin Dashboard with modern UX patterns and beautiful animations
@@ -33,17 +33,14 @@ class _EnhancedAdminDashboardPageState
     );
 
     // Staggered animations for cards
-    _cardAnimations = List.generate(
-      6,
-      (index) => CurvedAnimation(
+    _cardAnimations = List.generate(6, (index) {
+      final begin = (index * 0.1).clamp(0.0, 1.0);
+      final end = (0.6 + index * 0.08).clamp(0.0, 1.0);
+      return CurvedAnimation(
         parent: _animController,
-        curve: Interval(
-          index * 0.1,
-          0.6 + index * 0.1,
-          curve: Curves.easeOutCubic,
-        ),
-      ),
-    );
+        curve: Interval(begin, end, curve: Curves.easeOutCubic),
+      );
+    });
 
     _animController.forward();
 
@@ -63,13 +60,13 @@ class _EnhancedAdminDashboardPageState
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final analyticsAsync = ref.watch(adminAnalyticsProvider);
+    final analyticsAsync = ref.watch(adminDashboardAnalyticsProvider);
     final authState = ref.watch(authProvider);
     final user = authState.user;
 
     return RefreshIndicator(
       onRefresh: () async {
-        ref.invalidate(adminAnalyticsProvider);
+        ref.invalidate(adminDashboardAnalyticsProvider);
         await Future.delayed(const Duration(milliseconds: 500));
       },
       child: SingleChildScrollView(
@@ -95,25 +92,10 @@ class _EnhancedAdminDashboardPageState
                   const SizedBox(height: 32),
                   _buildQuickActionsSection(colorScheme, textTheme),
                   const SizedBox(height: 32),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: _buildRecentActivitySection(
-                          colorScheme,
-                          textTheme,
-                        ),
-                      ),
-                      const SizedBox(width: 24),
-                      Expanded(
-                        child: _buildSystemStatusSection(
-                          colorScheme,
-                          textTheme,
-                          analytics,
-                        ),
-                      ),
-                    ],
+                  _buildActivityAndStatusSection(
+                    colorScheme,
+                    textTheme,
+                    analytics,
                   ),
                   const SizedBox(height: 32),
                 ],
@@ -124,32 +106,17 @@ class _EnhancedAdminDashboardPageState
                   const SizedBox(height: 32),
                   _buildQuickActionsSection(colorScheme, textTheme),
                   const SizedBox(height: 32),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: _buildRecentActivitySection(
-                          colorScheme,
-                          textTheme,
-                        ),
-                      ),
-                      const SizedBox(width: 24),
-                      Expanded(
-                        child: _buildSystemStatusSection(
-                          colorScheme,
-                          textTheme,
-                          AdminAnalytics(
-                            households: 0,
-                            parishioners: 0,
-                            records: 0,
-                            requests: 0,
-                            donations: 0,
-                            ocrPending: 0,
-                          ),
-                        ),
-                      ),
-                    ],
+                  _buildActivityAndStatusSection(
+                    colorScheme,
+                    textTheme,
+                    AdminAnalytics(
+                      households: 0,
+                      parishioners: 0,
+                      records: 0,
+                      requests: 0,
+                      donations: 0,
+                      ocrPending: 0,
+                    ),
                   ),
                   const SizedBox(height: 32),
                 ],
@@ -172,32 +139,17 @@ class _EnhancedAdminDashboardPageState
                   const SizedBox(height: 32),
                   _buildQuickActionsSection(colorScheme, textTheme),
                   const SizedBox(height: 32),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: _buildRecentActivitySection(
-                          colorScheme,
-                          textTheme,
-                        ),
-                      ),
-                      const SizedBox(width: 24),
-                      Expanded(
-                        child: _buildSystemStatusSection(
-                          colorScheme,
-                          textTheme,
-                          AdminAnalytics(
-                            households: 0,
-                            parishioners: 0,
-                            records: 0,
-                            requests: 0,
-                            donations: 0,
-                            ocrPending: 0,
-                          ),
-                        ),
-                      ),
-                    ],
+                  _buildActivityAndStatusSection(
+                    colorScheme,
+                    textTheme,
+                    AdminAnalytics(
+                      households: 0,
+                      parishioners: 0,
+                      records: 0,
+                      requests: 0,
+                      donations: 0,
+                      ocrPending: 0,
+                    ),
                   ),
                   const SizedBox(height: 32),
                 ],
@@ -286,13 +238,7 @@ class _EnhancedAdminDashboardPageState
         icon: Icons.home_work_rounded,
         color: Colors.blue,
         route: '/admin/households',
-      ),
-      _StatItem(
-        label: 'Parishioners',
-        value: analytics.parishioners,
-        icon: Icons.people_rounded,
-        color: Colors.green,
-        route: '/admin/parishioners',
+        emptyMessage: 'No households yet',
       ),
       _StatItem(
         label: 'Sacrament Records',
@@ -300,6 +246,7 @@ class _EnhancedAdminDashboardPageState
         icon: Icons.church_rounded,
         color: Colors.purple,
         route: '/admin/records',
+        emptyMessage: 'No records yet',
       ),
       _StatItem(
         label: 'Pending Requests',
@@ -307,13 +254,15 @@ class _EnhancedAdminDashboardPageState
         icon: Icons.assignment_rounded,
         color: Colors.orange,
         route: '/admin/requests',
+        emptyMessage: 'No pending requests',
       ),
       _StatItem(
         label: 'Donations',
         value: analytics.donations,
         icon: Icons.favorite_rounded,
         color: Colors.pink,
-        route: '/admin/finance',
+        route: '/admin/donations',
+        emptyMessage: 'No donations yet',
       ),
       _StatItem(
         label: 'OCR Pending',
@@ -321,6 +270,7 @@ class _EnhancedAdminDashboardPageState
         icon: Icons.document_scanner_rounded,
         color: Colors.teal,
         route: '/admin/ocr',
+        emptyMessage: 'No pending OCR jobs',
       ),
     ];
 
@@ -389,7 +339,7 @@ class _EnhancedAdminDashboardPageState
             ),
           ),
           FilledButton.icon(
-            onPressed: () => ref.invalidate(adminAnalyticsProvider),
+            onPressed: () => ref.invalidate(adminDashboardAnalyticsProvider),
             icon: const Icon(Icons.refresh),
             label: const Text('Retry'),
           ),
@@ -422,6 +372,12 @@ class _EnhancedAdminDashboardPageState
         route: '/admin/records',
       ),
       _QuickAction(
+        label: 'Add Record (OCR)',
+        icon: Icons.document_scanner_rounded,
+        color: Colors.cyan,
+        route: '/admin/ocr/upload',
+      ),
+      _QuickAction(
         label: 'Announcement',
         icon: Icons.campaign_rounded,
         color: Colors.deepOrange,
@@ -431,7 +387,7 @@ class _EnhancedAdminDashboardPageState
         label: 'Donation',
         icon: Icons.favorite_rounded,
         color: Colors.red,
-        route: '/admin/finance',
+        route: '/admin/donations',
       ),
     ];
 
@@ -461,7 +417,7 @@ class _EnhancedAdminDashboardPageState
     ColorScheme colorScheme,
     TextTheme textTheme,
   ) {
-    final recentLogsAsync = ref.watch(adminRecentLogsProvider(5));
+    final recentActivityAsync = ref.watch(adminRecentActivityProvider(8));
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -483,15 +439,15 @@ class _EnhancedAdminDashboardPageState
                 ),
               ),
               TextButton(
-                onPressed: () => context.go('/admin/audit'),
+                onPressed: () => context.go('/admin/requests'),
                 child: const Text('View All'),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          recentLogsAsync.when(
-            data: (logs) {
-              if (logs.isEmpty) {
+          recentActivityAsync.when(
+            data: (activities) {
+              if (activities.isEmpty) {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Center(
@@ -503,22 +459,25 @@ class _EnhancedAdminDashboardPageState
                 );
               }
               return Column(
-                children: logs.take(4).map((log) {
-                  final action = log['action']?.toString() ?? 'Unknown action';
-                  final details =
-                      log['details']?.toString() ??
-                      log['resource_id']?.toString() ??
-                      log['user_id']?.toString() ??
-                      'System';
-                  final timestamp = log['timestamp']?.toString() ?? '';
-                  final timeAgo = _formatTimeAgo(timestamp);
+                children: activities.take(5).map((activity) {
+                  final title = activity['title']?.toString() ?? 'Unknown';
+                  final subtitle = activity['subtitle']?.toString() ?? '';
+                  final iconName = activity['icon']?.toString() ?? 'info';
+                  final category = activity['category']?.toString() ?? 'other';
+                  final date = activity['date'] as DateTime?;
+                  final timeAgo = date != null
+                      ? _formatTimeAgo(date.toIso8601String())
+                      : 'Unknown';
 
-                  final (icon, color) = _getActivityIconAndColor(action);
+                  final (icon, color) = _getActivityIconAndColor(
+                    iconName,
+                    category,
+                  );
 
                   return _buildActivityItem(
                     colorScheme,
-                    action,
-                    details,
+                    title,
+                    subtitle,
                     timeAgo,
                     icon,
                     color,
@@ -545,6 +504,43 @@ class _EnhancedAdminDashboardPageState
     );
   }
 
+  Widget _buildActivityAndStatusSection(
+    ColorScheme colorScheme,
+    TextTheme textTheme,
+    AdminAnalytics analytics,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 1100) {
+          return Column(
+            children: [
+              _buildRecentActivitySection(colorScheme, textTheme),
+              const SizedBox(height: 24),
+              _buildSystemStatusSection(colorScheme, textTheme, analytics),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 2,
+              child: _buildRecentActivitySection(colorScheme, textTheme),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              child: _buildSystemStatusSection(
+                colorScheme,
+                textTheme,
+                analytics,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   String _formatTimeAgo(String timestamp) {
     if (timestamp.isEmpty) return 'Unknown';
     try {
@@ -562,49 +558,40 @@ class _EnhancedAdminDashboardPageState
     }
   }
 
-  (IconData, Color) _getActivityIconAndColor(String action) {
-    final actionLower = action.toLowerCase();
-    if (actionLower.contains('login')) {
-      return (Icons.login, Colors.green);
+  (IconData, Color) _getActivityIconAndColor(String iconName, String category) {
+    // Map icon names to icons and colors
+    switch (iconName) {
+      case 'water_drop':
+        return (Icons.water_drop, Colors.purple);
+      case 'favorite':
+        return (Icons.favorite, Colors.pink);
+      case 'check_circle':
+        return (Icons.check_circle, Colors.teal);
+      case 'church':
+        return (Icons.church, Colors.indigo);
+      case 'verified':
+        return (Icons.verified, Colors.amber);
+      case 'volunteer_activism':
+        return (Icons.volunteer_activism, Colors.red);
+      case 'home_work':
+        return (Icons.home_work, Colors.blue);
+      case 'person':
+        return (Icons.person, Colors.cyan);
+      case 'add_circle':
+        return (Icons.add_circle, Colors.green);
+      default:
+        // Fallback based on category
+        switch (category) {
+          case 'record':
+            return (Icons.description, Colors.blue);
+          case 'request':
+            return (Icons.assignment, Colors.orange);
+          case 'donation':
+            return (Icons.favorite, Colors.red);
+          default:
+            return (Icons.info, Colors.blueGrey);
+        }
     }
-    if (actionLower.contains('logout')) {
-      return (Icons.logout, Colors.grey);
-    }
-    if (actionLower.contains('create') || actionLower.contains('add')) {
-      return (Icons.add_circle, Colors.blue);
-    }
-    if (actionLower.contains('update') || actionLower.contains('edit')) {
-      return (Icons.edit, Colors.orange);
-    }
-    if (actionLower.contains('delete')) {
-      return (Icons.delete, Colors.red);
-    }
-    if (actionLower.contains('baptism')) {
-      return (Icons.water_drop, Colors.purple);
-    }
-    if (actionLower.contains('marriage')) {
-      return (Icons.favorite, Colors.pink);
-    }
-    if (actionLower.contains('confirmation')) {
-      return (Icons.check_circle, Colors.teal);
-    }
-    if (actionLower.contains('funeral') || actionLower.contains('death')) {
-      return (Icons.church, Colors.indigo);
-    }
-    if (actionLower.contains('donation')) {
-      return (Icons.volunteer_activism, Colors.red);
-    }
-    if (actionLower.contains('household')) {
-      return (Icons.home_work, Colors.blue);
-    }
-    if (actionLower.contains('user')) {
-      return (Icons.person, Colors.cyan);
-    }
-    if (actionLower.contains('certificate') ||
-        actionLower.contains('request')) {
-      return (Icons.verified, Colors.amber);
-    }
-    return (Icons.info, Colors.blueGrey);
   }
 
   Widget _buildActivityItem(
@@ -778,6 +765,7 @@ class _StatItem {
   final IconData icon;
   final Color color;
   final String route;
+  final String emptyMessage;
 
   _StatItem({
     required this.label,
@@ -785,7 +773,10 @@ class _StatItem {
     required this.icon,
     required this.color,
     required this.route,
+    required this.emptyMessage,
   });
+
+  bool get isEmpty => value == 0;
 }
 
 class _StatCard extends StatelessWidget {
@@ -840,15 +831,20 @@ class _StatCard extends StatelessWidget {
                 stat.value.toString(),
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurface,
+                  color: stat.isEmpty
+                      ? colorScheme.onSurface.withValues(alpha: 0.4)
+                      : colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                stat.label,
+                stat.isEmpty ? stat.emptyMessage : stat.label,
                 style: TextStyle(
-                  color: colorScheme.onSurfaceVariant,
+                  color: stat.isEmpty
+                      ? colorScheme.onSurface.withValues(alpha: 0.5)
+                      : colorScheme.onSurfaceVariant,
                   fontSize: 14,
+                  fontStyle: stat.isEmpty ? FontStyle.italic : FontStyle.normal,
                 ),
               ),
             ],

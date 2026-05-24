@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/notification_routes.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/notification_provider.dart';
 
@@ -49,6 +50,20 @@ class _UserShellState extends ConsumerState<UserShell> {
       Colors.teal,
     ),
     _NavItem(
+      'Announcements',
+      Icons.campaign_outlined,
+      Icons.campaign_rounded,
+      '/user/announcements',
+      Colors.green,
+    ),
+    _NavItem(
+      'Mass Schedule',
+      Icons.schedule_outlined,
+      Icons.schedule_rounded,
+      '/user/mass-schedule',
+      Colors.deepPurple,
+    ),
+    _NavItem(
       'My Requests',
       Icons.assignment_outlined,
       Icons.assignment_rounded,
@@ -65,6 +80,20 @@ class _UserShellState extends ConsumerState<UserShell> {
   ];
 
   int _getIndexFromLocation(String location) {
+    // Special case for new request form: highlight "My Requests" tab
+    if (location.startsWith('/records/certificate-request')) {
+      for (int i = 0; i < _navItems.length; i++) {
+        if (_navItems[i].label == 'My Requests') return i;
+      }
+    }
+
+    // Special case for announcements
+    if (location == '/announcements' || location == '/user/announcements') {
+      for (int i = 0; i < _navItems.length; i++) {
+        if (_navItems[i].label == 'Announcements') return i;
+      }
+    }
+
     for (int i = 0; i < _navItems.length; i++) {
       if (location.startsWith(_navItems[i].route)) return i;
     }
@@ -72,6 +101,16 @@ class _UserShellState extends ConsumerState<UserShell> {
   }
 
   _NavItem _getItemFromLocation(String location) {
+    // Special case for new request form: use "My Requests" as current item
+    if (location.startsWith('/records/certificate-request')) {
+      return _navItems.firstWhere((item) => item.label == 'My Requests');
+    }
+
+    // Special case for announcements
+    if (location == '/announcements' || location == '/user/announcements') {
+      return _navItems.firstWhere((item) => item.label == 'Announcements');
+    }
+
     for (final item in _navItems) {
       if (location.startsWith(item.route)) return item;
     }
@@ -107,7 +146,12 @@ class _UserShellState extends ConsumerState<UserShell> {
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOutCubic,
               width: _sidebarExpanded ? 280 : 72,
-              child: _buildSidebar(colorScheme, selectedIndex, location, isWide),
+              child: _buildSidebar(
+                colorScheme,
+                selectedIndex,
+                location,
+                isWide,
+              ),
             ),
 
           // Main Content Area
@@ -187,13 +231,19 @@ class _UserShellState extends ConsumerState<UserShell> {
             ),
             child: Consumer(
               builder: (context, ref, _) {
-                final countAsync = ref.watch(unreadNotificationsCountStreamProvider);
+                final countAsync = ref.watch(
+                  unreadNotificationsCountStreamProvider,
+                );
                 final count = countAsync.value ?? 0;
                 return Stack(
                   children: [
                     IconButton(
                       icon: const Icon(Icons.notifications_outlined),
-                      onPressed: () => context.go('/user/notifications'),
+                      onPressed: () => context.go(
+                        notificationsRouteForRole(
+                          ref.read(authProvider).user?.role,
+                        ),
+                      ),
                       tooltip: 'Notifications',
                     ),
                     if (count > 0)
@@ -358,9 +408,10 @@ class _UserShellState extends ConsumerState<UserShell> {
                       color: isSelected
                           ? item.color.withValues(alpha: 0.15)
                           : isHovered
-                              ? colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.5)
-                              : Colors.transparent,
+                          ? colorScheme.surfaceContainerHighest.withValues(
+                              alpha: 0.5,
+                            )
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Material(

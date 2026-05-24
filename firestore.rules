@@ -109,8 +109,8 @@
         // Allow updates by owner or admin (e.g., profile updates)
         allow update: if isSignedIn() && (
           (request.auth.uid == uid &&
-            request.resource.data.diff(resource.data).changedKeys().hasOnly(['displayName','photoURL','lastLogin','emailVerified','verificationCode','verificationCodeExpiresAt','verificationCodeVerified','inviteToken','fcmTokens','updatedAt']))
-          || (isAdmin() && request.resource.data.diff(resource.data).changedKeys().hasOnly(['role','disabled','displayName','photoURL','lastLogin','emailVerified','updatedAt']))
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['displayName','photoURL','phone','email','gender','dateOfBirth','civilStatus','address','barangay','householdName','householdContact','linkedHouseholdId','household','privacy_consent','lastLogin','emailVerified','verificationCode','verificationCodeExpiresAt','verificationCodeVerified','inviteToken','fcmTokens','updatedAt']))
+          || (isAdmin() && request.resource.data.diff(resource.data).changedKeys().hasOnly(['role','disabled','displayName','photoURL','phone','address','household','privacy_consent','lastLogin','emailVerified','updatedAt']))
         );
         allow delete: if isSignedIn() && (request.auth.uid == uid || isAdmin());
       }
@@ -133,10 +133,17 @@
       // - Admin: write
       match /settings/{docId} {
         allow get: if true;
-        allow list: if isAdmin();
-        allow create: if isAdmin() && docId == 'app';
+        allow list: if isAdmin() || isFinance();
+        allow create: if isAdmin() && (docId == 'app' || docId == 'certificate_fees');
         allow update: if isAdmin() && docId == 'app'
           && request.resource.data.diff(resource.data).changedKeys().hasOnly(['themeMode','updatedAt']);
+        allow update: if isAdmin() && docId == 'certificate_fees';
+        allow delete: if isAdmin();
+      }
+
+      match /bank_imports/{importId} {
+        allow get, list: if isFinance() || isAdmin();
+        allow create, update: if isFinance() || isAdmin();
         allow delete: if isAdmin();
       }
 
@@ -189,7 +196,8 @@
       }
 
       match /baptism_records/{recordId} {
-        allow get, list: if isSignedIn() && (isAdmin() || isStaff());
+        // Parishioners may read to auto-link household members to existing records.
+        allow get, list: if isSignedIn();
 
         allow create: if isSignedIn() && (isAdmin() || isStaff())
           && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
@@ -203,7 +211,8 @@
       }
 
       match /marriage_records/{recordId} {
-        allow get, list: if isSignedIn() && (isAdmin() || isStaff());
+        // Parishioners may read to auto-link household members to existing records.
+        allow get, list: if isSignedIn();
 
         allow create: if isSignedIn() && (isAdmin() || isStaff())
           && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
@@ -217,7 +226,7 @@
       }
 
       match /confirmation_records/{recordId} {
-        allow get, list: if isSignedIn() && (isAdmin() || isStaff());
+        allow get, list: if isSignedIn();
 
         allow create: if isSignedIn() && (isAdmin() || isStaff())
           && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
@@ -231,7 +240,7 @@
       }
 
       match /funeral_records/{recordId} {
-        allow get, list: if isSignedIn() && (isAdmin() || isStaff());
+        allow get, list: if isSignedIn();
 
         allow create: if isSignedIn() && (isAdmin() || isStaff())
           && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
@@ -269,17 +278,50 @@
 
       // Donations
       match /donations/{donationId} {
-        // Finance/Admin can read and reconcile.
-        allow get, list: if isFinance();
+        // Finance/Admin: any query (list must not be OR'd with donor-only constraint).
+        allow list: if isFinance() || isAdmin();
+        // Parishioners: own donations; finance/admin: all.
+        allow get: if isFinance() || isAdmin()
+          || (isSignedIn() && resource.data.donor_id == request.auth.uid);
 
-        // Any authenticated user can create a donation tied to themselves.
+        // Signed-in parishioner: donation tied to their account.
         allow create: if isSignedIn()
           && request.resource.data.donor_id == request.auth.uid
-          && request.resource.data.reconciled == false;
+          && request.resource.data.reconciled == false
+          && request.resource.data.amount is number
+          && (
+            request.resource.data.amount > 0
+            || (
+              request.resource.data.source == 'online'
+              && request.resource.data.amount_pending == true
+              && request.resource.data.amount == 0
+            )
+          );
+
+        // Public landing GCash donate (no login required).
+        allow create: if request.resource.data.guest_donation == true
+          && request.resource.data.source == 'online'
+          && request.resource.data.reconciled == false
+          && request.resource.data.amount is number
+          && request.resource.data.amount == 0
+          && request.resource.data.amount_pending == true
+          && request.resource.data.donor_name is string
+          && request.resource.data.donor_name.size() > 0;
 
         // Finance/Admin can update reconciliation fields.
         allow update: if isFinance();
-        allow delete: if isAdmin();
+
+        // Mark donation after finance notification is sent (guest or signed-in donor).
+        allow update: if request.resource.data.finance_notified == true
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['finance_notified'])
+          && (
+            resource.data.guest_donation == true
+            || (isSignedIn()
+              && resource.data.donor_id == request.auth.uid
+              && resource.data.source == 'online')
+          );
+
+        allow delete: if isFinance() || isAdmin();
       }
 
       // Analytics (server-generated counters)
@@ -292,11 +334,8 @@
       // - Admin: full access
       // - Staff: can create their own (createdBy == uid), read all, update/delete only their own
       match /records/{recordId} {
-        allow get, list: if isSignedIn() && (
-          isAdmin() ||
-          userRole(request.auth.uid) == 'staff' ||
-          resource.data.owner_uid == request.auth.uid
-        );
+        // Signed-in users may read to auto-link household members to parish records.
+        allow get, list: if isSignedIn();
 
         allow create: if isSignedIn() && (
           isAdmin() || userRole(request.auth.uid) == 'staff'
@@ -340,15 +379,38 @@
       match /notifications/{nid} {
         allow get, list: if isSignedIn();
 
-        allow create: if isAdmin();
+        // Admins and staff can create any notification (broadcast or targeted to any user)
+        // Any signed-in user can create a self-addressed system notification (e.g. household events)
+        allow create: if isAdmin() || isStaff() ||
+          (isSignedIn() &&
+           request.resource.data.user_id == request.auth.uid &&
+           request.resource.data.type == 'system') ||
+          (isSignedIn() &&
+           request.resource.data.type == 'online_donation' &&
+           request.resource.data.created_by_uid == request.auth.uid &&
+           request.resource.data.audience is list &&
+           request.resource.data.resource_id is string &&
+           exists(/databases/$(db)/documents/donations/$(request.resource.data.resource_id)) &&
+           get(/databases/$(db)/documents/donations/$(request.resource.data.resource_id)).data.donor_id == request.auth.uid &&
+           get(/databases/$(db)/documents/donations/$(request.resource.data.resource_id)).data.finance_notified != true) ||
+          (request.auth == null &&
+           request.resource.data.type == 'online_donation' &&
+           request.resource.data.created_by_uid == 'guest' &&
+           request.resource.data.audience is list &&
+           request.resource.data.resource_id is string &&
+           exists(/databases/$(db)/documents/donations/$(request.resource.data.resource_id)) &&
+           get(/databases/$(db)/documents/donations/$(request.resource.data.resource_id)).data.guest_donation == true &&
+           get(/databases/$(db)/documents/donations/$(request.resource.data.resource_id)).data.finance_notified != true);
         allow update: if false;
-        allow delete: if isAdmin();
+        allow delete: if isAdmin() || isStaff();
 
-        match /user_state/{uid} {
-          allow get, list: if isSignedIn() && request.auth.uid == uid;
-          allow create, update: if isSignedIn()
-            && request.auth.uid == uid
-            && request.resource.data.diff(resource.data).changedKeys().hasOnly(['read','archived','updated_at']);
+        match /user_state/{stateUid} {
+          allow get, list: if isSignedIn() && request.auth.uid == stateUid;
+          allow create: if isSignedIn() && request.auth.uid == stateUid;
+          allow update: if isSignedIn()
+            && request.auth.uid == stateUid
+            && request.resource.data.diff(resource.data).changedKeys()
+                .hasOnly(['read', 'archived', 'updated_at']);
           allow delete: if false;
         }
       }
@@ -366,22 +428,44 @@
 
       // Parish households - allow access for owners/members
       match /households/{householdId} {
-        allow get, list: if isSignedIn() && (
-          isAdmin() || isStaff() || resource.data.userId == request.auth.uid
+        // List: Admins/Staff can list all; parishioners can only see their linked household
+        allow list: if isSignedIn() && (
+          isAdmin() || isStaff() ||
+          get(/databases/$(db)/documents/users/$(request.auth.uid)).data.linkedHouseholdId != null
+        );
+        // Get: Check ownership for individual document access
+        allow get: if isSignedIn() && (
+          isAdmin() || isStaff() ||
+          resource.data.userId == request.auth.uid ||
+          resource.data.created_by == request.auth.uid ||
+          get(/databases/$(db)/documents/users/$(request.auth.uid)).data.linkedHouseholdId == householdId
         );
         allow create: if isSignedIn();
         allow update, delete: if isSignedIn() && (
-          isAdmin() || isStaff() || resource.data.userId == request.auth.uid
+          isAdmin() || isStaff() ||
+          resource.data.userId == request.auth.uid ||
+          resource.data.created_by == request.auth.uid
         );
       }
 
       match /household_members/{memberId} {
-        allow get, list: if isSignedIn() && (
-          isAdmin() || isStaff() || resource.data.userId == request.auth.uid
+        // List: Admins/Staff can list all; parishioners can list if they have a linked household
+        allow list: if isSignedIn() && (
+          isAdmin() || isStaff() ||
+          get(/databases/$(db)/documents/users/$(request.auth.uid)).data.linkedHouseholdId != null
+        );
+        // Get: Check ownership
+        allow get: if isSignedIn() && (
+          isAdmin() || isStaff() ||
+          resource.data.userId == request.auth.uid ||
+          resource.data.created_by == request.auth.uid ||
+          get(/databases/$(db)/documents/users/$(request.auth.uid)).data.linkedHouseholdId == resource.data.householdId
         );
         allow create: if isSignedIn();
         allow update, delete: if isSignedIn() && (
-          isAdmin() || isStaff() || resource.data.userId == request.auth.uid
+          isAdmin() || isStaff() ||
+          resource.data.userId == request.auth.uid ||
+          resource.data.created_by == request.auth.uid
         );
       }
 

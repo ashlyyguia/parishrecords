@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/user_providers.dart';
+import '../../services/requests_repository.dart';
+import '../../services/user_requests_repository.dart';
 import '../../widgets/app_loading.dart';
 
 class UserRequestDetailScreen extends ConsumerWidget {
@@ -35,6 +37,10 @@ class UserRequestDetailScreen extends ConsumerWidget {
         data: (row) {
           final type = (row['request_type'] ?? 'certificate').toString();
           final status = (row['status'] ?? 'pending').toString();
+          final statusLabel = UserRequestsRepository.statusLabel(status);
+          final requestedAt =
+              (row['requested_at_display'] ?? row['requested_at'] ?? '')
+                  .toString();
           final timeline = row['timeline'] is List
               ? (row['timeline'] as List)
               : const [];
@@ -44,9 +50,54 @@ class UserRequestDetailScreen extends ConsumerWidget {
               status.toLowerCase() != 'approved' &&
               status.toLowerCase() != 'cancelled';
 
+          final typeLabel = RequestsRepository.certificateTypeLabel(type);
+          final personName = (row['certificate_for_name'] ??
+                  row['requester_name'] ??
+                  '')
+              .toString();
+          final submittedBy = (row['submitted_by_name'] ?? '').toString();
+          final statusMessage = _statusGuidance(
+            status: status,
+            typeLabel: typeLabel,
+            requesterName: personName,
+          );
+
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (statusMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Material(
+                    color: _statusBannerColor(status, colorScheme),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            status.toLowerCase() == 'rejected'
+                                ? Icons.cancel_outlined
+                                : status.toLowerCase() == 'approved'
+                                ? Icons.check_circle_outline
+                                : Icons.info_outline,
+                            color: _statusBannerIconColor(status, colorScheme),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              statusMessage,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -59,15 +110,42 @@ class UserRequestDetailScreen extends ConsumerWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                      if (personName.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Person on certificate: $personName',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      if (submittedBy.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Requested by: $submittedBy',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Text('Tracking ID: $requestId'),
+                      if (requestedAt.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Submitted: $requestedAt',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Row(
                         children: [
                           const Icon(Icons.info_outline, size: 18),
                           const SizedBox(width: 8),
                           Text(
-                            'Status: $status',
+                            'Status: $statusLabel',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w600,
                             ),
@@ -259,5 +337,49 @@ class _TimelineItem extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+String? _statusGuidance({
+  required String status,
+  required String typeLabel,
+  required String requesterName,
+}) {
+  final s = status.trim().toLowerCase();
+  if (s == 'pending') {
+    return 'Your request is being reviewed. You will receive a notification when it is approved or if the parish needs more information.';
+  }
+  if (s == 'approved' ||
+      s == 'rejected' ||
+      s == 'ready' ||
+      s == 'completed') {
+    return RequestsRepository.notificationForStatus(
+      status: s,
+      typeLabel: typeLabel,
+      requesterName: requesterName,
+    ).body;
+  }
+  return null;
+}
+
+Color _statusBannerColor(String status, ColorScheme colorScheme) {
+  switch (status.trim().toLowerCase()) {
+    case 'approved':
+      return Colors.green.withValues(alpha: 0.12);
+    case 'rejected':
+      return colorScheme.errorContainer.withValues(alpha: 0.5);
+    default:
+      return colorScheme.primaryContainer.withValues(alpha: 0.4);
+  }
+}
+
+Color _statusBannerIconColor(String status, ColorScheme colorScheme) {
+  switch (status.trim().toLowerCase()) {
+    case 'approved':
+      return Colors.green.shade700;
+    case 'rejected':
+      return colorScheme.error;
+    default:
+      return colorScheme.primary;
   }
 }

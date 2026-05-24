@@ -6,7 +6,9 @@ import 'package:intl/intl.dart';
 
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
+import '../../utils/record_date_filter.dart';
 import '../../widgets/app_loading.dart';
+import '../../widgets/record_date_range_filters.dart';
 import 'ocr_record_type_screen.dart';
 
 class RecordsListScreen extends ConsumerStatefulWidget {
@@ -18,7 +20,8 @@ class RecordsListScreen extends ConsumerStatefulWidget {
 
 class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
   final _searchCtrl = TextEditingController();
-  DateTimeRange? _dateRange;
+  DateTime? _from;
+  DateTime? _to;
   RecordType? _typeFilter;
 
   @override
@@ -77,12 +80,8 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
         return false;
       }
 
-      // Date range filter
-      if (_dateRange != null) {
-        final d = r.date;
-        if (d.isBefore(_dateRange!.start) || d.isAfter(_dateRange!.end)) {
-          return false;
-        }
+      if (!RecordDateFilter.matches(r.date, from: _from, to: _to)) {
+        return false;
       }
 
       // Text search: name, type, parish, raw notes (OCR / JSON)
@@ -288,56 +287,16 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                         onChanged: (value) => setState(() {}),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () async {
-                                final now = DateTime.now();
-                                final initialStart =
-                                    _dateRange?.start ??
-                                    DateTime(now.year, now.month, 1);
-                                final initialEnd =
-                                    _dateRange?.end ??
-                                    now.add(const Duration(days: 1));
-                                final picked = await showDateRangePicker(
-                                  context: context,
-                                  firstDate: DateTime(1900),
-                                  lastDate: DateTime(now.year + 1),
-                                  initialDateRange: DateTimeRange(
-                                    start: initialStart,
-                                    end: initialEnd,
-                                  ),
-                                );
-                                if (picked != null) {
-                                  setState(() => _dateRange = picked);
-                                }
-                              },
-                              icon: const Icon(Icons.calendar_today_outlined),
-                              label: Text(
-                                _dateRange == null
-                                    ? 'Filter by date'
-                                    : '${df.format(_dateRange!.start)} - ${df.format(_dateRange!.end)}',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                          if (_dateRange != null) ...[
-                            const SizedBox(width: 8),
-                            IconButton(
-                              tooltip: 'Clear date filter',
-                              icon: Icon(
-                                Icons.clear,
-                                color: colorScheme.onSurface.withValues(
-                                  alpha: 0.6,
-                                ),
-                              ),
-                              onPressed: () {
-                                setState(() => _dateRange = null);
-                              },
-                            ),
-                          ],
-                        ],
+                      RecordDateRangeFilters(
+                        from: _from,
+                        to: _to,
+                        layout: RecordDateFilterLayout.row,
+                        onFromChanged: (d) => setState(() => _from = d),
+                        onToChanged: (d) => setState(() => _to = d),
+                        onClear: () => setState(() {
+                          _from = null;
+                          _to = null;
+                        }),
                       ),
                       const SizedBox(height: 12),
                       SingleChildScrollView(
@@ -497,7 +456,8 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
               onPressed: () {
                 _searchCtrl.clear();
                 setState(() {
-                  _dateRange = null;
+                  _from = null;
+                  _to = null;
                   _typeFilter = null;
                 });
               },

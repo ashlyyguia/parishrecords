@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../providers/admin_analytics_provider.dart';
+import '../../../providers/admin_providers.dart';
 
 /// Enhanced Admin Dashboard with comprehensive overview
 class AdminDashboardPage extends ConsumerStatefulWidget {
@@ -18,7 +19,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final analyticsAsync = ref.watch(adminAnalyticsProvider);
+    final analyticsAsync = ref.watch(adminDashboardAnalyticsProvider);
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -147,7 +148,7 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
             value: analytics.donations.toString(),
             icon: Icons.volunteer_activism,
             color: Colors.teal,
-            onTap: () => context.go('/admin/finance'),
+            onTap: () => context.go('/admin/donations'),
           ),
           _StatCard(
             title: 'OCR Pending',
@@ -237,6 +238,8 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
   }
 
   Widget _buildRecentActivityCard() {
+    final activityAsync = ref.watch(adminRecentActivityProvider(8));
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -251,20 +254,43 @@ class _AdminDashboardPageState extends ConsumerState<AdminDashboardPage> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 TextButton(
-                  onPressed: () => context.go('/admin/audit'),
+                  onPressed: () => context.go('/admin/requests'),
                   child: const Text('View All'),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Center(
-                child: Text(
-                  'No activity yet',
-                  style: TextStyle(color: Colors.grey.shade600),
+            activityAsync.when(
+              loading: () => const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ),
+              error: (_, _) => Text(
+                'Failed to load activity',
+                style: TextStyle(color: Colors.red.shade700),
+              ),
+              data: (activities) {
+                if (activities.isEmpty) {
+                  return Text(
+                    'No activity yet',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  );
+                }
+                return Column(
+                  children: activities.take(5).map((a) {
+                    final title = a['title']?.toString() ?? 'Activity';
+                    final subtitle = a['subtitle']?.toString() ?? '';
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.circle, size: 10),
+                      title: Text(title),
+                      subtitle: subtitle.isNotEmpty ? Text(subtitle) : null,
+                    );
+                  }).toList(),
+                );
+              },
             ),
           ],
         ),

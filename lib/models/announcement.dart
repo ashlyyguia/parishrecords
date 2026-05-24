@@ -6,8 +6,12 @@ class Announcement {
   final String description;
   final String? imageUrl;
   final String? imageStoragePath;
+  final String? imageUrl2;
+  final String? imageStoragePath2;
   final String? attachmentUrl;
   final String? attachmentStoragePath;
+  final String? person1Name;
+  final String? person2Name;
   final DateTime eventDateTime;
   final String location;
   final String status; // active | archived | draft
@@ -16,6 +20,8 @@ class Announcement {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int views;
+  final String
+  announcementType; // general | marriage | baptism | confirmation | death
 
   Announcement({
     required this.id,
@@ -23,8 +29,12 @@ class Announcement {
     required this.description,
     this.imageUrl,
     this.imageStoragePath,
+    this.imageUrl2,
+    this.imageStoragePath2,
     this.attachmentUrl,
     this.attachmentStoragePath,
+    this.person1Name,
+    this.person2Name,
     required this.eventDateTime,
     required this.location,
     required this.status,
@@ -33,6 +43,7 @@ class Announcement {
     required this.createdAt,
     required this.updatedAt,
     required this.views,
+    this.announcementType = 'general',
   });
 
   factory Announcement.fromDoc(DocumentSnapshot doc) {
@@ -47,8 +58,12 @@ class Announcement {
       description: (data['description'] ?? '').toString(),
       imageUrl: data['imageUrl'] as String?,
       imageStoragePath: data['imageStoragePath'] as String?,
+      imageUrl2: data['imageUrl2'] as String?,
+      imageStoragePath2: data['imageStoragePath2'] as String?,
       attachmentUrl: data['attachmentUrl'] as String?,
       attachmentStoragePath: data['attachmentStoragePath'] as String?,
+      person1Name: (data['person1Name'] as String?)?.toString(),
+      person2Name: (data['person2Name'] as String?)?.toString(),
       eventDateTime: event,
       location: (data['location'] ?? '').toString(),
       status: (data['status'] ?? 'draft').toString(),
@@ -59,6 +74,7 @@ class Announcement {
       views: (data['views'] ?? 0) is int
           ? data['views'] as int
           : int.tryParse(data['views'].toString()) ?? 0,
+      announcementType: (data['announcementType'] ?? 'general').toString(),
     );
   }
 
@@ -68,8 +84,12 @@ class Announcement {
       'description': description,
       'imageUrl': imageUrl,
       'imageStoragePath': imageStoragePath,
+      'imageUrl2': imageUrl2,
+      'imageStoragePath2': imageStoragePath2,
       'attachmentUrl': attachmentUrl,
       'attachmentStoragePath': attachmentStoragePath,
+      'person1Name': person1Name,
+      'person2Name': person2Name,
       'eventDateTime': Timestamp.fromDate(eventDateTime),
       'location': location,
       'status': status,
@@ -78,6 +98,7 @@ class Announcement {
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
       'views': views,
+      'announcementType': announcementType,
     };
   }
 
@@ -87,8 +108,12 @@ class Announcement {
     String? description,
     String? imageUrl,
     String? imageStoragePath,
+    String? imageUrl2,
+    String? imageStoragePath2,
     String? attachmentUrl,
     String? attachmentStoragePath,
+    String? person1Name,
+    String? person2Name,
     DateTime? eventDateTime,
     String? location,
     String? status,
@@ -97,6 +122,7 @@ class Announcement {
     DateTime? createdAt,
     DateTime? updatedAt,
     int? views,
+    String? announcementType,
   }) {
     return Announcement(
       id: id ?? this.id,
@@ -104,9 +130,13 @@ class Announcement {
       description: description ?? this.description,
       imageUrl: imageUrl ?? this.imageUrl,
       imageStoragePath: imageStoragePath ?? this.imageStoragePath,
+      imageUrl2: imageUrl2 ?? this.imageUrl2,
+      imageStoragePath2: imageStoragePath2 ?? this.imageStoragePath2,
       attachmentUrl: attachmentUrl ?? this.attachmentUrl,
       attachmentStoragePath:
           attachmentStoragePath ?? this.attachmentStoragePath,
+      person1Name: person1Name ?? this.person1Name,
+      person2Name: person2Name ?? this.person2Name,
       eventDateTime: eventDateTime ?? this.eventDateTime,
       location: location ?? this.location,
       status: status ?? this.status,
@@ -115,6 +145,7 @@ class Announcement {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       views: views ?? this.views,
+      announcementType: announcementType ?? this.announcementType,
     );
   }
 }

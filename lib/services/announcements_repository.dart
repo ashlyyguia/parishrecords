@@ -1,18 +1,16 @@
-// ignore_for_file: unnecessary_import
-
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 
 import '../models/announcement.dart';
 
 class AnnouncementsRepository {
   FirebaseFirestore get _db => FirebaseFirestore.instance;
-  FirebaseStorage get _storage => FirebaseStorage.instance;
 
   String _requireUid() {
     final user = FirebaseAuth.instance.currentUser;
@@ -26,6 +24,38 @@ class AnnouncementsRepository {
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection('announcements');
 
+  String? _encodeImage(Uint8List? bytes) {
+    if (bytes == null) return null;
+    try {
+      final image = img.decodeImage(bytes);
+      if (image == null) return null;
+
+      var resized = image;
+      if (image.width > 800 || image.height > 800) {
+        resized = img.copyResize(image,
+            width: image.width > image.height ? 800 : null,
+            height: image.height >= image.width ? 800 : null);
+      }
+
+      final compressedBytes = img.encodeJpg(resized, quality: 70);
+      final base64String = base64Encode(compressedBytes);
+      return 'data:image/jpeg;base64,$base64String';
+    } catch (e) {
+      debugPrint('Error encoding image: $e');
+      return null;
+    }
+  }
+
+  String? _encodePdf(Uint8List? bytes) {
+    if (bytes == null) return null;
+    if (bytes.length > 500 * 1024) {
+      throw Exception(
+          'PDF attachment is too large. Maximum size is 500KB when using database storage.');
+    }
+    final base64String = base64Encode(bytes);
+    return 'data:application/pdf;base64,$base64String';
+  }
+
   Future<Announcement> create({
     required String title,
     required String description,
@@ -33,8 +63,13 @@ class AnnouncementsRepository {
     required String location,
     String status = 'draft',
     bool pinned = false,
+    String announcementType = 'general',
+    String? person1Name,
+    String? person2Name,
     Uint8List? imageBytes,
     String? imageFileName,
+    Uint8List? image2Bytes,
+    String? image2FileName,
     Uint8List? attachmentBytes,
     String? attachmentFileName,
   }) async {
@@ -42,46 +77,22 @@ class AnnouncementsRepository {
     final now = DateTime.now();
     final docRef = _col.doc();
 
-    String? imageUrl;
-    String? imagePath;
-    if (imageBytes != null && imageFileName != null) {
-      try {
-        final ref = _storage.ref().child(
-          'announcements/images/${docRef.id}/$imageFileName',
-        );
-        await ref.putData(imageBytes);
-        imageUrl = await ref.getDownloadURL();
-        imagePath = ref.fullPath;
-      } catch (e) {
-        // Storage not available - continue without image
-        debugPrint('Storage upload failed (no storage enabled): $e');
-      }
-    }
-
-    String? attachmentUrl;
-    String? attachmentPath;
-    if (attachmentBytes != null && attachmentFileName != null) {
-      try {
-        final ref = _storage.ref().child(
-          'announcements/attachments/${docRef.id}/$attachmentFileName',
-        );
-        await ref.putData(attachmentBytes);
-        attachmentUrl = await ref.getDownloadURL();
-        attachmentPath = ref.fullPath;
-      } catch (e) {
-        // Storage not available - continue without attachment
-        debugPrint('Storage upload failed (no storage enabled): $e');
-      }
-    }
+    final imageUrl = _encodeImage(imageBytes);
+    final imageUrl2 = _encodeImage(image2Bytes);
+    final attachmentUrl = _encodePdf(attachmentBytes);
 
     final ann = Announcement(
       id: docRef.id,
       title: title,
       description: description,
       imageUrl: imageUrl,
-      imageStoragePath: imagePath,
+      imageStoragePath: null, // No longer using Firebase Storage
+      imageUrl2: imageUrl2,
+      imageStoragePath2: null,
       attachmentUrl: attachmentUrl,
-      attachmentStoragePath: attachmentPath,
+      attachmentStoragePath: null,
+      person1Name: person1Name,
+      person2Name: person2Name,
       eventDateTime: eventDateTime,
       location: location,
       status: status,
@@ -90,6 +101,7 @@ class AnnouncementsRepository {
       createdAt: now,
       updatedAt: now,
       views: 0,
+      announcementType: announcementType,
     );
 
     await docRef.set(ann.toMap());
@@ -100,46 +112,23 @@ class AnnouncementsRepository {
     Announcement announcement, {
     Uint8List? newImageBytes,
     String? newImageFileName,
+    Uint8List? newImage2Bytes,
+    String? newImage2FileName,
     Uint8List? newAttachmentBytes,
     String? newAttachmentFileName,
   }) async {
     String? imageUrl = announcement.imageUrl;
-    String? imagePath = announcement.imageStoragePath;
+    String? imageUrl2 = announcement.imageUrl2;
     String? attachmentUrl = announcement.attachmentUrl;
-    String? attachmentPath = announcement.attachmentStoragePath;
 
-    if (newImageBytes != null && newImageFileName != null) {
-      try {
-        if (imagePath != null) {
-          await _storage.ref(imagePath).delete().catchError((_) {});
-        }
-        final ref = _storage.ref().child(
-          'announcements/images/${announcement.id}/$newImageFileName',
-        );
-        await ref.putData(newImageBytes);
-        imageUrl = await ref.getDownloadURL();
-        imagePath = ref.fullPath;
-      } catch (e) {
-        // Storage not available - keep existing image data
-        debugPrint('Storage upload failed (no storage enabled): $e');
-      }
+    if (newImageBytes != null) {
+      imageUrl = _encodeImage(newImageBytes);
     }
-
-    if (newAttachmentBytes != null && newAttachmentFileName != null) {
-      try {
-        if (attachmentPath != null) {
-          await _storage.ref(attachmentPath).delete().catchError((_) {});
-        }
-        final ref = _storage.ref().child(
-          'announcements/attachments/${announcement.id}/$newAttachmentFileName',
-        );
-        await ref.putData(newAttachmentBytes);
-        attachmentUrl = await ref.getDownloadURL();
-        attachmentPath = ref.fullPath;
-      } catch (e) {
-        // Storage not available - keep existing attachment data
-        debugPrint('Storage upload failed (no storage enabled): $e');
-      }
+    if (newImage2Bytes != null) {
+      imageUrl2 = _encodeImage(newImage2Bytes);
+    }
+    if (newAttachmentBytes != null) {
+      attachmentUrl = _encodePdf(newAttachmentBytes);
     }
 
     // simple auto-archive
@@ -151,9 +140,11 @@ class AnnouncementsRepository {
 
     final updated = announcement.copyWith(
       imageUrl: imageUrl,
-      imageStoragePath: imagePath,
+      imageStoragePath: null,
+      imageUrl2: imageUrl2,
+      imageStoragePath2: null,
       attachmentUrl: attachmentUrl,
-      attachmentStoragePath: attachmentPath,
+      attachmentStoragePath: null,
       status: status,
       updatedAt: now,
     );
@@ -162,18 +153,7 @@ class AnnouncementsRepository {
   }
 
   Future<void> delete(Announcement announcement) async {
-    if (announcement.imageStoragePath != null) {
-      await _storage
-          .ref(announcement.imageStoragePath!)
-          .delete()
-          .catchError((_) {});
-    }
-    if (announcement.attachmentStoragePath != null) {
-      await _storage
-          .ref(announcement.attachmentStoragePath!)
-          .delete()
-          .catchError((_) {});
-    }
+    // No storage paths to delete anymore
     await _col.doc(announcement.id).delete();
   }
 
@@ -189,40 +169,16 @@ class AnnouncementsRepository {
   }
 
   Stream<List<Announcement>> watchPublicActive() {
-    // Use a controller to properly handle errors without breaking the stream
-    final controller = StreamController<List<Announcement>>.broadcast();
-
-    // Emit empty list immediately so page loads without waiting
-    controller.add(<Announcement>[]);
-
-    // Simplified query without orderBy to avoid composite index issues
-    // Just filter by status and sort in memory
-    _col
+    return _col
         .where('status', isEqualTo: 'active')
         .snapshots()
-        .listen(
-          (snapshot) {
-            try {
-              final announcements = snapshot.docs
-                  .map((d) => Announcement.fromDoc(d))
-                  .toList();
-              // Sort by eventDateTime in memory
-              announcements.sort(
-                (a, b) => a.eventDateTime.compareTo(b.eventDateTime),
-              );
-              controller.add(announcements);
-            } catch (e) {
-              debugPrint('Error parsing announcements: $e');
-              controller.add(<Announcement>[]);
-            }
-          },
-          onError: (error) {
-            debugPrint('Firestore query error: $error');
-            controller.add(<Announcement>[]);
-          },
-        );
-
-    return controller.stream;
+        .map((snapshot) {
+      final announcements =
+          snapshot.docs.map((d) => Announcement.fromDoc(d)).toList();
+      // Sort by eventDateTime in memory
+      announcements.sort((a, b) => a.eventDateTime.compareTo(b.eventDateTime));
+      return announcements;
+    });
   }
 
   Future<Announcement?> loadById(String id) async {

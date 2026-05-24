@@ -345,13 +345,13 @@ class _UserHouseholdListScreenState
               icon: Icons.dashboard_outlined,
               label: 'Dashboard',
               isActive: false,
-              onTap: () => context.go('/home'),
+              onTap: () => context.go('/dashboard'),
             ),
             _NavItem(
               icon: Icons.home_outlined,
               label: 'Households',
               isActive: true,
-              onTap: () {},
+              onTap: () => context.go('/user/households'),
             ),
             _NavItem(
               icon: Icons.church_outlined,
@@ -369,7 +369,11 @@ class _UserHouseholdListScreenState
               icon: Icons.analytics_outlined,
               label: 'Reports',
               isActive: false,
-              onTap: () => context.go('/user/reports'),
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Reports coming soon')),
+                );
+              },
             ),
           ],
         ),

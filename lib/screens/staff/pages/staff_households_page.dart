@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:intl/intl.dart';
+
 import '../../../models/household.dart';
 import '../../../providers/household_provider.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/record_date_range_filters.dart';
 
 /// Enhanced Staff/Admin screen for managing households with modern UI
 class StaffHouseholdsPage extends ConsumerStatefulWidget {
@@ -22,6 +25,8 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
   final _searchFocus = FocusNode();
   String? _selectedBarangay;
   bool _includeArchived = false;
+  DateTime? _from;
+  DateTime? _to;
   int _currentPage = 0;
   final int _itemsPerPage = 10;
   bool _isTableView = true;
@@ -33,15 +38,22 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
     super.dispose();
   }
 
+  static const _mobileBreakpoint = 600.0;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isMobile = screenWidth < _mobileBreakpoint;
+    final useTableView = _isTableView && !isMobile;
 
     final filter = HouseholdFilter(
       barangay: _selectedBarangay,
       includeArchived: _includeArchived,
       searchQuery: _searchCtrl.text.isEmpty ? null : _searchCtrl.text,
+      from: _from,
+      to: _to,
     );
 
     final householdsAsync = ref.watch(householdsStreamProvider(filter));
@@ -65,24 +77,24 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Navigation Bar
-                _buildNavigationBar(colorScheme),
+                _buildPageHeader(colorScheme, totalItems: allHouseholds.length),
 
-                // Search & Filter Bar
-                _buildSearchAndFilterBar(colorScheme, barangaysAsync),
-
-                // Active Filters
+                const SizedBox(height: 12),
+                _buildSearchAndFilterBar(
+                  colorScheme,
+                  barangaysAsync,
+                  isMobile: isMobile,
+                ),
                 _buildActiveFilters(colorScheme),
 
-                // Stats Row
-                _buildStatsRow(colorScheme, totalItems),
+                _buildStatsRow(colorScheme, allHouseholds),
 
                 // Households Content
                 households.isEmpty
                     ? _buildEmptyState(colorScheme)
-                    : _isTableView
+                    : useTableView
                     ? _buildTableView(colorScheme, households)
-                    : _buildListView(colorScheme, households),
+                    : _buildListView(colorScheme, households, isMobile: isMobile),
 
                 // Pagination
                 if (totalPages > 1)
@@ -93,76 +105,76 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
         },
         loading: () =>
             const Center(child: AppLoading(message: 'Loading households...')),
-        error: (e, _) => _buildErrorState(colorScheme, e),
+        error: (e, _) {
+          // ignore: avoid_print
+          print('[StaffHouseholdsPage] Error loading households: $e');
+          return _buildSimpleError(e.toString());
+        },
       ),
     );
   }
 
-  // ==================== NAVIGATION BAR ====================
-  Widget _buildNavigationBar(ColorScheme colorScheme) {
+  // ==================== PAGE HEADER ====================
+  Widget _buildPageHeader(ColorScheme colorScheme, {required int totalItems}) {
+    final isMobile = MediaQuery.sizeOf(context).width < _mobileBreakpoint;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 24, 20, isMobile ? 16 : 24, 16),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colorScheme.primaryContainer.withValues(alpha: 0.45),
+            colorScheme.surface,
+          ],
+        ),
         border: Border(
           bottom: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+            color: colorScheme.outlineVariant.withValues(alpha: 0.4),
           ),
         ),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.home_work_rounded,
-                color: colorScheme.primary,
-                size: 24,
-              ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
             ),
-            const SizedBox(width: 16),
-            Text(
-              'Household Management',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurface,
-              ),
+            child: Icon(
+              Icons.home_work_rounded,
+              color: colorScheme.primary,
+              size: 28,
             ),
-            const SizedBox(width: 32),
-            _NavLink(
-              label: 'Dashboard',
-              icon: Icons.dashboard_outlined,
-              onTap: () => context.go('/staff/dashboard'),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Household Management',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  totalItems == 0
+                      ? 'Search, filter by barangay or registration date'
+                      : '$totalItems household${totalItems == 1 ? '' : 's'} in view',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurface.withValues(alpha: 0.65),
+                  ),
+                ),
+              ],
             ),
-            _NavLink(
-              label: 'Households',
-              icon: Icons.home_work_outlined,
-              isActive: true,
-              onTap: () {},
-            ),
-            _NavLink(
-              label: 'Sacraments',
-              icon: Icons.church_outlined,
-              onTap: () => context.go('/staff/records'),
-            ),
-            _NavLink(
-              label: 'Requests',
-              icon: Icons.assignment_outlined,
-              onTap: () => context.go('/staff/requests'),
-            ),
-            _NavLink(
-              label: 'Reports',
-              icon: Icons.assessment_outlined,
-              onTap: () => context.go('/staff/reports'),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -170,31 +182,43 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
   // ==================== SEARCH & FILTER BAR ====================
   Widget _buildSearchAndFilterBar(
     ColorScheme colorScheme,
-    AsyncValue<List<String>> barangaysAsync,
-  ) {
+    AsyncValue<List<String>> barangaysAsync, {
+    bool isMobile = false,
+  }) {
+    final df = DateFormat.yMMMd();
     return Container(
-      padding: const EdgeInsets.all(24),
+      margin: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24),
+      padding: EdgeInsets.all(isMobile ? 14 : 18),
       decoration: BoxDecoration(
         color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
         boxShadow: [
           BoxShadow(
-            color: colorScheme.shadow.withValues(alpha: 0.05),
-            blurRadius: 10,
+            color: colorScheme.shadow.withValues(alpha: 0.04),
+            blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final isNarrow = constraints.maxWidth < 720;
-          return Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          final isNarrow = isMobile || constraints.maxWidth < 720;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Search Bar
+              Text(
+                'Filters',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface.withValues(alpha: 0.75),
+                ),
+              ),
+              const SizedBox(height: 12),
               SizedBox(
-                width: isNarrow ? constraints.maxWidth : 400,
+                width: double.infinity,
                 child: Container(
                   decoration: BoxDecoration(
                     color: colorScheme.surfaceContainerHighest,
@@ -204,7 +228,9 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
                     controller: _searchCtrl,
                     focusNode: _searchFocus,
                     decoration: InputDecoration(
-                      hintText: 'Search by household name or member name...',
+                      hintText: isMobile
+                          ? 'Search households...'
+                          : 'Search by household name or address...',
                       prefixIcon: Icon(
                         Icons.search,
                         color: colorScheme.onSurfaceVariant,
@@ -214,73 +240,127 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
                               icon: const Icon(Icons.clear),
                               onPressed: () {
                                 _searchCtrl.clear();
-                                setState(() {});
+                                setState(() => _currentPage = 0);
                               },
                             )
                           : null,
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
-                        vertical: 16,
+                        vertical: 14,
                       ),
                     ),
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (_) => setState(() => _currentPage = 0),
                   ),
                 ),
               ),
-              // Barangay Filter
-              SizedBox(
-                width: isNarrow ? constraints.maxWidth : 220,
-                child: barangaysAsync.when(
-                  data: (barangays) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String?>(
-                        isExpanded: true,
-                        value: _selectedBarangay,
-                        hint: Text(
-                          'All Barangays',
-                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  RecordDateRangeFilters(
+                    from: _from,
+                    to: _to,
+                    fromLabel: 'From',
+                    toLabel: 'To',
+                    onFromChanged: (d) => setState(() {
+                      _from = d;
+                      _currentPage = 0;
+                    }),
+                    onToChanged: (d) => setState(() {
+                      _to = d;
+                      _currentPage = 0;
+                    }),
+                    onClear: () => setState(() {
+                      _from = null;
+                      _to = null;
+                      _currentPage = 0;
+                    }),
+                  ),
+                  SizedBox(
+                    width: isNarrow ? constraints.maxWidth : 200,
+                    child: barangaysAsync.when(
+                      data: (barangays) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: colorScheme.outline.withValues(alpha: 0.15),
+                          ),
                         ),
-                        items: [
-                          const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('All Barangays'),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String?>(
+                            isExpanded: true,
+                            value: _selectedBarangay,
+                            hint: Text(
+                              'All Barangays',
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('All Barangays'),
+                              ),
+                              ...barangays.map(
+                                (b) =>
+                                    DropdownMenuItem(value: b, child: Text(b)),
+                              ),
+                            ],
+                            onChanged: (v) => setState(() {
+                              _selectedBarangay = v;
+                              _currentPage = 0;
+                            }),
                           ),
-                          ...barangays.map(
-                            (b) => DropdownMenuItem(value: b, child: Text(b)),
-                          ),
-                        ],
-                        onChanged: (v) => setState(() => _selectedBarangay = v),
+                        ),
                       ),
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
                     ),
                   ),
-                  loading: () => const SizedBox.shrink(),
-                  error: (_, __) => const SizedBox.shrink(),
-                ),
-              ),
-              // View Toggle
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(
-                    value: true,
-                    label: Text('Table'),
-                    icon: Icon(Icons.table_rows),
+                  FilterChip(
+                    label: const Text('Include archived'),
+                    selected: _includeArchived,
+                    onSelected: (v) => setState(() {
+                      _includeArchived = v;
+                      _currentPage = 0;
+                    }),
                   ),
-                  ButtonSegment(
-                    value: false,
-                    label: Text('List'),
-                    icon: Icon(Icons.view_list),
-                  ),
+                  if (!isMobile)
+                    SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment(
+                          value: true,
+                          label: Text('Table'),
+                          icon: Icon(Icons.table_rows, size: 18),
+                        ),
+                        ButtonSegment(
+                          value: false,
+                          label: Text('List'),
+                          icon: Icon(Icons.view_list, size: 18),
+                        ),
+                      ],
+                      selected: {_isTableView},
+                      onSelectionChanged: (v) =>
+                          setState(() => _isTableView = v.first),
+                    ),
                 ],
-                selected: {_isTableView},
-                onSelectionChanged: (v) =>
-                    setState(() => _isTableView = v.first),
               ),
+              if (_from != null || _to != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Registration date: '
+                  '${_from != null ? df.format(_from!) : '…'}'
+                  ' → ${_to != null ? df.format(_to!) : '…'}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ],
             ],
           );
         },
@@ -289,31 +369,33 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
   }
 
   // ==================== STATS ROW ====================
-  Widget _buildStatsRow(ColorScheme colorScheme, int totalItems) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      color: colorScheme.surface,
+  Widget _buildStatsRow(ColorScheme colorScheme, List<Household> households) {
+    final isMobile = MediaQuery.sizeOf(context).width < _mobileBreakpoint;
+    final active = households.where((h) => !h.isArchived).length;
+    final archived = households.where((h) => h.isArchived).length;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 24, 16, isMobile ? 16 : 24, 0),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
             _StatCard(
               label: 'Total Households',
-              value: totalItems.toString(),
+              value: households.length.toString(),
               icon: Icons.home_work,
               color: Colors.blue,
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             _StatCard(
               label: 'Active',
-              value: (totalItems * 0.8).round().toString(),
+              value: active.toString(),
               icon: Icons.check_circle,
               color: Colors.green,
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             _StatCard(
               label: 'Archived',
-              value: (totalItems * 0.2).round().toString(),
+              value: archived.toString(),
               icon: Icons.archive,
               color: Colors.orange,
             ),
@@ -357,24 +439,29 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
             ),
           ),
           // Table Body
-          Expanded(
-            child: ListView.separated(
-              itemCount: households.length,
-              separatorBuilder: (_, __) => Divider(
-                height: 1,
-                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-              ),
-              itemBuilder: (context, index) {
-                final household = households[index];
-                return _TableRow(
-                  household: household,
-                  onView: () => context.go('/staff/households/${household.id}'),
-                  onEdit: () => _showEditHouseholdDialog(context, household),
-                  onArchive: () => _toggleArchive(context, household),
-                  onDelete: () => _confirmDelete(context, household),
-                );
-              },
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: households.length,
+            separatorBuilder: (_, __) => Divider(
+              height: 1,
+              color: colorScheme.outlineVariant.withValues(alpha: 0.3),
             ),
+            itemBuilder: (context, index) {
+              final household = households[index];
+              final location = GoRouterState.of(context).uri.toString();
+              final isAdmin = location.startsWith('/admin');
+              final basePath = isAdmin
+                  ? '/admin/households'
+                  : '/staff/households';
+              return _TableRow(
+                household: household,
+                onView: () => context.go('$basePath/${household.id}'),
+                onEdit: () => _showEditHouseholdDialog(context, household),
+                onArchive: () => _toggleArchive(context, household),
+                onDelete: () => _confirmDelete(context, household),
+              );
+            },
           ),
         ],
       ),
@@ -382,15 +469,24 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
   }
 
   // ==================== LIST VIEW ====================
-  Widget _buildListView(ColorScheme colorScheme, List<Household> households) {
+  Widget _buildListView(
+    ColorScheme colorScheme,
+    List<Household> households, {
+    bool isMobile = false,
+  }) {
     return ListView.builder(
-      padding: const EdgeInsets.all(24),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.all(isMobile ? 16 : 24),
       itemCount: households.length,
       itemBuilder: (context, index) {
         final household = households[index];
+        final location = GoRouterState.of(context).uri.toString();
+        final isAdmin = location.startsWith('/admin');
+        final basePath = isAdmin ? '/admin/households' : '/staff/households';
         return _HouseholdCard(
           household: household,
-          onTap: () => context.go('/staff/households/${household.id}'),
+          onTap: () => context.go('$basePath/${household.id}'),
           onEdit: () => _showEditHouseholdDialog(context, household),
           onArchive: () => _toggleArchive(context, household),
           onDelete: () => _confirmDelete(context, household),
@@ -453,15 +549,18 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
   }
 
   Widget _buildActiveFilters(ColorScheme colorScheme) {
+    final df = DateFormat.yMMMd();
     final hasFilters =
         _selectedBarangay != null ||
         _includeArchived ||
-        _searchCtrl.text.isNotEmpty;
+        _searchCtrl.text.isNotEmpty ||
+        _from != null ||
+        _to != null;
 
     if (!hasFilters) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -471,7 +570,21 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
                 label: 'Search: ${_searchCtrl.text}',
                 onRemove: () {
                   _searchCtrl.clear();
-                  setState(() {});
+                  setState(() => _currentPage = 0);
+                },
+                color: colorScheme.primary,
+              ),
+            if (_from != null || _to != null)
+              _FilterChip(
+                label: 'Registered: '
+                    '${_from != null ? df.format(_from!) : '…'}'
+                    ' – ${_to != null ? df.format(_to!) : '…'}',
+                onRemove: () {
+                  setState(() {
+                    _from = null;
+                    _to = null;
+                    _currentPage = 0;
+                  });
                 },
                 color: colorScheme.primary,
               ),
@@ -479,7 +592,10 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
               _FilterChip(
                 label: 'Barangay: $_selectedBarangay',
                 onRemove: () {
-                  setState(() => _selectedBarangay = null);
+                  setState(() {
+                    _selectedBarangay = null;
+                    _currentPage = 0;
+                  });
                 },
                 color: colorScheme.tertiary,
               ),
@@ -487,7 +603,10 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
               _FilterChip(
                 label: 'Include Archived',
                 onRemove: () {
-                  setState(() => _includeArchived = false);
+                  setState(() {
+                    _includeArchived = false;
+                    _currentPage = 0;
+                  });
                 },
                 color: colorScheme.secondary,
               ),
@@ -497,43 +616,36 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
     );
   }
 
-  Widget _buildErrorState(ColorScheme colorScheme, Object error) {
+  Widget _buildSimpleError(String error) {
     return Center(
-      child: Padding(
+      child: Container(
         padding: const EdgeInsets.all(32),
+        margin: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red.shade200),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: colorScheme.errorContainer,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.error_outline_rounded,
-                size: 48,
-                color: colorScheme.onErrorContainer,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Something went wrong',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            Icon(Icons.error_outline, size: 48, color: Colors.red.shade700),
+            const SizedBox(height: 16),
+            const Text(
+              'Error Loading Households',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              error.toString(),
+              error,
               textAlign: TextAlign.center,
-              style: TextStyle(color: colorScheme.onSurfaceVariant),
+              style: TextStyle(color: Colors.red.shade700, fontSize: 12),
             ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
               onPressed: () => ref.invalidate(householdsStreamProvider),
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Try Again'),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
             ),
           ],
         ),
@@ -562,7 +674,10 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
             ),
             const SizedBox(height: 24),
             Text(
-              _searchCtrl.text.isEmpty && _selectedBarangay == null
+              _searchCtrl.text.isEmpty &&
+                      _selectedBarangay == null &&
+                      _from == null &&
+                      _to == null
                   ? 'No households yet'
                   : 'No matches found',
               style: Theme.of(
@@ -583,8 +698,6 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
       ),
     );
   }
-
-
 
   Future<void> _showEditHouseholdDialog(
     BuildContext context,
@@ -974,43 +1087,6 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-/// Navigation link widget
-class _NavLink extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _NavLink({
-    required this.label,
-    required this.icon,
-    this.isActive = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: TextButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 20),
-        label: Text(label),
-        style: TextButton.styleFrom(
-          foregroundColor: isActive
-              ? colorScheme.primary
-              : colorScheme.onSurfaceVariant,
-          backgroundColor: isActive
-              ? colorScheme.primaryContainer.withValues(alpha: 0.3)
-              : null,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-      ),
-    );
-  }
-}
-
 /// Stat card widget for stats row
 class _StatCard extends StatelessWidget {
   final String label;
@@ -1077,8 +1153,11 @@ class _TableHeader extends StatelessWidget {
       flex: flex,
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: FontWeight.bold,
+          fontSize: 12,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
@@ -1157,23 +1236,10 @@ class _TableRow extends StatelessWidget {
               ],
             ),
           ),
-          // Head of Family — show name from metadata or indicate pending
+          // Head of Family — resolved from metadata or household members
           Expanded(
             flex: 2,
-            child: Text(
-              household.metadata['headOfFamilyName'] as String? ??
-                  (household.headOfFamilyId.isNotEmpty
-                      ? household.headOfFamilyId
-                      : '—'),
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color:
-                    household.headOfFamilyId.isEmpty &&
-                        (household.metadata['headOfFamilyName'] == null)
-                    ? colorScheme.onSurfaceVariant
-                    : colorScheme.onSurface,
-              ),
-            ),
+            child: _HeadOfFamilyName(household: household),
           ),
           // Members count — fetched live
           Expanded(
@@ -1181,7 +1247,14 @@ class _TableRow extends StatelessWidget {
             child: _MemberCountBadge(householdId: household.id),
           ),
           // Barangay
-          Expanded(flex: 2, child: Text(household.barangay)),
+          Expanded(
+            flex: 2,
+            child: Text(
+              household.barangay,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           // Status
           Expanded(
             flex: 1,
@@ -1255,12 +1328,15 @@ class _HouseholdFormDialogState extends State<_HouseholdFormDialog> {
   final _contactCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
+  final _headOfFamilyNameCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     if (widget.household != null) {
       _familyNameCtrl.text = widget.household!.familyName;
+      _headOfFamilyNameCtrl.text =
+          (widget.household!.metadata['headOfFamilyName'] as String?) ?? '';
       _addressCtrl.text = widget.household!.address;
       _barangayCtrl.text = widget.household!.barangay;
       _cityCtrl.text = widget.household!.city;
@@ -1283,6 +1359,7 @@ class _HouseholdFormDialogState extends State<_HouseholdFormDialog> {
     _contactCtrl.dispose();
     _emailCtrl.dispose();
     _notesCtrl.dispose();
+    _headOfFamilyNameCtrl.dispose();
     super.dispose();
   }
 
@@ -1305,6 +1382,15 @@ class _HouseholdFormDialogState extends State<_HouseholdFormDialog> {
                   hintText: 'e.g., Dela Cruz Family',
                 ),
                 validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _headOfFamilyNameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Head of family name',
+                  hintText: 'Full name of household head',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -1406,6 +1492,15 @@ class _HouseholdFormDialogState extends State<_HouseholdFormDialog> {
   void _save() {
     if (!_formKey.currentState!.validate()) return;
 
+    final headName = _headOfFamilyNameCtrl.text.trim();
+    final metadata = <String, dynamic>{
+      if (widget.household != null) ...widget.household!.metadata,
+      if (headName.isNotEmpty) 'headOfFamilyName': headName,
+    };
+    if (headName.isEmpty && widget.household != null) {
+      metadata.remove('headOfFamilyName');
+    }
+
     final household = widget.household != null
         ? widget.household!.copyWith(
             familyName: _familyNameCtrl.text.trim(),
@@ -1417,6 +1512,7 @@ class _HouseholdFormDialogState extends State<_HouseholdFormDialog> {
             contactNumber: _contactCtrl.text.trim(),
             email: _emailCtrl.text.trim(),
             notes: _notesCtrl.text.trim(),
+            metadata: metadata,
             updatedAt: DateTime.now(),
           )
         : Household(
@@ -1432,10 +1528,81 @@ class _HouseholdFormDialogState extends State<_HouseholdFormDialog> {
             contactNumber: _contactCtrl.text.trim(),
             email: _emailCtrl.text.trim(),
             notes: _notesCtrl.text.trim(),
+            metadata: metadata,
             registeredAt: DateTime.now(),
           );
 
     Navigator.pop(context, household);
+  }
+}
+
+/// Resolves head-of-family display name (metadata, member link, or first member).
+class _HeadOfFamilyName extends ConsumerStatefulWidget {
+  final Household household;
+  const _HeadOfFamilyName({required this.household});
+
+  @override
+  ConsumerState<_HeadOfFamilyName> createState() => _HeadOfFamilyNameState();
+}
+
+class _HeadOfFamilyNameState extends ConsumerState<_HeadOfFamilyName> {
+  String? _name;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HeadOfFamilyName oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.household.id != widget.household.id) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _name = null;
+    });
+    try {
+      final repo = ref.read(householdRepositoryProvider);
+      final name = await repo.resolveHeadOfFamilyDisplayName(widget.household);
+      if (mounted) {
+        setState(() {
+          _name = name;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (_loading) {
+      return Text(
+        '…',
+        style: TextStyle(color: colorScheme.onSurfaceVariant),
+      );
+    }
+    final display = (_name ?? '').trim();
+    return Text(
+      display.isNotEmpty ? display : '—',
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: display.isEmpty
+            ? colorScheme.onSurfaceVariant
+            : colorScheme.onSurface,
+      ),
+    );
   }
 }
 

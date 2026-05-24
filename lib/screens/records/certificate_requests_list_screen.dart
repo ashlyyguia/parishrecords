@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../providers/requests_provider.dart';
+import '../../utils/record_date_filter.dart';
 import '../../widgets/app_loading.dart';
+import '../../widgets/record_date_range_filters.dart';
 
 class CertificateRequestsListScreen extends ConsumerStatefulWidget {
   const CertificateRequestsListScreen({super.key});
@@ -64,18 +66,6 @@ class _CertificateRequestsListScreenState
       default:
         return Colors.orange;
     }
-  }
-
-  String _buildDateRangeLabel(DateFormat df) {
-    if (_fromDate == null && _toDate == null) return 'Filter by date';
-    final from = _fromDate != null ? df.format(_fromDate!.toLocal()) : '...';
-    final to = _toDate != null ? df.format(_toDate!.toLocal()) : '...';
-    if (_fromDate != null &&
-        _toDate != null &&
-        df.format(_fromDate!.toLocal()) == df.format(_toDate!.toLocal())) {
-      return from;
-    }
-    return '$from - $to';
   }
 
   @override
@@ -151,37 +141,16 @@ class _CertificateRequestsListScreenState
               }).toList();
             }
 
-            // date range filter on requested_at
             if (_fromDate != null || _toDate != null) {
-              rows = rows.where((r) {
-                final raw = r['requested_at'];
-                DateTime? dt;
-                if (raw is String) {
-                  dt = DateTime.tryParse(raw);
-                } else if (raw is DateTime) {
-                  dt = raw;
-                }
-                if (dt == null) return false;
-                final local = dt.toLocal();
-                final dateOnly = DateTime(local.year, local.month, local.day);
-                if (_fromDate != null) {
-                  final from = DateTime(
-                    _fromDate!.year,
-                    _fromDate!.month,
-                    _fromDate!.day,
-                  );
-                  if (dateOnly.isBefore(from)) return false;
-                }
-                if (_toDate != null) {
-                  final to = DateTime(
-                    _toDate!.year,
-                    _toDate!.month,
-                    _toDate!.day,
-                  );
-                  if (dateOnly.isAfter(to)) return false;
-                }
-                return true;
-              }).toList();
+              rows = rows
+                  .where(
+                    (r) => RecordDateFilter.matchesValue(
+                      r['requested_at'],
+                      from: _fromDate,
+                      to: _toDate,
+                    ),
+                  )
+                  .toList();
             }
 
             // text search filter
@@ -267,68 +236,17 @@ class _CertificateRequestsListScreenState
                             onChanged: (_) => setState(() {}),
                           ),
                           const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: () async {
-                                    final now = DateTime.now();
-                                    final initialStart =
-                                        _fromDate ??
-                                        DateTime(
-                                          now.year,
-                                          now.month,
-                                          now.day - 30,
-                                        );
-                                    final initialEnd =
-                                        _toDate ??
-                                        DateTime(now.year, now.month, now.day);
-                                    final range = await showDateRangePicker(
-                                      context: context,
-                                      firstDate: DateTime(2000),
-                                      lastDate: DateTime(2100),
-                                      initialDateRange: DateTimeRange(
-                                        start: initialStart,
-                                        end: initialEnd,
-                                      ),
-                                    );
-                                    if (range != null) {
-                                      setState(() {
-                                        _fromDate = range.start;
-                                        _toDate = range.end;
-                                      });
-                                    }
-                                  },
-                                  icon: const Icon(
-                                    Icons.calendar_today_outlined,
-                                  ),
-                                  label: Text(
-                                    _fromDate == null && _toDate == null
-                                        ? 'Filter by date'
-                                        : _buildDateRangeLabel(df),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                              if (_fromDate != null || _toDate != null) ...[
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  tooltip: 'Clear date filter',
-                                  icon: Icon(
-                                    Icons.clear,
-                                    color: colorScheme.onSurface.withValues(
-                                      alpha: 0.6,
-                                    ),
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      _fromDate = null;
-                                      _toDate = null;
-                                    });
-                                  },
-                                ),
-                              ],
-                            ],
+                          RecordDateRangeFilters(
+                            from: _fromDate,
+                            to: _toDate,
+                            layout: RecordDateFilterLayout.row,
+                            onFromChanged: (d) =>
+                                setState(() => _fromDate = d),
+                            onToChanged: (d) => setState(() => _toDate = d),
+                            onClear: () => setState(() {
+                              _fromDate = null;
+                              _toDate = null;
+                            }),
                           ),
                           const SizedBox(height: 8),
                           SingleChildScrollView(

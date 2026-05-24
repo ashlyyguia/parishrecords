@@ -22,6 +22,8 @@ final userSacramentsRepositoryProvider = Provider<UserSacramentsRepository>((ref
 });
 
 final myDashboardProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  // Keep dashboard stats cached while navigating within the user shell.
+  ref.keepAlive();
   return ref.read(userDashboardRepositoryProvider).getMyDashboard();
 });
 

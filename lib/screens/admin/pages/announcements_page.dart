@@ -5,9 +5,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../models/announcement.dart';
 import '../../../services/announcements_repository.dart';
+import '../../../widgets/safe_image.dart';
 
 class AdminAnnouncementsPage extends StatefulWidget {
   const AdminAnnouncementsPage({super.key});
@@ -21,20 +23,24 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header ────────────────────────────────────────────────────────
           Text(
             'Announcements',
-            style: Theme.of(context).textTheme.headlineSmall,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Simple analytics summary
+              // Stats chips
               StreamBuilder<List<Announcement>>(
                 stream: _repo.watchAdminList(),
                 builder: (context, snapshot) {
@@ -49,7 +55,7 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                             a.eventDateTime.isAfter(DateTime.now()),
                       )
                       .length;
-                  final views = items.fold<int>(0, (sum, a) => sum + (a.views));
+                  final views = items.fold<int>(0, (s, a) => s + a.views);
                   return Wrap(
                     spacing: 12,
                     children: [
@@ -64,11 +70,13 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
               FilledButton.icon(
                 onPressed: () => _openEditDialog(),
                 icon: const Icon(Icons.add),
-                label: const Text('New announcement'),
+                label: const Text('New Announcement'),
               ),
             ],
           ),
           const SizedBox(height: 12),
+
+          // ── List ──────────────────────────────────────────────────────────
           Expanded(
             child: Card(
               child: StreamBuilder<List<Announcement>>(
@@ -84,43 +92,107 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
-                          'Failed to load announcements: ${snapshot.error}',
+                          'Failed to load: ${snapshot.error}',
+                          style: TextStyle(color: colorScheme.error),
                         ),
                       ),
                     );
                   }
                   final items = snapshot.data ?? const <Announcement>[];
                   if (items.isEmpty) {
-                    return const Center(child: Text('No announcements yet'));
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.campaign_outlined,
+                            size: 56,
+                            color: colorScheme.onSurface.withValues(alpha: 0.3),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No announcements yet',
+                            style: TextStyle(
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
                   }
 
                   return ListView.separated(
                     itemCount: items.length,
-                    separatorBuilder: (_, _) => const Divider(height: 0),
+                    separatorBuilder: (_, __) => const Divider(height: 0),
                     itemBuilder: (context, index) {
                       final a = items[index];
                       return ListTile(
-                        leading: a.pinned
-                            ? const Icon(Icons.push_pin, color: Colors.amber)
-                            : const Icon(Icons.campaign_outlined),
-                        title: Text(a.title),
-                        subtitle: Text(
-                          '${a.location} • ${a.eventDateTime}',
-                          maxLines: 2,
+                        leading: a.imageUrl != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: SafeImage(
+                                  imageUrl: a.imageUrl!,
+                                  width: 48,
+                                  height: 48,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      _fallbackIcon(a),
+                                ),
+                              )
+                            : _fallbackIcon(a),
+                        title: Text(
+                          a.title,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (value) {
-                            if (value == 'edit') {
-                              _openEditDialog(existing: a);
-                            } else if (value == 'delete') {
-                              _delete(a);
-                            }
-                          },
-                          itemBuilder: (context) => const [
-                            PopupMenuItem(value: 'edit', child: Text('Edit')),
-                            PopupMenuItem(
-                              value: 'delete',
-                              child: Text('Delete'),
+                        subtitle: Text(
+                          '${a.location} • ${DateFormat('MMM d, yyyy  h:mm a').format(a.eventDateTime)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Status chip
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _statusColor(
+                                  a.status,
+                                ).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                a.status.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: _statusColor(a.status),
+                                ),
+                              ),
+                            ),
+                            PopupMenuButton<String>(
+                              onSelected: (value) {
+                                if (value == 'edit') {
+                                  _openEditDialog(existing: a);
+                                } else if (value == 'delete') {
+                                  _delete(a);
+                                }
+                              },
+                              itemBuilder: (context) => const [
+                                PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('Edit'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete'),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -136,6 +208,27 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
     );
   }
 
+  Widget _fallbackIcon(Announcement a) {
+    return CircleAvatar(
+      backgroundColor: Colors.deepOrange.withValues(alpha: 0.12),
+      child: Icon(
+        a.pinned ? Icons.push_pin : Icons.campaign_outlined,
+        color: Colors.deepOrange,
+      ),
+    );
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'active':
+        return Colors.green;
+      case 'archived':
+        return Colors.grey;
+      default:
+        return Colors.orange;
+    }
+  }
+
   Future<void> _delete(Announcement a) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -148,6 +241,9 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Delete'),
           ),
@@ -155,7 +251,6 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
       ),
     );
     if (ok != true) return;
-
     try {
       await _repo.delete(a);
     } catch (e) {
@@ -170,21 +265,31 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
     final titleCtrl = TextEditingController(text: existing?.title ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     final locationCtrl = TextEditingController(text: existing?.location ?? '');
+    final person1Ctrl = TextEditingController(
+      text: existing?.person1Name ?? '',
+    );
+    final person2Ctrl = TextEditingController(
+      text: existing?.person2Name ?? '',
+    );
     DateTime? eventDateTime = existing?.eventDateTime;
     bool pinned = existing?.pinned ?? false;
     String status = existing?.status ?? 'draft';
+    String announcementType = existing?.announcementType ?? 'general';
     Uint8List? imageBytes;
     String? imageFileName;
+    Uint8List? image2Bytes;
+    String? image2FileName;
     Uint8List? attachmentBytes;
     String? attachmentFileName;
     bool saving = false;
 
     await showDialog<void>(
       context: context,
-      barrierDismissible: !saving,
+      barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (context, setS) {
+            // ── Date / time picker ──────────────────────────────────────
             Future<void> pickDateTime() async {
               final now = DateTime.now();
               final date = await showDatePicker(
@@ -193,15 +298,13 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                 firstDate: now.subtract(const Duration(days: 365)),
                 lastDate: now.add(const Duration(days: 365 * 5)),
               );
-              if (!context.mounted) return;
-              if (date == null) return;
+              if (!context.mounted || date == null) return;
               final time = await showTimePicker(
                 context: context,
                 initialTime: TimeOfDay.fromDateTime(eventDateTime ?? now),
               );
-              if (!context.mounted) return;
-              if (time == null) return;
-              setState(() {
+              if (!context.mounted || time == null) return;
+              setS(() {
                 eventDateTime = DateTime(
                   date.year,
                   date.month,
@@ -212,18 +315,32 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
               });
             }
 
+            // ── Image picker ────────────────────────────────────────────
             Future<void> pickImage() async {
               final result = await FilePicker.platform.pickFiles(
                 type: FileType.image,
                 withData: true,
               );
               if (result == null || result.files.single.bytes == null) return;
-              setState(() {
+              setS(() {
                 imageBytes = result.files.single.bytes;
                 imageFileName = result.files.single.name;
               });
             }
 
+            Future<void> pickImage2() async {
+              final result = await FilePicker.platform.pickFiles(
+                type: FileType.image,
+                withData: true,
+              );
+              if (result == null || result.files.single.bytes == null) return;
+              setS(() {
+                image2Bytes = result.files.single.bytes;
+                image2FileName = result.files.single.name;
+              });
+            }
+
+            // ── Attachment picker ───────────────────────────────────────
             Future<void> pickAttachment() async {
               final result = await FilePicker.platform.pickFiles(
                 type: FileType.custom,
@@ -231,13 +348,15 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                 withData: true,
               );
               if (result == null || result.files.single.bytes == null) return;
-              setState(() {
+              setS(() {
                 attachmentBytes = result.files.single.bytes;
                 attachmentFileName = result.files.single.name;
               });
             }
 
+            // ── Save ────────────────────────────────────────────────────
             Future<void> save() async {
+              final isMarriage = announcementType == 'marriage';
               if (titleCtrl.text.trim().isEmpty ||
                   descCtrl.text.trim().isEmpty ||
                   locationCtrl.text.trim().isEmpty ||
@@ -251,63 +370,24 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                 );
                 return;
               }
-              // Preview dialog before final save
-              final previewOk = await showDialog<bool>(
-                context: context,
-                builder: (context) {
-                  return AlertDialog(
-                    title: const Text('Preview announcement'),
-                    content: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            titleCtrl.text.trim(),
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'When: ${eventDateTime!}\nWhere: ${locationCtrl.text.trim()}',
-                          ),
-                          const SizedBox(height: 8),
-                          Text(descCtrl.text.trim()),
-                          const SizedBox(height: 8),
-                          Text('Status: $status  •  Pinned: $pinned'),
-                          if (imageFileName != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text('Image: $imageFileName'),
-                            ),
-                          if (attachmentFileName != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text('Attachment: $attachmentFileName'),
-                            ),
-                        ],
-                      ),
+
+              if (isMarriage &&
+                  (person1Ctrl.text.trim().isEmpty ||
+                      person2Ctrl.text.trim().isEmpty)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'For Marriage announcements, both names are required',
                     ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        child: const Text('Back'),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.of(context).pop(true),
-                        child: const Text('Publish'),
-                      ),
-                    ],
-                  );
-                },
-              );
-              if (previewOk != true) {
+                  ),
+                );
                 return;
               }
 
-              setState(() {
-                status = 'active';
+              setS(() {
+                saving = true;
               });
 
-              setState(() => saving = true);
               try {
                 if (existing == null) {
                   await _repo.create(
@@ -317,8 +397,17 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                     location: locationCtrl.text.trim(),
                     status: status,
                     pinned: pinned,
+                    announcementType: announcementType,
+                    person1Name: person1Ctrl.text.trim().isEmpty
+                        ? null
+                        : person1Ctrl.text.trim(),
+                    person2Name: person2Ctrl.text.trim().isEmpty
+                        ? null
+                        : person2Ctrl.text.trim(),
                     imageBytes: imageBytes,
                     imageFileName: imageFileName,
+                    image2Bytes: image2Bytes,
+                    image2FileName: image2FileName,
                     attachmentBytes: attachmentBytes,
                     attachmentFileName: attachmentFileName,
                   );
@@ -330,11 +419,20 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                     location: locationCtrl.text.trim(),
                     status: status,
                     pinned: pinned,
+                    announcementType: announcementType,
+                    person1Name: person1Ctrl.text.trim().isEmpty
+                        ? null
+                        : person1Ctrl.text.trim(),
+                    person2Name: person2Ctrl.text.trim().isEmpty
+                        ? null
+                        : person2Ctrl.text.trim(),
                   );
                   await _repo.update(
                     updated,
                     newImageBytes: imageBytes,
                     newImageFileName: imageFileName,
+                    newImage2Bytes: image2Bytes,
+                    newImage2FileName: image2FileName,
                     newAttachmentBytes: attachmentBytes,
                     newAttachmentFileName: attachmentFileName,
                   );
@@ -342,12 +440,8 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                 if (dialogContext.mounted) {
                   Navigator.of(dialogContext).pop();
                 }
-                // Navigate back to the admin announcements list
-                if (mounted) {
-                  context.go('/admin/announcements');
-                }
+                if (mounted) context.go('/admin/announcements');
               } catch (e) {
-                // Show error in the dialog
                 if (dialogContext.mounted) {
                   ScaffoldMessenger.of(dialogContext).showSnackBar(
                     SnackBar(
@@ -357,120 +451,197 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                   );
                 }
               } finally {
-                // Always reset saving state
-                if (dialogContext.mounted) {
-                  setState(() => saving = false);
-                }
+                if (dialogContext.mounted) setS(() => saving = false);
               }
             }
 
+            // ── Dialog UI ───────────────────────────────────────────────
             return AlertDialog(
+              scrollable: true,
               title: Text(
-                existing == null ? 'New announcement' : 'Edit announcement',
+                existing == null ? 'New Announcement' : 'Edit Announcement',
               ),
-              content: SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 480),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      TextField(
-                        controller: titleCtrl,
-                        decoration: const InputDecoration(labelText: 'Title'),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: descCtrl,
-                        maxLines: 4,
-                        decoration: const InputDecoration(
-                          labelText: 'Description',
+              content: SizedBox(
+                width: 520,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── Image section ─────────────────────────────
+                    if (announcementType == 'marriage') ...[
+                      Text(
+                        'Groom Photo',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: locationCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Location',
+                      const SizedBox(height: 4),
+                    ],
+                    _buildImageSection(
+                      context,
+                      imageBytes: imageBytes,
+                      existingImageUrl: existing?.imageUrl,
+                      onPick: pickImage,
+                      onRemove: () => setS(() => imageBytes = null),
+                    ),
+                    if (announcementType == 'marriage') ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'Bride Photo',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              eventDateTime == null
-                                  ? 'No event date/time selected'
-                                  : 'Event: $eventDateTime',
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: pickDateTime,
-                            child: const Text('Pick date & time'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Checkbox(
-                            value: pinned,
-                            onChanged: (v) => setState(() {
-                              pinned = v ?? false;
-                            }),
-                          ),
-                          const Text('Pin announcement'),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        initialValue: status,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'draft',
-                            child: Text('Draft'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'active',
-                            child: Text('Active'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'archived',
-                            child: Text('Archived'),
-                          ),
-                        ],
-                        onChanged: (v) => setState(() {
-                          status = v ?? 'draft';
-                        }),
-                        decoration: const InputDecoration(labelText: 'Status'),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: pickImage,
-                            icon: const Icon(Icons.image_outlined),
-                            label: Text(
-                              imageFileName == null
-                                  ? 'Select image'
-                                  : 'Image: $imageFileName',
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: pickAttachment,
-                            icon: const Icon(Icons.picture_as_pdf_outlined),
-                            label: Text(
-                              attachmentFileName == null
-                                  ? 'Select PDF attachment'
-                                  : 'Attachment: $attachmentFileName',
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 4),
+                      _buildImageSection(
+                        context,
+                        imageBytes: image2Bytes,
+                        existingImageUrl: existing?.imageUrl2,
+                        onPick: pickImage2,
+                        onRemove: () => setS(() => image2Bytes = null),
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 12),
+
+                    // ── Title ─────────────────────────────────────
+                    TextField(
+                      controller: titleCtrl,
+                      decoration: const InputDecoration(labelText: 'Title *'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: descCtrl,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        labelText: 'Description *',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: locationCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Location *',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // ── Date/time ─────────────────────────────────
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            eventDateTime == null
+                                ? 'No date/time selected *'
+                                : DateFormat(
+                                    'MMM d, yyyy  h:mm a',
+                                  ).format(eventDateTime!),
+                            style: TextStyle(
+                              color: eventDateTime == null
+                                  ? Theme.of(context).colorScheme.error
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: pickDateTime,
+                          icon: const Icon(Icons.calendar_today, size: 16),
+                          label: const Text('Pick date & time'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // ── Pinned ────────────────────────────────────
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: pinned,
+                          onChanged: (v) => setS(() => pinned = v ?? false),
+                        ),
+                        const Text('Pin announcement'),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // ── Status ────────────────────────────────────
+                    DropdownButtonFormField<String>(
+                      value: status,
+                      decoration: const InputDecoration(labelText: 'Status'),
+                      items: const [
+                        DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                        DropdownMenuItem(
+                          value: 'active',
+                          child: Text('Active'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'archived',
+                          child: Text('Archived'),
+                        ),
+                      ],
+                      onChanged: (v) => setS(() => status = v ?? 'draft'),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // ── Announcement Type ─────────────────────────
+                    DropdownButtonFormField<String>(
+                      value: announcementType,
+                      decoration: const InputDecoration(
+                        labelText: 'Announcement Type',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'general',
+                          child: Text('General'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'marriage',
+                          child: Text('Marriage'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'baptism',
+                          child: Text('Baptism'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'confirmation',
+                          child: Text('Confirmation'),
+                        ),
+                        DropdownMenuItem(value: 'death', child: Text('Death')),
+                      ],
+                      onChanged: (v) =>
+                          setS(() => announcementType = v ?? 'general'),
+                    ),
+                    const SizedBox(height: 12),
+
+                    if (announcementType == 'marriage') ...[
+                      TextField(
+                        controller: person1Ctrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Person 1 (Groom) *',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: person2Ctrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Person 2 (Bride) *',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // ── PDF attachment ────────────────────────────
+                    OutlinedButton.icon(
+                      onPressed: pickAttachment,
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: Text(
+                        attachmentFileName == null
+                            ? 'Select PDF attachment (optional)'
+                            : 'PDF: $attachmentFileName',
+                      ),
+                    ),
+                  ],
                 ),
               ),
               actions: [
@@ -489,13 +660,149 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.save),
-                  label: Text(saving ? 'Saving...' : 'Save announcement'),
+                  label: Text(saving ? 'Saving…' : 'Save Announcement'),
                 ),
               ],
             );
           },
         );
       },
+    );
+  }
+
+  /// Image section widget shown inside the edit dialog.
+  Widget _buildImageSection(
+    BuildContext context, {
+    Uint8List? imageBytes,
+    String? existingImageUrl,
+    required VoidCallback onPick,
+    required VoidCallback onRemove,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    if (imageBytes != null) {
+      // Newly selected image — show memory preview
+      return SizedBox(
+        height: 180,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(
+                imageBytes,
+                height: 180,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Row(
+                children: [
+                  _iconBtn(Icons.photo_camera, onPick, colorScheme),
+                  const SizedBox(width: 4),
+                  _iconBtn(
+                    Icons.close,
+                    onRemove,
+                    colorScheme,
+                    color: colorScheme.error,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (existingImageUrl != null) {
+      // Already-saved image — show network preview + change button
+      return SizedBox(
+        height: 180,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SafeImage(
+                imageUrl: existingImageUrl,
+                height: 180,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    _noImagePlaceholder(context, onPick, colorScheme),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: _iconBtn(Icons.photo_camera, onPick, colorScheme),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // No image yet
+    return _noImagePlaceholder(context, onPick, colorScheme);
+  }
+
+  Widget _noImagePlaceholder(
+    BuildContext context,
+    VoidCallback onPick,
+    ColorScheme colorScheme,
+  ) {
+    return InkWell(
+      onTap: onPick,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: colorScheme.outline.withValues(alpha: 0.3),
+            style: BorderStyle.solid,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.add_photo_alternate_outlined,
+              size: 40,
+              color: colorScheme.primary,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tap to upload photo',
+              style: TextStyle(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _iconBtn(
+    IconData icon,
+    VoidCallback onTap,
+    ColorScheme cs, {
+    Color? color,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: (color ?? cs.primary).withValues(alpha: 0.9),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white, size: 18),
+      ),
     );
   }
 }

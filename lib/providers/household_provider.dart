@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/household.dart';
 import '../services/household_repository.dart';
+import '../utils/record_date_filter.dart';
 
 /// Provider for household repository
 final householdRepositoryProvider = Provider<HouseholdRepository>((ref) {
@@ -11,11 +12,29 @@ final householdRepositoryProvider = Provider<HouseholdRepository>((ref) {
 final householdsStreamProvider =
     StreamProvider.family<List<Household>, HouseholdFilter>((ref, filter) {
       final repo = ref.watch(householdRepositoryProvider);
-      return repo.watchHouseholds(
-        barangay: filter.barangay,
-        includeArchived: filter.includeArchived,
-        searchQuery: filter.searchQuery,
-      );
+      return repo
+          .watchHouseholds(
+            barangay: filter.barangay,
+            includeArchived: filter.includeArchived,
+            searchQuery: filter.searchQuery,
+          )
+          .map((list) {
+            if (filter.from == null && filter.to == null) return list;
+            return list
+                .where(
+                  (h) => RecordDateFilter.matches(
+                    h.registeredAt,
+                    from: filter.from,
+                    to: filter.to,
+                  ),
+                )
+                .toList();
+          })
+          .handleError((error) {
+            // ignore: avoid_print
+            print('[householdsStreamProvider] ERROR: $error');
+            throw error;
+          });
     });
 
 /// Provider for single household
@@ -55,22 +74,30 @@ class HouseholdFilter {
   final String? barangay;
   final bool includeArchived;
   final String? searchQuery;
+  final DateTime? from;
+  final DateTime? to;
 
   const HouseholdFilter({
     this.barangay,
     this.includeArchived = false,
     this.searchQuery,
+    this.from,
+    this.to,
   });
 
   HouseholdFilter copyWith({
     String? barangay,
     bool? includeArchived,
     String? searchQuery,
+    DateTime? from,
+    DateTime? to,
   }) {
     return HouseholdFilter(
       barangay: barangay ?? this.barangay,
       includeArchived: includeArchived ?? this.includeArchived,
       searchQuery: searchQuery ?? this.searchQuery,
+      from: from ?? this.from,
+      to: to ?? this.to,
     );
   }
 
@@ -80,11 +107,14 @@ class HouseholdFilter {
     return other is HouseholdFilter &&
         other.barangay == barangay &&
         other.includeArchived == includeArchived &&
-        other.searchQuery == searchQuery;
+        other.searchQuery == searchQuery &&
+        other.from == from &&
+        other.to == to;
   }
 
   @override
-  int get hashCode => Object.hash(barangay, includeArchived, searchQuery);
+  int get hashCode =>
+      Object.hash(barangay, includeArchived, searchQuery, from, to);
 }
 
 /// State notifier for household operations

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class FinanceShell extends StatelessWidget {
+import '../../providers/notification_provider.dart';
+
+class FinanceShell extends ConsumerWidget {
   final Widget child;
   const FinanceShell({super.key, required this.child});
 
@@ -16,7 +19,7 @@ class FinanceShell extends StatelessWidget {
       Icons.volunteer_activism_outlined,
       '/finance/donations',
     ),
-    _NavItem('Reconcile', Icons.rule_folder_outlined, '/finance/reconcile'),
+    _NavItem('Cert. Fees', Icons.description_outlined, '/finance/certificate-fees'),
     _NavItem('Reports', Icons.summarize_outlined, '/finance/reports'),
     _NavItem(
       'Notifications',
@@ -26,7 +29,7 @@ class FinanceShell extends StatelessWidget {
     _NavItem('Profile', Icons.person_outline, '/finance/profile'),
   ];
 
-  int _indexFromLocation(String location) {
+  static int _indexFromLocation(String location) {
     for (int i = 0; i < _items.length; i++) {
       if (location.startsWith(_items[i].route)) return i;
     }
@@ -34,10 +37,14 @@ class FinanceShell extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).uri.toString();
     final idx = _indexFromLocation(location);
     final isWide = MediaQuery.of(context).size.width >= 1000;
+    final unread = ref.watch(unreadNotificationsCountStreamProvider).maybeWhen(
+          data: (n) => n,
+          orElse: () => 0,
+        );
 
     void goSafe(String route) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -75,6 +82,7 @@ class FinanceShell extends StatelessWidget {
               width: 270,
               child: _Sidebar(
                 selectedIndex: idx,
+                unread: unread,
                 onSelect: (i) => goSafe(_items[i].route),
               ),
             ),
@@ -93,18 +101,51 @@ class FinanceShell extends StatelessWidget {
         onDestinationSelected: (i) => goSafe(_items[i].route),
         destinations: [
           for (final item in _items)
-            NavigationDestination(icon: Icon(item.icon), label: item.label),
+            NavigationDestination(
+              icon: _navIcon(item, unread),
+              label: item.label,
+            ),
         ],
       ),
     );
   }
 }
 
+Widget _navIcon(_NavItem item, int unread) {
+  final base = Icon(item.icon);
+  if (item.route != '/finance/notifications' || unread <= 0) {
+    return base;
+  }
+  return Stack(
+    clipBehavior: Clip.none,
+    children: [
+      base,
+      Positioned(
+        right: -2,
+        top: -2,
+        child: Container(
+          width: 10,
+          height: 10,
+          decoration: const BoxDecoration(
+            color: Colors.redAccent,
+            shape: BoxShape.circle,
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
 class _Sidebar extends StatelessWidget {
   final int selectedIndex;
+  final int unread;
   final ValueChanged<int> onSelect;
 
-  const _Sidebar({required this.selectedIndex, required this.onSelect});
+  const _Sidebar({
+    required this.selectedIndex,
+    required this.unread,
+    required this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -148,8 +189,23 @@ class _Sidebar extends StatelessWidget {
                   final selected = i == selectedIndex;
                   return ListTile(
                     selected: selected,
-                    leading: Icon(item.icon),
+                    leading: _navIcon(item, unread),
                     title: Text(item.label),
+                    trailing: item.route == '/finance/notifications' &&
+                            unread > 0
+                        ? CircleAvatar(
+                            radius: 10,
+                            backgroundColor: colorScheme.error,
+                            child: Text(
+                              unread > 9 ? '9+' : '$unread',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: colorScheme.onError,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 10,
+                              ),
+                            ),
+                          )
+                        : null,
                     onTap: () => onSelect(i),
                   );
                 },

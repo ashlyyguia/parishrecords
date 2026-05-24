@@ -11,12 +11,14 @@ import '../ocr/ocr_scan_screen.dart';
 class MarriageFormScreen extends ConsumerStatefulWidget {
   final ParishRecord? existing;
   final bool fromAdmin;
+  final bool fromStaff;
   final bool startWithOcr;
 
   const MarriageFormScreen({
     super.key,
     this.existing,
     this.fromAdmin = false,
+    this.fromStaff = false,
     this.startWithOcr = false,
   });
 
@@ -472,7 +474,11 @@ class _MarriageFormScreenState extends ConsumerState<MarriageFormScreen> {
             ),
           ),
         );
-        final target = widget.fromAdmin ? '/admin/records' : '/records';
+        final target = widget.fromAdmin
+            ? '/admin/records'
+            : widget.fromStaff
+            ? '/staff/records'
+            : '/records';
         context.go(target);
       }
     } catch (e) {

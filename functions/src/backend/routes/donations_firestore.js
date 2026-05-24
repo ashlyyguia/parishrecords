@@ -75,6 +75,182 @@ router.get('/', requireFinance, async (req, res) => {
   }
 });
 
+async function notifyFinanceAndAdmin(db, payload) {
+  const {
+    donationId,
+    title = 'New online donation',
+    body,
+    type = 'online_donation',
+    route = '/donations',
+    createdByUid = 'system',
+  } = payload;
+  if (!donationId || !body) return;
+  try {
+    const now = new Date();
+    await db.collection('notifications').add({
+      title,
+      body,
+      audience: ['finance', 'admin'],
+      type,
+      route,
+      resource_id: donationId,
+      created_at: now,
+      created_by_uid: createdByUid,
+    });
+    await db.collection('donations').doc(donationId).set(
+      { finance_notified: true },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('[Donations API] Finance notify failed:', err.message);
+  }
+}
+
+function formatAmount(amount) {
+  const n = parseNumber(amount);
+  return n > 0 ? `₱${n.toFixed(2)}` : 'amount pending in app';
+}
+
+function paymentChannelLabel(paymentMethod) {
+  if (paymentMethod === 'gcash') return 'GCash';
+  if (paymentMethod === 'maya') return 'Maya';
+  if (paymentMethod === 'gotyme') return 'GoTyme';
+  return paymentMethod || 'online';
+}
+
+async function notifyDonationRecord(db, payload) {
+  const {
+    donationId,
+    amount,
+    donorName,
+    paymentMethod,
+    donationType,
+    campaign,
+    certificateType,
+    source,
+    createdByUid,
+  } = payload;
+
+  const name = donorName || 'Donor';
+  const campaignNorm = (campaign || '').toString().trim().toLowerCase();
+  const sourceNorm = (source || '').toString().trim().toLowerCase();
+
+  if (campaignNorm === 'certificate') {
+    const cert = (certificateType || 'Certificate').toString().trim();
+    const method = (paymentMethod || 'cash').toString();
+    await notifyFinanceAndAdmin(db, {
+      donationId,
+      title: 'Certificate fee recorded',
+      body: `${name} — ${formatAmount(amount)} for ${cert} (${method})`,
+      type: 'certificate_fee',
+      route: '/certificate-fees',
+      createdByUid,
+    });
+    return;
+  }
+
+  if (sourceNorm === 'online' || payload.online === true) {
+    const channel = paymentChannelLabel(paymentMethod);
+    await notifyFinanceAndAdmin(db, {
+      donationId,
+      title: 'New online donation',
+      body: `${name} — ${formatAmount(amount)} via ${channel} (${donationType || 'Donation'})`,
+      type: 'online_donation',
+      route: '/donations',
+      createdByUid,
+    });
+    return;
+  }
+
+  const camp = (campaign || 'General').toString();
+  const method = (paymentMethod || 'cash').toString();
+  await notifyFinanceAndAdmin(db, {
+    donationId,
+    title: 'Cash donation recorded',
+    body: `${name} — ${formatAmount(amount)} in-person ${method} (${camp})`,
+    type: 'cash_donation',
+    route: '/donations',
+    createdByUid,
+  });
+}
+
+// POST /api/donations/online
+router.post('/online', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user?.uid?.toString();
+    if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+
+    const body = req.body || {};
+    const amount = parseNumber(body.amount);
+    if (!(amount > 0)) {
+      return res.status(400).json({ error: 'Invalid amount' });
+    }
+
+    const donationType = (body.donation_type || body.campaign || 'General')
+      .toString()
+      .trim();
+    const paymentMethod = (body.payment_method || body.method || 'gcash')
+      .toString()
+      .trim()
+      .toLowerCase();
+    const donorName = (body.donor_name || '').toString().trim();
+    const donorEmail = (body.donor_email || '').toString().trim();
+    const donorPhone = (body.donor_phone || '').toString().trim();
+    const donorMessage =
+      body.donor_message != null ? body.donor_message.toString().trim() : '';
+
+    const admin = getAdmin();
+    const db = admin.firestore();
+    const ref = db.collection('donations').doc();
+    const now = new Date();
+
+    await ref.set({
+      amount,
+      method: paymentMethod,
+      campaign: donationType,
+      donation_type: donationType,
+      payment_method: paymentMethod,
+      donor_name: donorName,
+      donor_email: donorEmail,
+      donor_phone: donorPhone,
+      ...(donorMessage ? { donor_message: donorMessage } : {}),
+      anonymous: body.anonymous === true,
+      donor_id: uid,
+      reconciled: false,
+      source: 'online',
+      online: true,
+      status: 'pending_verification',
+      qr_transfer_confirmed: true,
+      qr_transfer_confirmed_at: now,
+      created_at: now,
+      updated_at: now,
+    });
+
+    await notifyDonationRecord(db, {
+      donationId: ref.id,
+      amount,
+      donorName,
+      paymentMethod,
+      donationType,
+      source: 'online',
+      online: true,
+      createdByUid: uid,
+    });
+
+    await logAudit(req, {
+      action: 'Online Donation Recorded',
+      resourceType: 'donation',
+      resourceId: ref.id,
+      newValues: { amount, paymentMethod, donationType },
+    });
+
+    return res.json({ ok: true, donation_id: ref.id });
+  } catch (error) {
+    console.error('Online donation create error:', error);
+    return res.status(500).json({ error: 'online_donation_create_failed' });
+  }
+});
+
 // POST /api/donations
 // Body: { amount, method, campaign, donor_name, anonymous }
 router.post('/', requireAuth, async (req, res) => {
@@ -108,8 +284,20 @@ router.post('/', requireAuth, async (req, res) => {
       donor_name: donorName,
       donor_id: uid,
       reconciled: false,
+      source: body.source != null ? body.source.toString().trim() : 'manual_cash',
       created_at: now,
       updated_at: now,
+    });
+
+    await notifyDonationRecord(db, {
+      donationId: ref.id,
+      amount,
+      donorName: anonymous ? 'Anonymous' : (donorName || 'Donor'),
+      paymentMethod: method,
+      campaign,
+      certificateType: body.certificate_type || body.certificateType,
+      source: body.source != null ? body.source.toString().trim() : 'manual_cash',
+      createdByUid: uid,
     });
 
     await logAudit(req, {

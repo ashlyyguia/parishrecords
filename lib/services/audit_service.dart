@@ -29,6 +29,9 @@ class AuditService {
     required String action,
     required String userId,
     required String details,
+    String? userEmail,
+    String? userName,
+    String? userRole,
     DateTime? timestamp,
   }) async {
     final now = timestamp ?? DateTime.now();
@@ -36,10 +39,36 @@ class AuditService {
     try {
       if (!await _canWrite()) return;
 
+      // Get current user info if not provided
+      String? email = userEmail;
+      String? name = userName;
+      String? role = userRole;
+
+      if (email == null || name == null) {
+        final user = FirebaseAuth.instance.currentUser;
+        email ??= user?.email;
+        name ??= user?.displayName ?? email?.split('@').first;
+      }
+
+      if (role == null) {
+        final snap = await _db
+            .collection('users')
+            .doc(userId)
+            .get()
+            .timeout(
+              const Duration(seconds: 5),
+              onTimeout: () => throw TimeoutException('Role lookup timed out'),
+            );
+        role = (snap.data()?['role'] ?? 'user').toString();
+      }
+
       await _db
           .collection('audit_logs')
           .add({
             'user_id': userId,
+            'user_email': email ?? 'Unknown',
+            'user_name': name ?? 'Unknown',
+            'user_role': role,
             'action': action,
             'details': details,
             'new_values': details,

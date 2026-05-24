@@ -14,6 +14,61 @@ class _AdminActivityPageState extends State<AdminActivityPage> {
   String _search = '';
   final Set<String> _selected = {}; // keys formatted as '<collection>|<docId>'
   List<String> _visibleKeys = const [];
+  bool _deleting = false;
+
+  Future<void> _deleteSelected() async {
+    if (_selected.isEmpty || _deleting) return;
+    final ids = _selected
+        .where((k) => k.startsWith('logs|'))
+        .map((k) => k.split('|').skip(1).join('|'))
+        .where((id) => id.isNotEmpty)
+        .toList();
+    if (ids.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete selected logs'),
+        content: Text('Delete ${ids.length} selected log entr${ids.length == 1 ? 'y' : 'ies'}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _deleting = true);
+    try {
+      final repo = AdminRepository();
+      for (final id in ids) {
+        await repo.deleteLog(id);
+      }
+      if (!mounted) return;
+      setState(() {
+        _selected.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Deleted ${ids.length} log entr${ids.length == 1 ? 'y' : 'ies'}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to delete logs: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _deleting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,9 +131,11 @@ class _AdminActivityPageState extends State<AdminActivityPage> {
                       const Text('Select all'),
                       SizedBox(width: gap),
                       OutlinedButton.icon(
-                        onPressed: null,
+                        onPressed: _selected.isEmpty || _deleting
+                            ? null
+                            : _deleteSelected,
                         icon: const Icon(Icons.delete_outline),
-                        label: const Text('Delete'),
+                        label: Text(_deleting ? 'Deleting...' : 'Delete'),
                       ),
                     ],
                   ),
@@ -230,8 +287,7 @@ class _ActivityListInnerState extends State<_ActivityListInner> {
           }
           return {
             'type': 'log',
-            'key':
-                'logs|${m['user_id'] ?? ''}|${m['target_record_id'] ?? ''}|${ts ?? ''}',
+            'key': 'logs|${m['id'] ?? ''}',
             'when': when,
             'icon': icon,
             'title': (m['action'] ?? '').toString().replaceAll('_', ' '),

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../services/donations_repository.dart';
 import '../../widgets/app_loading.dart';
 
 final _myDonationsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  return DonationsRepository().list(limit: 100);
+  return DonationsRepository().listMine(limit: 100);
 });
 
 class UserDonationsScreen extends ConsumerWidget {
@@ -28,6 +29,14 @@ class UserDonationsScreen extends ConsumerWidget {
             onPressed: () => ref.invalidate(_myDonationsProvider),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final recorded = await context.push<bool>('/donate');
+          if (recorded == true) ref.invalidate(_myDonationsProvider);
+        },
+        icon: const Icon(Icons.qr_code_scanner),
+        label: const Text('Donate Now'),
       ),
       body: donationsAsync.when(
         loading: () => const AppLoading(message: 'Loading donations...'),
@@ -67,7 +76,7 @@ class UserDonationsScreen extends ConsumerWidget {
                         ?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Text(
-                      'Your donation history will appear here.',
+                      'Your donation history will appear here.\nClick "Donate Now" to get started.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                     ),
@@ -244,4 +253,5 @@ class UserDonationsScreen extends ConsumerWidget {
       ),
     );
   }
+
 }

@@ -1,11 +1,11 @@
 {
-    "name": "Parish Operational Management System with ML Kit OCR",
-    "short_name": "Parish Ops with OCR",
+    "name": "Holy Rosary Parish",
+    "short_name": "Holy Rosary",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0D9488",
+    "theme_color": "#0D9488",
+    "description": "Holy Rosary Parish — Oroquieta City",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

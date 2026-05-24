@@ -38,7 +38,7 @@ class UserProfileRepository {
     patch.remove('role');
     patch.remove('created_at');
 
-    patch['updated_at'] = FieldValue.serverTimestamp();
+    patch['updatedAt'] = FieldValue.serverTimestamp();
 
     await _firestore
         .collection('users')

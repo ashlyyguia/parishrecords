@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 
 // Import email verification functions
 export { sendVerificationCodeEmail, resendVerificationCode } from "./email_verification";
+export { autoLinkHouseholdMemberSacraments } from "./auto_link_member_sacraments";
 
 // Import backend routes
 import { router as userDashboardRoutes } from "./backend/routes/user_dashboard_firestore";

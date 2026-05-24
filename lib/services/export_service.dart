@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:universal_html/html.dart' as html;
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class ExportService {
   static Future<String> _defaultPath(String filename) async {
@@ -102,18 +103,6 @@ class ExportService {
     );
 
     final bytes = await doc.save();
-
-    if (kIsWeb) {
-      final blob = html.Blob([bytes], 'application/pdf');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      (html.AnchorElement(
-        href: url,
-      )..setAttribute('download', filename)).click();
-      html.Url.revokeObjectUrl(url);
-    } else {
-      final path = await _defaultPath(filename);
-      final file = File(path);
-      await file.writeAsBytes(bytes);
-    }
+    await Printing.sharePdf(bytes: bytes, filename: filename);
   }
 }

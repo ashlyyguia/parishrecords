@@ -1,9 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../models/record.dart';
 import '../../../providers/records_provider.dart';
-import '../../../services/records_repository.dart';
+import '../../../utils/manual_register_notes.dart';
+import '../../../utils/record_date_filter.dart';
+import '../../../widgets/manual_register_launcher.dart';
+import '../../../widgets/record_date_range_filters.dart';
+import '../../admin/admin_design_system.dart';
+
+bool _isTemporaryManualRecord(ParishRecord record) {
+  final data = ManualRegisterNotes.tryDecode(record.notes);
+  if (data == null) return false;
+  return data['status'] == 'temporary' ||
+      data['source'] == 'manual_baptism_register' ||
+      data['source'] == 'manual_marriage_register';
+}
 
 class StaffRecordsPage extends ConsumerStatefulWidget {
   const StaffRecordsPage({super.key});
@@ -15,7 +28,11 @@ class StaffRecordsPage extends ConsumerStatefulWidget {
 class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
   final _searchCtrl = TextEditingController();
   String _type = 'all';
-  String _status = 'all';
+  String _parish = 'all';
+  bool _temporaryOnly = false;
+  DateTime? _from;
+  DateTime? _to;
+  bool _desc = true;
 
   @override
   void initState() {
@@ -32,239 +49,251 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
     super.dispose();
   }
 
-  List<ParishRecord> _filterRecords(List<ParishRecord> records) {
-    return records.where((r) {
-      // Type filter
-      if (_type != 'all' && r.type.value != _type) {
-        return false;
-      }
+  List<Map<String, dynamic>> _load(List<ParishRecord> records) {
+    final items = records
+        .map(
+          (r) => {
+            'id': r.id,
+            'name': r.name,
+            'type': r.type.name,
+            'date': r.date.toIso8601String(),
+            'parish': r.parish,
+            'record': r,
+          },
+        )
+        .toList();
 
-      // Status filter
-      if (_status != 'all') {
-        if (_status == 'pending' &&
-            r.certificateStatus != CertificateStatus.pending) {
-          return false;
-        }
-        if (_status == 'approved' &&
-            r.certificateStatus != CertificateStatus.approved) {
-          return false;
-        }
-        if (_status == 'rejected' &&
-            r.certificateStatus != CertificateStatus.rejected) {
-          return false;
-        }
-      }
+    final q = _searchCtrl.text.trim().toLowerCase();
+    Iterable<Map<String, dynamic>> it = items;
+    if (_type != 'all') {
+      it = it.where((m) => (m['type'] ?? '').toString() == _type);
+    }
+    if (_temporaryOnly) {
+      it = it.where((m) {
+        final record = m['record'] as ParishRecord?;
+        return record != null && _isTemporaryManualRecord(record);
+      });
+    }
+    if (_parish != 'all') {
+      it = it.where((m) => (m['parish'] ?? '').toString() == _parish);
+    }
+    if (q.isNotEmpty) {
+      it = it.where(
+        (m) => m.values.any(
+          (val) => val?.toString().toLowerCase().contains(q) ?? false,
+        ),
+      );
+    }
 
-      // Search filter
-      final query = _searchCtrl.text.toLowerCase();
-      if (query.isNotEmpty) {
-        final nameMatch = r.name.toLowerCase().contains(query);
-        final typeMatch = r.type.value.toLowerCase().contains(query);
-        final parishMatch = (r.parish ?? '').toLowerCase().contains(query);
-        if (!nameMatch && !typeMatch && !parishMatch) {
-          return false;
-        }
-      }
+    if (_from != null || _to != null) {
+      it = it.where((m) {
+        final d = DateTime.tryParse((m['date'] ?? '').toString());
+        if (d == null) return false;
+        return RecordDateFilter.matches(d, from: _from, to: _to);
+      });
+    }
 
-      return true;
-    }).toList();
+    final list = it.toList();
+    list.sort((a, b) {
+      final ad = ((a['date'] ?? '')).toString();
+      final bd = ((b['date'] ?? '')).toString();
+      final cmp = ad.compareTo(bd);
+      return _desc ? -cmp : cmp;
+    });
+    return list;
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final records = ref.watch(recordsProvider);
     final meta = ref.watch(recordsMetaProvider);
+    final items = _load(records);
 
-    final filtered = _filterRecords(records);
+    final parishSet = <String>{};
+    for (final r in records) {
+      final p = (r.parish ?? '').trim();
+      if (p.isNotEmpty) parishSet.add(p);
+    }
+    final parishOptions = ['all', ...parishSet.toList()..sort()];
 
-    final width = MediaQuery.of(context).size.width;
-    final isMobile = width < 768;
-
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: EdgeInsets.all(isMobile ? 16.0 : 24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                _buildHeader(theme, colorScheme),
-
-                // Filters
-                _buildFilters(colorScheme),
-
-                const SizedBox(height: 16),
-
-                meta.isLoading && records.isEmpty
-                    ? const Center(child: CircularProgressIndicator())
-                    : meta.lastError != null && records.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Error: ${meta.lastError}',
-                          style: TextStyle(color: colorScheme.error),
-                        ),
-                      )
-                    : _buildRecordsList(filtered, theme, colorScheme),
-              ],
-            ),
-          ),
+    if (meta.isLoading && records.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (meta.lastError != null && records.isEmpty) {
+      final colorScheme = Theme.of(context).colorScheme;
+      return Center(
+        child: Text(
+          'Error: ${meta.lastError}',
+          style: TextStyle(color: colorScheme.error),
         ),
-      ),
-    );
-  }
+      );
+    }
 
-  Widget _buildHeader(ThemeData theme, ColorScheme colorScheme) {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.primary.withValues(alpha: 0.1),
-            colorScheme.secondary.withValues(alpha: 0.05),
-          ],
-        ),
-      ),
+      decoration: AdminDesignSystem.pageBackground(context),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.folder_copy_outlined,
-                  color: colorScheme.primary,
-                  size: 28,
-                ),
+          AdminDesignSystem.pageHeader(
+            context,
+            title: 'Records Management',
+            subtitle:
+                'Manage, search, and view ${items.length} parish records.',
+            icon: Icons.folder_shared_outlined,
+            actions: [
+              AdminDesignSystem.actionButton(
+                context,
+                label: 'Manual Register',
+                icon: Icons.edit_note_outlined,
+                onPressed: () => ManualRegisterLauncher.open(context),
+                isPrimary: true,
+                color: Colors.white,
               ),
-              const SizedBox(width: 16),
-              Expanded(
+              AdminDesignSystem.actionButton(
+                context,
+                label: 'Refresh',
+                icon: Icons.refresh,
+                onPressed: () => ref.read(recordsProvider.notifier).load(),
+                isPrimary: false,
+                color: Colors.white,
+              ),
+            ],
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Container(
+                decoration: AdminDesignSystem.cardDecoration(context),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      'Sacrament Records',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 320,
+                            child: AdminDesignSystem.searchBar(
+                              context,
+                              controller: _searchCtrl,
+                              hint: 'Search records by name...',
+                              onChanged: (_) => setState(() {}),
+                              onClear: () {
+                                _searchCtrl.clear();
+                                setState(() {});
+                              },
+                            ),
+                          ),
+                          _buildDropdownFilter(
+                            value: _type,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'all',
+                                child: Text('All Types'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'baptism',
+                                child: Text('Baptism'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'marriage',
+                                child: Text('Marriage'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'funeral',
+                                child: Text('Funeral'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'confirmation',
+                                child: Text('Confirmation'),
+                              ),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _type = v ?? 'all'),
+                          ),
+                          _buildDropdownFilter(
+                            value: _parish,
+                            items: [
+                              for (final p in parishOptions)
+                                DropdownMenuItem(
+                                  value: p,
+                                  child: Text(p == 'all' ? 'All Parishes' : p),
+                                ),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _parish = v ?? 'all'),
+                          ),
+                          RecordDateRangeFilters(
+                            from: _from,
+                            to: _to,
+                            fromLabel: 'From Date',
+                            toLabel: 'To Date',
+                            onFromChanged: (d) => setState(() => _from = d),
+                            onToChanged: (d) => setState(() => _to = d),
+                            onClear: () => setState(() {
+                              _from = null;
+                              _to = null;
+                            }),
+                          ),
+                          IconButton(
+                            onPressed: () => setState(() => _desc = !_desc),
+                            icon: Icon(
+                              _desc ? Icons.arrow_downward : Icons.arrow_upward,
+                            ),
+                            tooltip: 'Toggle Sort',
+                          ),
+                          IconButton(
+                            onPressed: () =>
+                                ref.read(recordsProvider.notifier).load(),
+                            icon: const Icon(Icons.refresh),
+                            tooltip: 'Refresh',
+                          ),
+                          FilterChip(
+                            label: const Text('Temporary only'),
+                            selected: _temporaryOnly,
+                            onSelected: (v) =>
+                                setState(() => _temporaryOnly = v),
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                      'View and manage parish sacrament records',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurface.withValues(alpha: 0.7),
-                      ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: items.isEmpty
+                          ? AdminDesignSystem.emptyState(
+                              context,
+                              message: _temporaryOnly
+                                  ? 'No temporary manual register records yet.'
+                                  : 'No records found matching your filters.',
+                              icon: _temporaryOnly
+                                  ? Icons.edit_note_outlined
+                                  : Icons.search_off,
+                              actionLabel: _temporaryOnly
+                                  ? 'Open Manual Register'
+                                  : 'Clear Filters',
+                              onAction: () {
+                                if (_temporaryOnly) {
+                                  ManualRegisterLauncher.open(context);
+                                  return;
+                                }
+                                _searchCtrl.clear();
+                                setState(() {
+                                  _type = 'all';
+                                  _parish = 'all';
+                                  _from = null;
+                                  _to = null;
+                                  _desc = true;
+                                  _temporaryOnly = false;
+                                });
+                              },
+                            )
+                          : _buildTable(items),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilters(ColorScheme colorScheme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          // Search bar
-          TextField(
-            controller: _searchCtrl,
-            decoration: InputDecoration(
-              hintText: 'Search by name, type, or parish...',
-              prefixIcon: Icon(Icons.search, color: colorScheme.primary),
-              suffixIcon: _searchCtrl.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchCtrl.clear();
-                        setState(() {});
-                      },
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              filled: true,
-              fillColor: colorScheme.surfaceContainerHighest.withValues(
-                alpha: 0.5,
-              ),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 12),
-
-          // Filter chips
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 180,
-                  child: _buildFilterDropdown(
-                    value: _type,
-                    items: const [
-                      DropdownMenuItem(value: 'all', child: Text('All Types')),
-                      DropdownMenuItem(
-                        value: 'baptism',
-                        child: Text('Baptism'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'marriage',
-                        child: Text('Marriage'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'confirmation',
-                        child: Text('Confirmation'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'funeral',
-                        child: Text('Death/Burial'),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _type = v ?? 'all'),
-                    icon: Icons.category_outlined,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 180,
-                  child: _buildFilterDropdown(
-                    value: _status,
-                    items: const [
-                      DropdownMenuItem(value: 'all', child: Text('All Status')),
-                      DropdownMenuItem(
-                        value: 'pending',
-                        child: Text('Pending'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'approved',
-                        child: Text('Approved'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'rejected',
-                        child: Text('Rejected'),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _status = v ?? 'all'),
-                    icon: Icons.verified_outlined,
-                  ),
-                ),
-              ],
             ),
           ),
         ],
@@ -272,371 +301,222 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
     );
   }
 
-  Widget _buildFilterDropdown({
+  Widget _buildDropdownFilter({
     required String value,
     required List<DropdownMenuItem<String>> items,
     required ValueChanged<String?> onChanged,
-    required IconData icon,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
         color: Theme.of(
           context,
-        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+        ),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: value,
-          isExpanded: true,
-          icon: Icon(icon, size: 18),
           items: items,
           onChanged: onChanged,
+          borderRadius: BorderRadius.circular(12),
+          style: Theme.of(context).textTheme.bodyMedium,
         ),
       ),
     );
   }
 
-  Widget _buildRecordsList(
-    List<ParishRecord> records,
-    ThemeData theme,
-    ColorScheme colorScheme,
-  ) {
-    if (records.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.folder_open_outlined,
-              size: 64,
-              color: colorScheme.onSurface.withValues(alpha: 0.3),
+  Widget _buildTable(List<Map<String, dynamic>> items) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final df = DateFormat.yMMMd();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.vertical,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: MediaQuery.of(context).size.width - 48,
+          ),
+          child: DataTable(
+            headingRowColor: WidgetStateProperty.all(
+              colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'No records found',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: colorScheme.onSurface.withValues(alpha: 0.6),
+            dataRowMinHeight: 64,
+            dataRowMaxHeight: 64,
+            showCheckboxColumn: false,
+            columns: const [
+              DataColumn(
+                label: Text(
+                  'Record Date',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
-            ),
-            if (_searchCtrl.text.isNotEmpty ||
-                _type != 'all' ||
-                _status != 'all')
-              TextButton(
-                onPressed: () {
-                  _searchCtrl.clear();
-                  setState(() {
-                    _type = 'all';
-                    _status = 'all';
-                  });
-                },
-                child: const Text('Clear filters'),
+              DataColumn(
+                label: Text(
+                  'Full Name',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
-          ],
-        ),
-      );
-    }
+              DataColumn(
+                label: Text(
+                  'Sacrament Type',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              DataColumn(
+                label: Text(
+                  'Parish Location',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              DataColumn(
+                label: Text(
+                  'Actions',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+            rows: items.map((m) {
+              final id = m['id']?.toString() ?? '';
+              final dateStr = m['date']?.toString() ?? '';
+              final date = DateTime.tryParse(dateStr) ?? DateTime.now();
+              final type = m['type']?.toString() ?? '';
+              final record = m['record'] as ParishRecord?;
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: records.length,
-      itemBuilder: (context, index) {
-        final record = records[index];
-        return _buildRecordCard(record, theme, colorScheme);
-      },
-    );
-  }
+              final badgeColor = _badgeColorForType(type);
+              final isTemporary =
+                  record != null && _isTemporaryManualRecord(record);
 
-  Widget _buildRecordCard(
-    ParishRecord record,
-    ThemeData theme,
-    ColorScheme colorScheme,
-  ) {
-    final typeColor = _getTypeColor(record.type);
-    final statusColor = _getStatusColor(record.certificateStatus);
-    final statusText = _getStatusText(record.certificateStatus);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: InkWell(
-        onTap: () => _viewRecordDetails(record),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: typeColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      _getTypeIcon(record.type),
-                      color: typeColor,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
+              return DataRow(
+                cells: [
+                  DataCell(Text(df.format(date))),
+                  DataCell(
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          record.name,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          m['name']?.toString() ?? 'Untitled',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        Text(
-                          '${record.type.value.toUpperCase()} • ${DateFormat('MMM dd, yyyy').format(record.date)}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        if (isTemporary)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: AdminDesignSystem.statusBadge(
+                              context,
+                              'TEMPORARY',
+                              Colors.amber.shade800,
+                            ),
                           ),
+                      ],
+                    ),
+                  ),
+                  DataCell(
+                    AdminDesignSystem.statusBadge(
+                      context,
+                      type.toUpperCase(),
+                      badgeColor,
+                    ),
+                  ),
+                  DataCell(Text(m['parish']?.toString() ?? '-')),
+                  DataCell(
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.visibility_outlined, size: 20),
+                          tooltip: 'View Details',
+                          color: colorScheme.secondary,
+                          onPressed: () {
+                            if (id.isNotEmpty && record != null) {
+                              _openRecord(record);
+                            }
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 20),
+                          tooltip: 'Edit',
+                          color: colorScheme.primary,
+                          onPressed: () {
+                            if (record != null) _editRecord(record);
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.card_membership, size: 20),
+                          tooltip: 'Certificate',
+                          color: Colors.orange,
+                          onPressed: () {
+                            if (record != null) _openCertificate(record);
+                          },
                         ),
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: statusColor.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Text(
-                      statusText,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
                 ],
-              ),
-              if (record.parish != null) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.church_outlined,
-                      size: 16,
-                      color: colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        record.parish!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.6),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              if (record.notes != null && record.notes!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  record.notes!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ],
+              );
+            }).toList(),
           ),
         ),
       ),
     );
   }
 
-  void _viewRecordDetails(ParishRecord record) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(record.name),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDetailRow('Type', record.type.value),
-              _buildDetailRow(
-                'Date',
-                DateFormat('MMMM dd, yyyy').format(record.date),
-              ),
-              if (record.parish != null)
-                _buildDetailRow('Parish', record.parish!),
-              _buildDetailRow(
-                'Status',
-                _getStatusText(record.certificateStatus),
-              ),
-              if (record.notes != null && record.notes!.isNotEmpty)
-                _buildDetailRow('Notes', record.notes!),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              Navigator.pop(context);
-              _showCorrectionDialog(record);
-            },
-            icon: const Icon(Icons.report_outlined),
-            label: const Text('Request Correction'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold)),
-          Expanded(child: Text(value)),
-        ],
-      ),
-    );
-  }
-
-  IconData _getTypeIcon(RecordType type) {
-    switch (type) {
-      case RecordType.baptism:
-        return Icons.child_care;
-      case RecordType.marriage:
-        return Icons.favorite;
-      case RecordType.confirmation:
-        return Icons.verified_user;
-      case RecordType.funeral:
-        return Icons.local_florist;
-    }
-  }
-
-  Color _getTypeColor(RecordType type) {
-    switch (type) {
-      case RecordType.baptism:
+  Color _badgeColorForType(String type) {
+    switch (type.toLowerCase()) {
+      case 'baptism':
         return Colors.blue;
-      case RecordType.marriage:
+      case 'marriage':
         return Colors.pink;
-      case RecordType.confirmation:
-        return Colors.purple;
-      case RecordType.funeral:
+      case 'funeral':
         return Colors.grey;
-    }
-  }
-
-  Future<void> _showCorrectionDialog(ParishRecord record) async {
-    final messageCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Request Correction'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Record: ${record.name}'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: messageCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Correction Details',
-                hintText: 'Describe what needs to be corrected...',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 4,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (messageCtrl.text.trim().isNotEmpty) {
-                Navigator.pop(context, true);
-              }
-            },
-            child: const Text('Submit'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && messageCtrl.text.trim().isNotEmpty) {
-      try {
-        await ref
-            .read(recordsRepositoryProvider)
-            .submitCorrectionRequest(record.id, messageCtrl.text.trim());
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Correction request submitted')),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to submit: $e')));
-        }
-      }
-    }
-    messageCtrl.dispose();
-  }
-
-  Color _getStatusColor(CertificateStatus status) {
-    switch (status) {
-      case CertificateStatus.approved:
-        return Colors.green;
-      case CertificateStatus.rejected:
-        return Colors.red;
-      case CertificateStatus.pending:
+      case 'confirmation':
         return Colors.orange;
+      default:
+        return Colors.blueGrey;
     }
   }
 
-  String _getStatusText(CertificateStatus status) {
-    switch (status) {
-      case CertificateStatus.approved:
-        return 'Approved';
-      case CertificateStatus.rejected:
-        return 'Rejected';
-      case CertificateStatus.pending:
-        return 'Pending';
+  void _openRecord(ParishRecord record) {
+    context.push('/staff/records/${record.id}');
+  }
+
+  void _openCertificate(ParishRecord record) {
+    context.push('/staff/records/${record.id}/certificate', extra: record.type);
+  }
+
+  void _editRecord(ParishRecord record) {
+    final data = ManualRegisterNotes.tryDecode(record.notes);
+    if (record.type == RecordType.baptism &&
+        data != null &&
+        ManualRegisterNotes.usesFlatRegisterLayout(data)) {
+      context.push('/staff/records/manual-baptism', extra: record);
+      return;
+    }
+    if (record.type == RecordType.marriage &&
+        data != null &&
+        ManualRegisterNotes.usesFlatMarriageRegisterLayout(data)) {
+      context.push('/staff/records/manual-marriage', extra: record);
+      return;
+    }
+
+    final extra = {'record': record, 'fromStaff': true};
+    switch (record.type) {
+      case RecordType.baptism:
+        context.push('/records/new/baptism', extra: extra);
+        break;
+      case RecordType.marriage:
+        context.push('/records/new/marriage', extra: extra);
+        break;
+      case RecordType.confirmation:
+        context.push('/records/new/confirmation', extra: extra);
+        break;
+      case RecordType.funeral:
+        context.push('/records/new/death', extra: extra);
+        break;
     }
   }
 }

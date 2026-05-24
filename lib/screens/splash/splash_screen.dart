@@ -58,7 +58,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     if (auth.user == null) {
       context.go('/login');
     } else {
-      context.go('/home');
+      context.go('/dashboard');
     }
   }
 
@@ -73,7 +73,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     }
 
     return Scaffold(
-      backgroundColor: scheme.surface,
+      backgroundColor: const Color(0xFFF6F7FB),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -108,15 +108,24 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: () {
-                  setState(() => _error = null);
+                  setState(() {
+                    _error = null;
+                    _navigated = false;
+                  });
                   _timeoutTimer?.cancel();
-                  _timeoutTimer = Timer(const Duration(seconds: 15), () {
+                  _timeoutTimer = Timer(const Duration(seconds: 12), () {
                     if (!mounted || _navigated) return;
                     setState(
                       () => _error =
-                          'Initialization timed out. Please check your connection and try again.',
+                          'Initialization timed out. Turn on mobile data or Wi‑Fi, then retry.',
                     );
                   });
+                  final auth = ref.read(authProvider);
+                  if (auth.initialized) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _navigate(auth);
+                    });
+                  }
                 },
                 child: const Text('Retry'),
               ),

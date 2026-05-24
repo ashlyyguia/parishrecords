@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/record.dart';
+import '../models/register_ocr_entry.dart';
 import '../services/records_repository.dart';
 import 'auth_provider.dart';
 
@@ -101,12 +102,20 @@ class RecordsNotifier extends Notifier<List<ParishRecord>> {
     state = [...state];
   }
 
+  Future<int> addRecordsBatch(List<RegisterRecordDraft> drafts) async {
+    final count = await _repo.addBatch(drafts);
+    await load();
+    state = [...state];
+    return count;
+  }
+
   Future<void> updateRecord(
     String id, {
     RecordType? type,
     String? name,
     DateTime? date,
     String? imagePath,
+    String? parish,
     String? notes,
   }) async {
     // Update the record
@@ -116,6 +125,7 @@ class RecordsNotifier extends Notifier<List<ParishRecord>> {
       name: name,
       date: date,
       imagePath: imagePath,
+      parish: parish,
       notes: notes,
     );
 
@@ -188,4 +198,21 @@ final recordsMetaProvider = Provider<RecordsMeta>((ref) {
 
 final recordsRepositoryProvider = Provider<RecordsRepository>((ref) {
   return RecordsRepository();
+});
+
+/// Resolves a record from memory or Firestore (for detail / deep links).
+final recordByIdProvider = FutureProvider.family<ParishRecord?, String>((
+  ref,
+  id,
+) async {
+  if (id.trim().isEmpty) return null;
+
+  final cached = ref
+      .read(recordsProvider)
+      .where((r) => r.id == id)
+      .cast<ParishRecord?>()
+      .firstOrNull;
+  if (cached != null) return cached;
+
+  return ref.read(recordsRepositoryProvider).getById(id);
 });

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
+import '../../providers/user_providers.dart';
 import '../../services/requests_repository.dart';
 
 /// Staff-facing certificate request form.
@@ -24,8 +26,13 @@ import '../../services/requests_repository.dart';
 /// }
 class CertificateRequestFormScreen extends ConsumerStatefulWidget {
   final String? initialRecordType;
+  final bool userMode;
 
-  const CertificateRequestFormScreen({super.key, this.initialRecordType});
+  const CertificateRequestFormScreen({
+    super.key,
+    this.initialRecordType,
+    this.userMode = false,
+  });
 
   @override
   ConsumerState<CertificateRequestFormScreen> createState() =>
@@ -47,6 +54,9 @@ class _CertificateRequestFormScreenState
 
   // Auto-generated request ID
   String? _requestId;
+
+  /// Parishioner flow: who is submitting the request.
+  final _userSubmittedByNameCtrl = TextEditingController();
 
   // Baptism fields
   final _baptismChildNameCtrl = TextEditingController();
@@ -119,7 +129,38 @@ class _CertificateRequestFormScreenState
     if (initial != null && initial.isNotEmpty) {
       _recordType = initial;
     }
+    if (widget.userMode) {
+      if (_recordType != 'Baptism' && _recordType != 'Confirmation') {
+        _recordType = 'Baptism';
+      }
+      _preferredPickupDate = DateTime.now();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _prefillUserRequestorName();
+      });
+    }
     _initializeRequestId();
+  }
+
+  Future<void> _prefillUserRequestorName() async {
+    if (!widget.userMode || _userSubmittedByNameCtrl.text.trim().isNotEmpty) {
+      return;
+    }
+    final authName = FirebaseAuth.instance.currentUser?.displayName?.trim();
+    if (authName != null && authName.isNotEmpty) {
+      _userSubmittedByNameCtrl.text = authName;
+      if (mounted) setState(() {});
+      return;
+    }
+    try {
+      final profile = await ref.read(userProfileRepositoryProvider).getMyProfile();
+      final fromProfile = (profile['displayName'] ?? profile['fullName'] ?? '')
+          .toString()
+          .trim();
+      if (fromProfile.isNotEmpty) {
+        _userSubmittedByNameCtrl.text = fromProfile;
+        if (mounted) setState(() {});
+      }
+    } catch (_) {}
   }
 
   Future<void> _initializeRequestId() async {
@@ -163,6 +204,7 @@ class _CertificateRequestFormScreenState
     _purposeCtrl.dispose();
     _contactCtrl.dispose();
     _emailCtrl.dispose();
+    _userSubmittedByNameCtrl.dispose();
     _baptismChildNameCtrl.dispose();
     _baptismPlaceOfBirthCtrl.dispose();
     _baptismFatherCtrl.dispose();
@@ -337,14 +379,18 @@ class _CertificateRequestFormScreenState
       'recordType': _recordType,
       'requestId': _requestId,
       'request': specific,
-      'purpose': _purposeCtrl.text.trim(),
-      'contactNumber': _contactCtrl.text.trim(),
-      'email': _emailCtrl.text.trim(),
+      'purpose': widget.userMode ? '' : _purposeCtrl.text.trim(),
+      'contactNumber': widget.userMode ? '' : _contactCtrl.text.trim(),
+      'email': widget.userMode ? '' : _emailCtrl.text.trim(),
       'preferredPickupDate': _preferredPickupDate == null
           ? null
           : df.format(_preferredPickupDate!),
-      'attachmentsChecklist': attachmentsChecklist,
-      'signatureImagePath': _signatureImagePath,
+      'attachmentsChecklist': widget.userMode ? {} : attachmentsChecklist,
+      'signatureImagePath': widget.userMode ? null : _signatureImagePath,
+      if (widget.userMode) ...{
+        'submittedByName': _userSubmittedByNameCtrl.text.trim(),
+        'certificateForName': _resolveDisplayName(),
+      },
       'submittedAt': nowIso,
       'metadata': {'requestId': _requestId, 'submittedAt': nowIso},
     };
@@ -356,67 +402,57 @@ class _CertificateRequestFormScreenState
     if (!(_formKey.currentState?.validate() ?? false)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please complete required fields')),
+        const SnackBar(content: Text('Please complete required fields.')),
       );
       return;
     }
 
-    final body = _buildRequestBody();
-    final name = _resolveDisplayName();
-    final now = DateTime.now();
+    setState(() => _isSaving = true);
 
     try {
-      setState(() {
-        _isSaving = true;
-      });
-      await ref
-          .read(recordsProvider.notifier)
-          .addRecord(
-            // Use baptism type as generic; AdminCertificatesPage filters by notes.requestType
-            RecordType.baptism,
-            name,
-            now,
-            notes: json.encode(body),
-          );
+      final body = _buildRequestBody();
+      final name = _resolveDisplayName();
+      final now = DateTime.now();
 
-      // Also create a backend certificate request entry.
-      try {
-        final requestsRepo = RequestsRepository();
-        final requestType = _mapRecordTypeToRequestType();
-        await requestsRepo.create(
-          requestType: requestType,
-          requesterName: name,
-          recordId: null,
-          parishId: null,
-        );
-      } catch (_) {
-        // Ignore backend request creation errors; the main ParishRecord is
-        // already saved and used by the admin UI.
+      if (!widget.userMode) {
+        // Staff/Admin flow: also store a local record item used by admin list pages.
+        ref
+            .read(recordsProvider.notifier)
+            .addRecord(RecordType.baptism, name, now, notes: json.encode(body));
       }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Certificate request submitted')),
+
+      final requestsRepo = RequestsRepository();
+      final requestType = _mapRecordTypeToRequestType();
+      await requestsRepo.create(
+        requestType: requestType,
+        requesterName: name,
+        submittedByName: widget.userMode
+            ? _userSubmittedByNameCtrl.text.trim()
+            : null,
       );
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final router = GoRouter.of(context);
-        if (router.canPop()) {
-          router.pop(true);
-        } else {
-          context.go('/records/certificates');
-        }
-      });
+      ref.invalidate(myRequestsProvider);
+      ref.invalidate(myDashboardProvider);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Request submitted.')));
+
+      // Return to the previous screen if possible.
+      if (Navigator.of(context).canPop()) {
+        context.pop(true);
+      } else {
+        context.go(
+          widget.userMode ? '/user/requests' : '/records/certificates',
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to submit request: $e')));
     } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -459,153 +495,404 @@ class _CertificateRequestFormScreenState
     final df = DateFormat('yMMMd');
 
     return Scaffold(
+      backgroundColor: colorScheme.surfaceContainerLow,
       appBar: AppBar(
-        title: const Text('Certificate Request'),
-        actions: [
-          TextButton.icon(
-            onPressed: _isSaving ? null : _save,
-            icon: const Icon(Icons.send_outlined),
-            label: const Text('Submit'),
-          ),
-        ],
+        title: const Text('New Request'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: widget.userMode
+            ? null
+            : [
+                TextButton.icon(
+                  onPressed: _isSaving ? null : _save,
+                  icon: const Icon(Icons.send_outlined),
+                  label: const Text('Submit'),
+                ),
+              ],
       ),
+      floatingActionButton: widget.userMode
+          ? FloatingActionButton.extended(
+              onPressed: _isSaving ? null : _save,
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.send_rounded),
+              label: Text(_isSaving ? 'Submitting...' : 'Submit Request'),
+              elevation: 4,
+            )
+          : null,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: _recordType,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'Baptism',
-                    child: Text('Baptism Certificate'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Marriage',
-                    child: Text('Marriage Certificate'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Confirmation',
-                    child: Text('Confirmation Certificate'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Death',
-                    child: Text('Funeral / Death Certificate'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Parish Certification',
-                    child: Text('Parish Certification'),
-                  ),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() {
-                    _recordType = v;
-                    _attachment1 = false;
-                    _attachment2 = false;
-                    _attachment3 = false;
-                  });
-                },
-                decoration: const InputDecoration(labelText: 'Request type'),
-              ),
-              const SizedBox(height: 16),
-              _buildTypeSpecificSection(df, colorScheme),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _purposeCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Purpose of request',
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 550),
+            child: Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+                side: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
                 ),
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? 'Please enter purpose'
-                    : null,
               ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _contactCtrl,
-                decoration: const InputDecoration(labelText: 'Contact number'),
-                keyboardType: TextInputType.phone,
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? 'Please enter contact number'
-                    : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _emailCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Email address (optional)',
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.assignment_add,
+                            color: colorScheme.primary,
+                            size: 28,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Certificate Request',
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.onSurface,
+                                ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.userMode
+                            ? 'Enter your name as the requestor, the full name of the person on the certificate, and the type of certificate you need.'
+                            : 'Please provide the full name for the certificate and select the sacrament type.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const Divider(height: 48),
+                      if (widget.userMode) ...[
+                        ..._buildUserModeCertificateFields(colorScheme),
+                      ] else ...[
+                        Text(
+                          'SACRAMENT TYPE',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.primary,
+                                letterSpacing: 1.2,
+                              ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSacramentTypeDropdown(colorScheme),
+                        const SizedBox(height: 24),
+                        Text(
+                          'RECIPIENT INFORMATION',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.primary,
+                                letterSpacing: 1.2,
+                              ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildTypeSpecificSection(df, colorScheme),
+                      ],
+                      const SizedBox(height: 24),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer.withValues(
+                            alpha: 0.2,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: colorScheme.primaryContainer.withValues(
+                              alpha: 0.5,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: colorScheme.primary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Your request will be processed immediately. You can track the status in "My Requests".',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!widget.userMode) ...[
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _purposeCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Purpose of request',
+                          ),
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Please enter purpose'
+                              : null,
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _contactCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Contact number',
+                          ),
+                          keyboardType: TextInputType.phone,
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Please enter contact number'
+                              : null,
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _emailCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Email address (optional)',
+                          ),
+                          keyboardType: TextInputType.emailAddress,
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) return null;
+                            final value = v.trim();
+                            return value.contains('@')
+                                ? null
+                                : 'Enter a valid email address';
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Preferred pick-up date: '
+                                '${_preferredPickupDate == null ? 'Not set' : df.format(_preferredPickupDate!)}',
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => _pickDate(
+                                context,
+                                (d) => setState(() => _preferredPickupDate = d),
+                                initial: _preferredPickupDate ?? DateTime.now(),
+                              ),
+                              child: const Text('Pick date'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Attached Requirements',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        ..._buildAttachmentCheckboxes(),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Signature of Requestor',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _signatureImagePath == null
+                                    ? 'No signature image selected'
+                                    : _signatureImagePath!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: _pickSignatureImage,
+                              icon: const Icon(Icons.image_outlined),
+                              label: const Text('Attach'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-                keyboardType: TextInputType.emailAddress,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return null;
-                  final value = v.trim();
-                  return value.contains('@')
-                      ? null
-                      : 'Enter a valid email address';
-                },
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Preferred pick-up date: '
-                      '${_preferredPickupDate == null ? 'Not set' : df.format(_preferredPickupDate!)}',
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => _pickDate(
-                      context,
-                      (d) => setState(() => _preferredPickupDate = d),
-                      initial: _preferredPickupDate ?? DateTime.now(),
-                    ),
-                    child: const Text('Pick date'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Attached Requirements',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              ..._buildAttachmentCheckboxes(),
-              const SizedBox(height: 16),
-              Text(
-                'Signature of Requestor',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _signatureImagePath == null
-                          ? 'No signature image selected'
-                          : _signatureImagePath!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: _pickSignatureImage,
-                    icon: const Icon(Icons.image_outlined),
-                    label: const Text('Attach'),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
+  List<Widget> _buildUserModeCertificateFields(ColorScheme colorScheme) {
+    return [
+      Text(
+        'NAME OF REQUESTOR',
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: colorScheme.primary,
+          letterSpacing: 1.2,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        'Your name (the person submitting this request)',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: colorScheme.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(height: 12),
+      TextFormField(
+        controller: _userSubmittedByNameCtrl,
+        decoration: InputDecoration(
+          labelText: 'Name of requestor',
+          hintText: 'e.g. Juan Dela Cruz',
+          prefixIcon: const Icon(Icons.person_outline),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          filled: true,
+          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        ),
+        textInputAction: TextInputAction.next,
+        validator: (v) => (v == null || v.trim().isEmpty)
+            ? 'Please enter your name'
+            : null,
+      ),
+      const SizedBox(height: 24),
+      Text(
+        'NAME ON CERTIFICATE',
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: colorScheme.primary,
+          letterSpacing: 1.2,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        'Full name of the person this certificate is for',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: colorScheme.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(height: 12),
+      _buildTypeSpecificSection(DateFormat.yMMMd(), colorScheme),
+      const SizedBox(height: 24),
+      Text(
+        'TYPE OF CERTIFICATE REQUESTED',
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: colorScheme.primary,
+          letterSpacing: 1.2,
+        ),
+      ),
+      const SizedBox(height: 12),
+      _buildSacramentTypeDropdown(colorScheme),
+    ];
+  }
+
+  Widget _buildSacramentTypeDropdown(ColorScheme colorScheme) {
+    return DropdownButtonFormField<String>(
+      initialValue: _recordType,
+      items: const [
+        DropdownMenuItem(
+          value: 'Baptism',
+          child: Row(
+            children: [
+              Icon(Icons.water_drop_outlined, size: 20),
+              SizedBox(width: 10),
+              Text('Baptism Certificate'),
+            ],
+          ),
+        ),
+        DropdownMenuItem(
+          value: 'Confirmation',
+          child: Row(
+            children: [
+              Icon(Icons.verified_outlined, size: 20),
+              SizedBox(width: 10),
+              Text('Confirmation Certificate'),
+            ],
+          ),
+        ),
+      ],
+      onChanged: (v) {
+        if (v == null) return;
+        setState(() {
+          _recordType = v;
+          _attachment1 = false;
+          _attachment2 = false;
+          _attachment3 = false;
+        });
+      },
+      decoration: InputDecoration(
+        labelText: 'Certificate type',
+        prefixIcon: const Icon(Icons.category_outlined),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true,
+        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+      ),
+    );
+  }
+
   Widget _buildTypeSpecificSection(DateFormat df, ColorScheme colorScheme) {
+    if (widget.userMode) {
+      switch (_recordType) {
+        case 'Confirmation':
+          return TextFormField(
+            controller: _confFullNameCtrl,
+            decoration: InputDecoration(
+              labelText: 'Full name of person',
+              hintText: 'Name on confirmation certificate',
+              prefixIcon: const Icon(Icons.badge_outlined),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              filled: true,
+              fillColor: colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.3,
+              ),
+            ),
+            textInputAction: TextInputAction.done,
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? 'Please enter the person\'s full name'
+                : null,
+          );
+        case 'Baptism':
+        default:
+          return TextFormField(
+            controller: _baptismChildNameCtrl,
+            decoration: InputDecoration(
+              labelText: 'Full name of person',
+              hintText: 'Name on baptism certificate',
+              prefixIcon: const Icon(Icons.badge_outlined),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              filled: true,
+              fillColor: colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.3,
+              ),
+            ),
+            textInputAction: TextInputAction.done,
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? 'Please enter the person\'s full name'
+                : null,
+          );
+      }
+    }
+
     switch (_recordType) {
       case 'Baptism':
         return Column(

@@ -77,7 +77,13 @@ class AdminSystemHealthPage extends StatelessWidget {
                       subtitle: 'File storage service',
                       status: _HealthStatus.healthy,
                       icon: Icons.cloud_upload,
-                      onTap: () {},
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Cloud Storage is healthy'),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
 

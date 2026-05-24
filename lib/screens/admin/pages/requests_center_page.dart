@@ -35,9 +35,14 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
     try {
       await _repo.updateStatus(requestId, status: newStatus);
       if (!mounted) return;
+      final snackMessage = newStatus == 'approved'
+          ? 'Request approved. The parishioner was notified they can receive their certificate in about 5 minutes.'
+          : newStatus == 'rejected'
+          ? 'Request rejected. The parishioner was notified.'
+          : 'Request marked as $newStatus';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Request marked as $newStatus')));
+      ).showSnackBar(SnackBar(content: Text(snackMessage)));
       _loadRequests();
     } catch (e) {
       if (!mounted) return;
@@ -384,7 +389,9 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
 
     final requestId = request['request_id']?.toString() ?? '';
     final requestType = request['request_type']?.toString() ?? 'Unknown';
-    final requesterName = request['requester_name']?.toString() ?? 'Unknown';
+    final typeLabel = RequestsRepository.certificateTypeLabel(requestType);
+    final personName = RequestsRepository.personOnCertificate(request);
+    final submittedBy = RequestsRepository.submittedByName(request);
     final status = request['status']?.toString() ?? 'pending';
     final requestedAt = request['requested_at']?.toString() ?? '';
     final recordId = request['record_id']?.toString();
@@ -416,7 +423,7 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
           children: [
             Expanded(
               child: Text(
-                requestType,
+                '$typeLabel certificate',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -443,13 +450,32 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text(
-              'By: $requesterName',
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-                fontSize: 13,
+            if (personName.isNotEmpty)
+              Text(
+                'Person on certificate: $personName',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 13,
+                ),
               ),
-            ),
+            if (submittedBy.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                'Requested by: $submittedBy',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ] else if (personName.isEmpty)
+              Text(
+                'Requested by: Unknown',
+                style: TextStyle(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 13,
+                ),
+              ),
             if (recordId != null)
               Text(
                 'Record ID: $recordId',

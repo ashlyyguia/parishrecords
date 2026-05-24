@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../models/record.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/analytics_provider.dart';
+import '../../app/notification_routes.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/records_provider.dart';
 
@@ -99,7 +100,10 @@ class _EnhancedDashboardScreenState
               Stack(
                 children: [
                   IconButton(
-                    onPressed: () => context.push('/notifications'),
+                    onPressed: () {
+                      final role = ref.read(authProvider).user?.role;
+                      context.go(notificationsRouteForRole(role));
+                    },
                     icon: Icon(
                       Icons.notifications_outlined,
                       color: colorScheme.onSurface,
@@ -286,7 +290,7 @@ class _EnhancedDashboardScreenState
         'subtitle': 'OCR text extraction',
         'icon': Icons.document_scanner_outlined,
         'color': colorScheme.secondary,
-        'route': '/ocr',
+        'route': '/staff/ocr/upload',
       },
       {
         'title': 'Search Records',
@@ -467,7 +471,7 @@ class _EnhancedDashboardScreenState
                 child: _buildStatCard(
                   title: stat['title'] as String,
                   value: stat['value'] as String,
-                  change: stat['change'] as String,
+                  change: stat['change'] as String?,
                   icon: stat['icon'] as IconData,
                   color: stat['color'] as Color,
                   colorScheme: colorScheme,

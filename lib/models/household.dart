@@ -354,9 +354,13 @@ class FamilyRoles {
   static const String father = 'Father';
   static const String mother = 'Mother';
   static const String child = 'Child';
+  static const String son = 'Son'; // Backward compat
+  static const String daughter = 'Daughter'; // Backward compat
   static const String guardian = 'Guardian';
   static const String spouse = 'Spouse';
   static const String grandparent = 'Grandparent';
+  static const String grandfather = 'Grandfather'; // Backward compat
+  static const String grandmother = 'Grandmother'; // Backward compat
   static const String relative = 'Relative';
   static const String other = 'Other';
 
@@ -364,9 +368,13 @@ class FamilyRoles {
     father,
     mother,
     child,
+    son,
+    daughter,
     guardian,
     spouse,
     grandparent,
+    grandfather,
+    grandmother,
     relative,
     other,
   ];

@@ -4,24 +4,43 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/records_provider.dart';
 import '../../../models/record.dart';
+import '../../../utils/record_date_filter.dart';
+import '../../../widgets/record_date_range_filters.dart';
 import '../admin_design_system.dart';
 
-class AdminCertificatesPage extends ConsumerWidget {
+class AdminCertificatesPage extends ConsumerStatefulWidget {
   const AdminCertificatesPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AdminCertificatesPage> createState() =>
+      _AdminCertificatesPageState();
+}
+
+class _AdminCertificatesPageState extends ConsumerState<AdminCertificatesPage> {
+  DateTime? _from;
+  DateTime? _to;
+
+  List<ParishRecord> _filterByDate(List<ParishRecord> records) {
+    if (_from == null && _to == null) return records;
+    return records
+        .where((r) => RecordDateFilter.matches(r.date, from: _from, to: _to))
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final records = ref.watch(recordsProvider);
+    final filtered = _filterByDate(records);
 
-    final pendingRecords = records
+    final pendingRecords = filtered
         .where((r) => r.certificateStatus == CertificateStatus.pending)
         .toList();
-    final approvedRecords = records
+    final approvedRecords = filtered
         .where((r) => r.certificateStatus == CertificateStatus.approved)
         .toList();
-    final rejectedRecords = records
+    final rejectedRecords = filtered
         .where((r) => r.certificateStatus == CertificateStatus.rejected)
         .toList();
 
@@ -32,7 +51,6 @@ class AdminCertificatesPage extends ConsumerWidget {
         child: SafeArea(
           child: Column(
             children: [
-              // Modern Header
               Padding(
                 padding: const EdgeInsets.all(20),
                 child: AdminDesignSystem.pageHeader(
@@ -42,8 +60,22 @@ class AdminCertificatesPage extends ConsumerWidget {
                   icon: Icons.verified,
                 ),
               ),
-
-              // Statistics Row
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: RecordDateRangeFilters(
+                  from: _from,
+                  to: _to,
+                  fromLabel: 'From Date',
+                  toLabel: 'To Date',
+                  onFromChanged: (d) => setState(() => _from = d),
+                  onToChanged: (d) => setState(() => _to = d),
+                  onClear: () => setState(() {
+                    _from = null;
+                    _to = null;
+                  }),
+                ),
+              ),
+              const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
@@ -81,8 +113,6 @@ class AdminCertificatesPage extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // Tabs
               Expanded(
                 child: DefaultTabController(
                   length: 3,
@@ -153,7 +183,9 @@ class AdminCertificatesPage extends ConsumerWidget {
     if (records.isEmpty) {
       return AdminDesignSystem.emptyState(
         context,
-        message: 'No $status certificates',
+        message: _from != null || _to != null
+            ? 'No $status certificates in this date range'
+            : 'No $status certificates',
         icon: _getStatusIcon(status),
       );
     }

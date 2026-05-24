@@ -29,3 +29,10 @@ final adminRecentLogsProvider = FutureProvider.family
       final repo = ref.read(adminRepositoryProvider);
       return repo.getLogs(limit: limit, days: 30);
     });
+
+/// Recent parish activity (records, requests, donations) - NOT audit logs
+final adminRecentActivityProvider = FutureProvider.family
+    .autoDispose<List<Map<String, dynamic>>, int>((ref, limit) async {
+      final repo = ref.read(adminRepositoryProvider);
+      return repo.getRecentActivity(limit: limit);
+    });

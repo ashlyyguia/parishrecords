@@ -224,7 +224,15 @@ class _StaffOcrSacramentMatchPageState
             child: Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: SingleChildScrollView(child: Text(_extractedText)),
+                child: TextFormField(
+                  initialValue: _extractedText,
+                  maxLines: null,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'Review and edit raw extracted text here before parsing...',
+                  ),
+                  onChanged: (val) => _extractedText = val,
+                ),
               ),
             ),
           ),

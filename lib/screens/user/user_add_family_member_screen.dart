@@ -36,25 +36,11 @@ class _UserAddFamilyMemberScreenState
   bool _isSaving = false;
   int _currentStep = 0;
 
-  final List<String> _roles = [
-    'Father',
-    'Mother',
-    'Son',
-    'Daughter',
-    'Grandfather',
-    'Grandmother',
-    'Other',
-  ];
+  final List<String> _roles = FamilyRoles.all;
 
-  final List<String> _genders = ['Male', 'Female'];
+  final List<String> _genders = Genders.all;
 
-  final List<String> _civilStatuses = [
-    'Single',
-    'Married',
-    'Widowed',
-    'Separated',
-    'Divorced',
-  ];
+  final List<String> _civilStatuses = CivilStatuses.all;
 
   @override
   void dispose() {

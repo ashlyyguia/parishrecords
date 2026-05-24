@@ -12,7 +12,6 @@ class LandingShell extends StatelessWidget {
     _NavItem('HOME', '/'),
     _NavItem('ABOUT', '/about'),
     _NavItem('MASS TIME', '/mass-time'),
-    _NavItem('EVENTS', '/events'),
     _NavItem('DONATIONS', '/donations'),
     _NavItem('ANNOUNCEMENT', '/announcements'),
     _NavItem('CONTACT US', '/contact'),
@@ -143,10 +142,7 @@ class _BrandMark extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: Image.asset(
-          'assets/icons/app_icon.png',
-          fit: BoxFit.cover,
-        ),
+        child: Image.asset('assets/icons/app_icon.png', fit: BoxFit.cover),
       ),
     );
   }
@@ -186,7 +182,9 @@ class _NavTextButtonState extends State<_NavTextButton> {
                 widget.label,
                 style: LandingCommon.bodyStyle(
                   fontSize: 13,
-                  fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w600,
+                  fontWeight: widget.isActive
+                      ? FontWeight.w700
+                      : FontWeight.w600,
                   color: widget.isActive || _isHovered
                       ? LandingCommon.primary
                       : const Color(0xFF475569),
@@ -222,6 +220,7 @@ class _CompactNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<int>(
+      key: ValueKey('compact_nav_$currentIndex'),
       tooltip: 'Menu',
       initialValue: currentIndex,
       onSelected: (i) => context.go(items[i].path),
@@ -233,7 +232,9 @@ class _CompactNav extends StatelessWidget {
             child: Text(
               items[i].label,
               style: LandingCommon.bodyStyle(
-                fontWeight: i == currentIndex ? FontWeight.bold : FontWeight.normal,
+                fontWeight: i == currentIndex
+                    ? FontWeight.bold
+                    : FontWeight.normal,
                 color: i == currentIndex ? LandingCommon.primary : null,
               ),
             ),
@@ -263,7 +264,11 @@ class _CompactNav extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.expand_more, size: 18, color: LandingCommon.primary),
+            const Icon(
+              Icons.expand_more,
+              size: 18,
+              color: LandingCommon.primary,
+            ),
           ],
         ),
       ),

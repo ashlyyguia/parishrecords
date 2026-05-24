@@ -50,13 +50,6 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
           Colors.teal,
         ),
         _NavItem(
-          'Parishioners',
-          Icons.people_outlined,
-          Icons.people_rounded,
-          '/admin/parishioners',
-          Colors.green,
-        ),
-        _NavItem(
           'Sacraments',
           Icons.church_outlined,
           Icons.church_rounded,
@@ -83,11 +76,18 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
           Colors.amber,
         ),
         _NavItem(
-          'Finance',
-          Icons.account_balance_wallet_outlined,
-          Icons.account_balance_wallet_rounded,
-          '/admin/finance',
+          'Donations',
+          Icons.volunteer_activism_outlined,
+          Icons.volunteer_activism_rounded,
+          '/admin/donations',
           Colors.green,
+        ),
+        _NavItem(
+          'Certificate Fees',
+          Icons.description_outlined,
+          Icons.description_rounded,
+          '/admin/certificate-fees',
+          Colors.teal,
         ),
       ],
     ),
@@ -109,6 +109,13 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
           Colors.deepOrange,
         ),
         _NavItem(
+          'Notifications',
+          Icons.notifications_outlined,
+          Icons.notifications_rounded,
+          '/admin/notifications',
+          Colors.purple,
+        ),
+        _NavItem(
           'Audit Logs',
           Icons.receipt_long_outlined,
           Icons.receipt_long_rounded,
@@ -127,23 +134,30 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
   ];
 
   int _getIndexFromLocation(String location) {
+    final item = _getItemFromLocation(location);
+    if (item == null) return 0;
     int idx = 0;
     for (final group in _navGroups) {
-      for (final item in group.items) {
-        if (location.startsWith(item.route)) return idx;
+      for (final nav in group.items) {
+        if (nav.route == item.route) return idx;
         idx++;
       }
     }
     return 0;
   }
 
+  /// Prefer the longest matching route so `/admin/ocr/upload` does not match `/admin/ocr`.
   _NavItem? _getItemFromLocation(String location) {
+    _NavItem? best;
     for (final group in _navGroups) {
       for (final item in group.items) {
-        if (location.startsWith(item.route)) return item;
+        if (!location.startsWith(item.route)) continue;
+        if (best == null || item.route.length > best.route.length) {
+          best = item;
+        }
       }
     }
-    return null;
+    return best;
   }
 
   @override

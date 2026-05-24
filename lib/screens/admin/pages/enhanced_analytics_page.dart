@@ -6,7 +6,9 @@ import 'package:go_router/go_router.dart';
 import '../../../providers/records_provider.dart';
 import '../../../providers/admin_providers.dart';
 import '../../../models/record.dart';
+import '../../../utils/record_date_filter.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/record_date_range_filters.dart';
 
 class EnhancedAnalyticsPage extends ConsumerStatefulWidget {
   const EnhancedAnalyticsPage({super.key});
@@ -22,6 +24,8 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
   String _selectedPeriod = '30 Days';
   final List<String> _periods = ['7 Days', '30 Days', '90 Days', '1 Year'];
   String _selectedRecordTypeFilter = 'all';
+  DateTime? _from;
+  DateTime? _to;
 
   @override
   void initState() {
@@ -30,9 +34,10 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
   }
 
   List<dynamic> _filterRecords(List<dynamic> records) {
+    final useCustomRange = _from != null || _to != null;
     final days = _mapPeriodToDays(_selectedPeriod);
     final now = DateTime.now();
-    final start = DateTime(
+    final periodStart = DateTime(
       now.year,
       now.month,
       now.day,
@@ -54,7 +59,12 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
       }
 
       if (recordDate == null) return false;
-      if (recordDate.isBefore(start) || recordDate.isAfter(now)) {
+
+      if (useCustomRange) {
+        if (!RecordDateFilter.matches(recordDate, from: _from, to: _to)) {
+          return false;
+        }
+      } else if (recordDate.isBefore(periodStart) || recordDate.isAfter(now)) {
         return false;
       }
 
@@ -364,6 +374,29 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          RecordDateRangeFilters(
+            from: _from,
+            to: _to,
+            fromLabel: 'From',
+            toLabel: 'To',
+            onFromChanged: (d) => setState(() => _from = d),
+            onToChanged: (d) => setState(() => _to = d),
+            onClear: () => setState(() {
+              _from = null;
+              _to = null;
+            }),
+          ),
+          if (_from != null || _to != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Custom date range active (period presets ignored)',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
           // Record type filter chips
           SingleChildScrollView(
@@ -1212,6 +1245,29 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
+    // Count records by type
+    final typeCounts = <String, int>{
+      'Baptism': 0,
+      'Marriage': 0,
+      'Confirmation': 0,
+      'Funeral': 0,
+    };
+
+    for (final record in records) {
+      if (record is ParishRecord) {
+        final typeName = _capitalize(record.type.name);
+        typeCounts[typeName] = (typeCounts[typeName] ?? 0) + 1;
+      } else if (record is Map) {
+        final type = (record['type'] ?? '').toString();
+        if (type.isNotEmpty) {
+          final typeName = _capitalize(type);
+          typeCounts[typeName] = (typeCounts[typeName] ?? 0) + 1;
+        }
+      }
+    }
+
+    final total = typeCounts.values.fold<int>(0, (sum, count) => sum + count);
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1220,24 +1276,117 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Records Summary',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Records Summary',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Total: $total',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
-            Text(
-              'Detailed breakdown of all record types and their statistics',
-              style: TextStyle(
-                color: colorScheme.onSurface.withValues(alpha: 0.7),
-              ),
-            ),
+            if (total == 0)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.folder_open_outlined,
+                        size: 48,
+                        color: colorScheme.onSurface.withValues(alpha: 0.3),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No records found in database',
+                        style: TextStyle(
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              ...typeCounts.entries.map((entry) {
+                final percentage = total > 0
+                    ? (entry.value / total * 100).toStringAsFixed(1)
+                    : '0.0';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          entry.key,
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: total > 0 ? entry.value / total : 0,
+                            minHeight: 8,
+                            backgroundColor:
+                                colorScheme.surfaceContainerHighest,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 50,
+                        child: Text(
+                          '${entry.value}',
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 50,
+                        child: Text(
+                          '($percentage%)',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
           ],
         ),
       ),
     );
   }
+
+  String _capitalize(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
   Widget _buildCertificateStatusChart(
     List<dynamic> records,

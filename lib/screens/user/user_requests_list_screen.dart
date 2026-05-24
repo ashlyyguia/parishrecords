@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/user_providers.dart';
-import '../../widgets/app_loading.dart';
+import '../../services/requests_repository.dart';
+import '../../services/user_requests_repository.dart';
 
 class UserRequestsListScreen extends ConsumerStatefulWidget {
   const UserRequestsListScreen({super.key});
@@ -19,45 +20,17 @@ class _UserRequestsListScreenState
   String? _statusFilter;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(myRequestsProvider);
+    });
+  }
+
+  @override
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
-  }
-
-  Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'approved':
-      case 'ready':
-      case 'completed':
-        return Colors.green;
-      case 'processing':
-      case 'in_progress':
-        return Colors.blue;
-      case 'cancelled':
-      case 'rejected':
-        return Colors.red;
-      case 'draft':
-        return Colors.grey;
-      default:
-        return Colors.orange;
-    }
-  }
-
-  IconData _statusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'approved':
-      case 'ready':
-      case 'completed':
-        return Icons.check_circle_outline;
-      case 'processing':
-      case 'in_progress':
-        return Icons.sync_outlined;
-      case 'cancelled':
-      case 'rejected':
-        return Icons.cancel_outlined;
-      default:
-        return Icons.hourglass_empty_outlined;
-    }
   }
 
   @override
@@ -71,7 +44,6 @@ class _UserRequestsListScreenState
       data: (rows) => rows.isNotEmpty,
       orElse: () => false,
     );
-
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -170,8 +142,9 @@ class _UserRequestsListScreenState
                 }
                 if (_statusFilter != null) {
                   filtered = filtered.where((r) {
-                    final status = (r['status'] ?? '').toString().toLowerCase();
-                    return status == _statusFilter;
+                    final status = (r['status'] ?? 'pending').toString();
+                    return UserRequestsRepository.filterBucket(status) ==
+                        _statusFilter;
                   }).toList();
                 }
 
@@ -190,7 +163,7 @@ class _UserRequestsListScreenState
                   ),
                 );
               },
-              loading: () => const AppLoading(message: 'Loading requests...'),
+              loading: () => _buildSkeletonList(colorScheme),
               error: (e, _) =>
                   Center(child: Text('Failed to load requests: $e')),
             ),
@@ -199,25 +172,86 @@ class _UserRequestsListScreenState
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          if (!hasSacraments) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('You cannot request a certificate because there are no sacrament records linked to your account.'),
-              ),
-            );
-            return;
-          }
-          context.go('/records/certificate-request');
+          context.go('/records/certificate-request?user=1');
         },
         icon: const Icon(Icons.add),
         label: const Text('New Request'),
-        backgroundColor: hasSacraments ? colorScheme.primaryContainer : Colors.grey.shade300,
-        foregroundColor: hasSacraments ? colorScheme.onPrimaryContainer : Colors.grey.shade700,
+        backgroundColor: colorScheme.primaryContainer,
+        foregroundColor: colorScheme.onPrimaryContainer,
       ),
     );
   }
 
-  Widget _buildEmptyState(ThemeData theme, ColorScheme colorScheme, bool hasSacraments) {
+  Widget _buildSkeletonList(ColorScheme colorScheme) {
+    final shimmer = colorScheme.onSurface.withValues(alpha: 0.08);
+    final shimmerDark = colorScheme.onSurface.withValues(alpha: 0.12);
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: 5,
+      separatorBuilder: (_, _a) => const SizedBox(height: 8),
+      itemBuilder: (_, _b) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: shimmer,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: shimmerDark,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: shimmerDark,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 100,
+                    height: 11,
+                    decoration: BoxDecoration(
+                      color: shimmer,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              width: 72,
+              height: 28,
+              decoration: BoxDecoration(
+                color: shimmerDark,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(
+    ThemeData theme,
+    ColorScheme colorScheme,
+    bool hasSacraments,
+  ) {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 320),
@@ -249,19 +283,8 @@ class _UserRequestsListScreenState
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: () {
-                  if (!hasSacraments) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('You cannot request a certificate because there are no sacrament records linked to your account.'),
-                      ),
-                    );
-                    return;
-                  }
-                  context.go('/records/certificate-request');
+                  context.go('/records/certificate-request?user=1');
                 },
-                style: FilledButton.styleFrom(
-                  backgroundColor: hasSacraments ? colorScheme.primary : Colors.grey,
-                ),
                 icon: const Icon(Icons.add),
                 label: const Text('New Request'),
               ),
@@ -273,14 +296,53 @@ class _UserRequestsListScreenState
   }
 
   Widget _buildRequestCard(
-    dynamic r,
+    Map<String, dynamic> r,
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
-    final id = (r['request_id'] ?? '').toString();
+    final id = (r['request_id'] ?? r['id'] ?? '').toString();
     final type = (r['request_type'] ?? 'certificate').toString();
+    final when = (r['requested_at_display'] ??
+            r['requested_at'] ??
+            r['created_at'] ??
+            '')
+        .toString();
+    final personName = (r['certificate_for_name'] ??
+            r['requester_name'] ??
+            r['requesterName'] ??
+            r['name'] ??
+            '')
+        .toString();
+    final submittedBy = (r['submitted_by_name'] ?? '').toString();
     final status = (r['status'] ?? 'pending').toString();
-    final when = (r['requested_at'] ?? '').toString();
+    final statusLabel = UserRequestsRepository.statusLabel(status);
+    final statusHint = _statusHintMessage(r, status);
+
+    Color statusColor() {
+      switch (UserRequestsRepository.filterBucket(status)) {
+        case 'pending':
+          return Colors.orange;
+        case 'processing':
+          return Colors.blue;
+        case 'completed':
+          return status.toLowerCase() == 'rejected'
+              ? Colors.red
+              : Colors.green;
+        default:
+          return colorScheme.primary;
+      }
+    }
+
+    IconData typeIcon() {
+      switch (type.toLowerCase()) {
+        case 'baptism':
+          return Icons.water_drop_outlined;
+        case 'confirmation':
+          return Icons.verified_outlined;
+        default:
+          return Icons.assignment_outlined;
+      }
+    }
 
     return Card(
       elevation: 0,
@@ -299,16 +361,19 @@ class _UserRequestsListScreenState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: _statusColor(status).withValues(alpha: 0.1),
+                      color: colorScheme.primaryContainer.withValues(
+                        alpha: 0.6,
+                      ),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
-                      _statusIcon(status),
-                      color: _statusColor(status),
+                      typeIcon(),
+                      color: colorScheme.onPrimaryContainer,
                       size: 24,
                     ),
                   ),
@@ -318,64 +383,95 @@ class _UserRequestsListScreenState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          type.toUpperCase(),
+                          personName.isNotEmpty ? personName : 'Request',
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        if (when.isNotEmpty)
+                        const SizedBox(height: 2),
+                        Text(
+                          type.toUpperCase(),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (submittedBy.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Requested by: $submittedBy',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                        if (when.isNotEmpty) ...[
+                          const SizedBox(height: 2),
                           Text(
                             when,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
                           ),
+                        ],
                       ],
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+                      horizontal: 10,
+                      vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: _statusColor(status).withValues(alpha: 0.1),
+                      color: statusColor().withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: statusColor().withValues(alpha: 0.35),
+                      ),
                     ),
                     child: Text(
-                      status.toUpperCase(),
-                      style: TextStyle(
-                        color: _statusColor(status),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                      statusLabel,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: statusColor(),
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
                 ],
               ),
-              if (id.isNotEmpty) ...[
-                const Divider(height: 24),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.confirmation_number_outlined,
-                      size: 16,
-                      color: colorScheme.onSurfaceVariant,
+              if (statusHint != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: statusColor().withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: statusColor().withValues(alpha: 0.25),
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'ID: $id',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        status.toLowerCase() == 'rejected'
+                            ? Icons.info_outline
+                            : Icons.check_circle_outline,
+                        size: 18,
+                        color: statusColor(),
                       ),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: () => context.go('/user/requests/$id'),
-                      icon: const Icon(Icons.visibility_outlined, size: 18),
-                      label: const Text('View'),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          statusHint,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurface,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ],
@@ -383,6 +479,25 @@ class _UserRequestsListScreenState
         ),
       ),
     );
+  }
+
+  String? _statusHintMessage(Map<String, dynamic> r, String status) {
+    final s = status.trim().toLowerCase();
+    if (s == 'pending') {
+      return 'Your request is being reviewed. You will be notified when it is approved or if more information is needed.';
+    }
+    if (s != 'approved' && s != 'rejected' && s != 'ready' && s != 'completed') {
+      return null;
+    }
+    final typeLabel = RequestsRepository.certificateTypeLabel(
+      (r['request_type'] ?? 'certificate').toString(),
+    );
+    final name = (r['requester_name'] ?? '').toString();
+    return RequestsRepository.notificationForStatus(
+      status: s,
+      typeLabel: typeLabel,
+      requesterName: name,
+    ).body;
   }
 }
 

@@ -4,11 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
+import '../../../utils/firestore_date.dart';
+import '../../../utils/record_date_filter.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/record_date_range_filters.dart';
 import '../../../services/users_repository.dart';
+import '../admin_design_system.dart';
 
-/// Enhanced User Management with complete CRUD, roles, and account control
+/// User management with search, role filters, and registration date range.
 class AdminUserManagementPage extends ConsumerStatefulWidget {
   const AdminUserManagementPage({super.key});
 
@@ -22,7 +27,17 @@ class _AdminUserManagementPageState
   final _searchCtrl = TextEditingController();
   String _selectedRole = 'all';
   bool _showDisabled = false;
+  DateTime? _from;
+  DateTime? _to;
   int _refreshKey = 0;
+
+  static const _roleFilters = [
+    ('all', 'All'),
+    ('admin', 'Admin'),
+    ('staff', 'Staff'),
+    ('finance', 'Finance'),
+    ('parishioner', 'Parishioner'),
+  ];
 
   @override
   void dispose() {
@@ -32,284 +47,144 @@ class _AdminUserManagementPageState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('User Management'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: () => setState(() => _refreshKey++),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Search and Action Bar
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isNarrow = constraints.maxWidth < 600;
-                return Wrap(
-                  spacing: 16,
-                  runSpacing: 12,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+      backgroundColor: cs.surface,
+      body: Container(
+        decoration: AdminDesignSystem.pageBackground(context),
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Row(
                   children: [
-                    SizedBox(
-                      width: isNarrow
-                          ? constraints.maxWidth
-                          : constraints.maxWidth - 140,
-                      child: TextField(
-                        controller: _searchCtrl,
-                        decoration: InputDecoration(
-                          hintText: 'Search by name, email...',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _searchCtrl.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear),
-                                  onPressed: () =>
-                                      setState(() => _searchCtrl.clear()),
-                                )
-                              : null,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'User Management',
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
                           ),
-                        ),
-                        onChanged: (_) => setState(() {}),
+                          Text(
+                            'Search, filter by role and registration date',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: cs.onSurface.withValues(alpha: 0.55),
+                                ),
+                          ),
+                        ],
                       ),
                     ),
-                    FilledButton.icon(
-                      onPressed: () => _showCreateUserDialog(context),
-                      icon: const Icon(Icons.person_add),
-                      label: const Text('Add User'),
+                    IconButton.filledTonal(
+                      tooltip: 'Refresh',
+                      onPressed: () => setState(() => _refreshKey++),
+                      icon: const Icon(Icons.refresh_rounded),
                     ),
                   ],
-                );
-              },
-            ),
-          ),
-
-          // Filter Chips
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  FilterChip(
-                    label: const Text('All'),
-                    selected: _selectedRole == 'all',
-                    onSelected: (v) => setState(() => _selectedRole = 'all'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilterChip(
-                    label: const Text('Admin'),
-                    selected: _selectedRole == 'admin',
-                    onSelected: (v) => setState(() => _selectedRole = 'admin'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilterChip(
-                    label: const Text('Staff'),
-                    selected: _selectedRole == 'staff',
-                    onSelected: (v) => setState(() => _selectedRole = 'staff'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilterChip(
-                    label: const Text('Parishioner'),
-                    selected: _selectedRole == 'parishioner',
-                    onSelected: (v) =>
-                        setState(() => _selectedRole = 'parishioner'),
-                  ),
-                  const SizedBox(width: 16),
-                  FilterChip(
-                    label: const Text('Show Disabled'),
-                    selected: _showDisabled,
-                    onSelected: (v) => setState(() => _showDisabled = v),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Users Stats & List
-          Expanded(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              key: ValueKey(_refreshKey),
-              future: _loadUsers(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const AppLoading(message: 'Loading users...');
-                }
-
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-
-                var users = snapshot.data ?? [];
-                debugPrint(
-                  '[Users UI] Received ${users.length} users from repository',
-                );
-                if (users.isNotEmpty) {
-                  debugPrint('[Users UI] First user: ${users.first}');
-                }
-
-                // Apply client-side filters
-                debugPrint('[Users UI] Before filters: ${users.length} users');
-
-                if (!_showDisabled) {
-                  users = users.where((u) {
-                    final disabled = u['disabled'] == true;
-                    if (disabled) {
-                      debugPrint(
-                        '[Users UI] Filtering out disabled user: ${u['id']}',
-                      );
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _UsersFilterToolbar(
+                  searchCtrl: _searchCtrl,
+                  from: _from,
+                  to: _to,
+                  onSearchChanged: () => setState(() {}),
+                  onFromChanged: (d) => setState(() => _from = d),
+                  onToChanged: (d) => setState(() => _to = d),
+                  onClearDates: () => setState(() {
+                    _from = null;
+                    _to = null;
+                  }),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _RoleFilterBar(
+                  selectedRole: _selectedRole,
+                  showDisabled: _showDisabled,
+                  onRoleSelected: (r) => setState(() => _selectedRole = r),
+                  onShowDisabledChanged: (v) =>
+                      setState(() => _showDisabled = v),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  key: ValueKey('$_refreshKey-$_selectedRole'),
+                  future: _loadUsers(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const AppLoading(message: 'Loading users...');
                     }
-                    return !disabled;
-                  }).toList();
-                  debugPrint(
-                    '[Users UI] After disabled filter: ${users.length} users',
-                  );
-                }
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Error: ${snapshot.error}'));
+                    }
 
-                if (_searchCtrl.text.isNotEmpty) {
-                  final query = _searchCtrl.text.toLowerCase();
-                  users = users.where((u) {
-                    final email = u['email']?.toString().toLowerCase() ?? '';
-                    final name =
-                        u['display_name']?.toString().toLowerCase() ??
-                        u['displayName']?.toString().toLowerCase() ??
-                        '';
-                    return email.contains(query) || name.contains(query);
-                  }).toList();
-                }
+                    final users = _applyFilters(snapshot.data ?? []);
 
-                return Column(
-                  children: [
-                    _buildStatsRow(users),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: users.isEmpty
-                          ? _buildEmptyState()
-                          : RefreshIndicator(
-                              onRefresh: () async {
-                                setState(() => _refreshKey++);
-                              },
-                              child: ListView.builder(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                itemCount: users.length,
-                                itemBuilder: (context, index) {
-                                  final user = users[index];
-                                  final userId = user['id']?.toString() ?? '';
-                                  return _UserCard(
-                                    userId: userId,
-                                    data: user,
-                                    onEdit: () => _showEditUserDialog(
-                                      context,
-                                      userId,
-                                      user,
-                                    ),
-                                    onResetPassword: () => _resetPassword(
-                                      context,
-                                      user['email'] ?? '',
-                                    ),
-                                    onToggleStatus: () => _toggleUserStatus(
-                                      context,
-                                      userId,
-                                      user['disabled'] == true,
-                                    ),
-                                    onDelete: () => _confirmDeleteUser(
-                                      context,
-                                      userId,
-                                      user,
-                                    ),
-                                  );
-                                },
-                              ),
+                    return Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: _UsersStatsGrid(users: users),
+                        ),
+                        const SizedBox(height: 12),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Users (${users.length})',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w700),
                             ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> _loadUsers() async {
-    try {
-      final repo = UsersRepository();
-      final users = await repo.list(role: _selectedRole);
-      debugPrint(
-        '[Users] Loaded ${users.length} users with role: $_selectedRole',
-      );
-      return users;
-    } catch (e) {
-      debugPrint('[Users] Error loading users: $e');
-      rethrow;
-    }
-  }
-
-  Widget _buildStatsRow(List<Map<String, dynamic>> users) {
-    int total = users.length;
-    int admins = 0;
-    int staff = 0;
-    int finance = 0;
-    int parishioners = 0;
-    int disabled = 0;
-
-    for (final user in users) {
-      final role = user['role']?.toString().toLowerCase() ?? 'parishioner';
-      final isDisabled = user['disabled'] == true;
-
-      if (isDisabled) disabled++;
-
-      switch (role) {
-        case 'admin':
-          admins++;
-        case 'staff':
-          staff++;
-        case 'finance':
-          finance++;
-        default:
-          parishioners++;
-      }
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              _StatItem(count: '$total', label: 'Total', color: Colors.blue),
-              _StatItem(count: '$admins', label: 'Admins', color: Colors.red),
-              _StatItem(count: '$staff', label: 'Staff', color: Colors.orange),
-              _StatItem(
-                count: '$finance',
-                label: 'Finance',
-                color: Colors.green,
-              ),
-              _StatItem(
-                count: '$parishioners',
-                label: 'Parish',
-                color: Colors.purple,
-              ),
-              _StatItem(
-                count: '$disabled',
-                label: 'Disabled',
-                color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Expanded(
+                          child: users.isEmpty
+                              ? _buildEmptyState()
+                              : RefreshIndicator(
+                                  onRefresh: () async {
+                                    setState(() => _refreshKey++);
+                                  },
+                                  child: _UsersDataTable(
+                                    users: users,
+                                    onEdit: (id, data) => _showEditUserDialog(
+                                      context,
+                                      id,
+                                      data,
+                                    ),
+                                    onResetPassword: (email) =>
+                                        _resetPassword(context, email),
+                                    onToggleStatus: (id, disabled) =>
+                                        _toggleUserStatus(
+                                          context,
+                                          id,
+                                          disabled,
+                                        ),
+                                    onDelete: (id, data) => _confirmDeleteUser(
+                                      context,
+                                      id,
+                                      data,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -318,72 +193,74 @@ class _AdminUserManagementPageState
     );
   }
 
+  List<Map<String, dynamic>> _applyFilters(List<Map<String, dynamic>> raw) {
+    var users = List<Map<String, dynamic>>.from(raw);
+
+    if (!_showDisabled) {
+      users = users.where((u) => u['disabled'] != true).toList();
+    }
+
+    if (_from != null || _to != null) {
+      users = users
+          .where(
+            (u) => RecordDateFilter.matchesValue(
+              _userRegistrationRaw(u),
+              from: _from,
+              to: _to,
+            ),
+          )
+          .toList();
+    }
+
+    if (_searchCtrl.text.isNotEmpty) {
+      final query = _searchCtrl.text.toLowerCase();
+      users = users.where((u) {
+        final email = u['email']?.toString().toLowerCase() ?? '';
+        final name =
+            u['display_name']?.toString().toLowerCase() ??
+            u['displayName']?.toString().toLowerCase() ??
+            '';
+        return email.contains(query) || name.contains(query);
+      }).toList();
+    }
+
+    if (_selectedRole != 'all') {
+      users = users.where((u) {
+        final role = (u['role'] ?? 'parishioner').toString().toLowerCase();
+        return role == _selectedRole;
+      }).toList();
+    }
+
+    return users;
+  }
+
+  static Object? _userRegistrationRaw(Map<String, dynamic> u) =>
+      u['created_at'] ?? u['createdAt'] ?? u['updatedAt'];
+
+  Future<List<Map<String, dynamic>>> _loadUsers() async {
+    final repo = UsersRepository();
+    return repo.list(role: 'all', limit: 200);
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.people_outline, size: 64, color: Colors.grey.shade400),
-          const SizedBox(height: 16),
+          Icon(Icons.people_outline, size: 56, color: Colors.grey.shade400),
+          const SizedBox(height: 12),
           Text(
             'No users found',
-            style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
-            'Try adjusting your search or filters',
-            style: TextStyle(color: Colors.grey.shade500),
+            'Try adjusting search, role, or date filters',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _showCreateUserDialog(BuildContext context) async {
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => const _CreateUserDialog(),
-    );
-
-    if (result != null) {
-      try {
-        // Create Firebase Auth user
-        final userCredential = await FirebaseAuth.instance
-            .createUserWithEmailAndPassword(
-              email: result['email'],
-              password: result['password'],
-            );
-
-        // Create Firestore user document
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userCredential.user!.uid)
-            .set({
-              'uid': userCredential.user!.uid,
-              'email': result['email'],
-              'displayName': result['displayName'],
-              'role': result['role'],
-              'emailVerified': true,
-              'createdAt': FieldValue.serverTimestamp(),
-              'lastLogin': null,
-              'disabled': false,
-            });
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('User ${result['email']} created successfully'),
-            ),
-          );
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Error: $e')));
-        }
-      }
-    }
   }
 
   Future<void> _showEditUserDialog(
@@ -411,6 +288,7 @@ class _AdminUserManagementPageState
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('User updated successfully')),
           );
+          setState(() => _refreshKey++);
         }
       } catch (e) {
         if (context.mounted) {
@@ -456,6 +334,7 @@ class _AdminUserManagementPageState
             content: Text(currentlyDisabled ? 'User enabled' : 'User disabled'),
           ),
         );
+        setState(() => _refreshKey++);
       }
     } catch (e) {
       if (context.mounted) {
@@ -494,8 +373,7 @@ class _AdminUserManagementPageState
 
     if (confirmed == true) {
       try {
-        final repo = UsersRepository();
-        await repo.delete(userId);
+        await UsersRepository().delete(userId);
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -514,34 +392,138 @@ class _AdminUserManagementPageState
   }
 }
 
-class _StatItem extends StatelessWidget {
-  final String count;
-  final String label;
-  final Color color;
-
-  const _StatItem({
-    required this.count,
-    required this.label,
-    required this.color,
+class _UsersFilterToolbar extends StatelessWidget {
+  const _UsersFilterToolbar({
+    required this.searchCtrl,
+    required this.from,
+    required this.to,
+    required this.onSearchChanged,
+    required this.onFromChanged,
+    required this.onToChanged,
+    required this.onClearDates,
   });
+
+  final TextEditingController searchCtrl;
+  final DateTime? from;
+  final DateTime? to;
+  final VoidCallback onSearchChanged;
+  final ValueChanged<DateTime?> onFromChanged;
+  final ValueChanged<DateTime?> onToChanged;
+  final VoidCallback onClearDates;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 80,
-      child: Column(
-        children: [
-          Text(
-            count,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
-          Text(
-            label,
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stacked = constraints.maxWidth < 720;
+          final search = TextField(
+            controller: searchCtrl,
+            onChanged: (_) => onSearchChanged(),
+            decoration: InputDecoration(
+              hintText: 'Search by name or email…',
+              prefixIcon: const Icon(Icons.search_rounded, size: 22),
+              suffixIcon: searchCtrl.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded),
+                      onPressed: () {
+                        searchCtrl.clear();
+                        onSearchChanged();
+                      },
+                    )
+                  : null,
+              isDense: true,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+            ),
+          );
+          final dates = RecordDateRangeFilters(
+            from: from,
+            to: to,
+            fromLabel: 'From',
+            toLabel: 'To',
+            onFromChanged: onFromChanged,
+            onToChanged: onToChanged,
+            onClear: onClearDates,
+          );
+
+          if (stacked) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [search, const SizedBox(height: 10), dates],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(flex: 2, child: search),
+              const SizedBox(width: 12),
+              Expanded(flex: 3, child: dates),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RoleFilterBar extends StatelessWidget {
+  const _RoleFilterBar({
+    required this.selectedRole,
+    required this.showDisabled,
+    required this.onRoleSelected,
+    required this.onShowDisabledChanged,
+  });
+
+  final String selectedRole;
+  final bool showDisabled;
+  final ValueChanged<String> onRoleSelected;
+  final ValueChanged<bool> onShowDisabledChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final (id, label) in _AdminUserManagementPageState._roleFilters)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilterChip(
+                label: Text(label),
+                selected: selectedRole == id,
+                showCheckmark: true,
+                onSelected: (_) => onRoleSelected(id),
+                selectedColor: cs.primary.withValues(alpha: 0.18),
+                checkmarkColor: cs.primary,
+              ),
+            ),
+          FilterChip(
+            label: const Text('Show disabled'),
+            selected: showDisabled,
+            onSelected: onShowDisabledChanged,
+            avatar: Icon(
+              showDisabled ? Icons.visibility : Icons.visibility_off_outlined,
+              size: 18,
+            ),
           ),
         ],
       ),
@@ -549,219 +531,341 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-class _UserCard extends StatelessWidget {
-  final String userId;
-  final Map<String, dynamic> data;
-  final VoidCallback onEdit;
-  final VoidCallback onResetPassword;
-  final VoidCallback onToggleStatus;
-  final VoidCallback onDelete;
+class _UsersStatsGrid extends StatelessWidget {
+  const _UsersStatsGrid({required this.users});
 
-  const _UserCard({
-    required this.userId,
-    required this.data,
+  final List<Map<String, dynamic>> users;
+
+  @override
+  Widget build(BuildContext context) {
+    var admins = 0;
+    var staff = 0;
+    var finance = 0;
+    var parishioners = 0;
+    var disabled = 0;
+
+    for (final user in users) {
+      final role = user['role']?.toString().toLowerCase() ?? 'parishioner';
+      if (user['disabled'] == true) disabled++;
+      switch (role) {
+        case 'admin':
+          admins++;
+        case 'staff':
+          staff++;
+        case 'finance':
+          finance++;
+        default:
+          parishioners++;
+      }
+    }
+
+    final items = [
+      _StatData('Total', '${users.length}', Colors.indigo),
+      _StatData('Admins', '$admins', Colors.red.shade400),
+      _StatData('Staff', '$staff', Colors.orange.shade700),
+      _StatData('Finance', '$finance', Colors.green.shade600),
+      _StatData('Parish', '$parishioners', Colors.purple.shade400),
+      _StatData('Disabled', '$disabled', Colors.grey.shade600),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final cols = w > 900 ? 6 : (w > 520 ? 3 : 2);
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: cols >= 6 ? 2.2 : 2.0,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, i) => _CompactStatCard(data: items[i]),
+        );
+      },
+    );
+  }
+}
+
+class _StatData {
+  const _StatData(this.label, this.count, this.color);
+  final String label;
+  final String count;
+  final Color color;
+}
+
+class _CompactStatCard extends StatelessWidget {
+  const _CompactStatCard({required this.data});
+  final _StatData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: data.color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 28,
+            decoration: BoxDecoration(
+              color: data.color,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  data.count,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: data.color,
+                    height: 1.1,
+                  ),
+                ),
+                Text(
+                  data.label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UsersDataTable extends StatelessWidget {
+  const _UsersDataTable({
+    required this.users,
     required this.onEdit,
     required this.onResetPassword,
     required this.onToggleStatus,
     required this.onDelete,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    final email = data['email']?.toString() ?? 'No email';
-    final name =
-        data['display_name']?.toString() ??
-        data['displayName']?.toString() ??
-        'Unnamed';
-    final role = data['role']?.toString().toLowerCase() ?? 'parishioner';
-    final isDisabled = data['disabled'] == true;
+  final List<Map<String, dynamic>> users;
+  final void Function(String id, Map<String, dynamic> data) onEdit;
+  final void Function(String email) onResetPassword;
+  final void Function(String id, bool disabled) onToggleStatus;
+  final void Function(String id, Map<String, dynamic> data) onDelete;
 
-    Color roleColor;
+  static Color _roleColor(String role) {
     switch (role) {
       case 'admin':
-        roleColor = Colors.red;
+        return Colors.red.shade400;
       case 'staff':
-        roleColor = Colors.orange;
+        return Colors.orange.shade700;
       case 'finance':
-        roleColor = Colors.green;
+        return Colors.green.shade600;
       default:
-        roleColor = Colors.purple;
+        return Colors.purple.shade400;
     }
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: roleColor.withValues(alpha: 0.1),
-          child: Icon(Icons.person, color: roleColor),
-        ),
-        title: Text(name),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(email),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: roleColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    role.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: roleColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                if (isDisabled) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'DISABLED',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            switch (value) {
-              case 'edit':
-                onEdit();
-              case 'reset':
-                onResetPassword();
-              case 'toggle':
-                onToggleStatus();
-              case 'delete':
-                onDelete();
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(value: 'edit', child: Text('Edit')),
-            const PopupMenuItem(value: 'reset', child: Text('Reset Password')),
-            PopupMenuItem(
-              value: 'toggle',
-              child: Text(isDisabled ? 'Enable' : 'Disable'),
-            ),
-            const PopupMenuItem(
-              value: 'delete',
-              child: Text('Delete', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        ),
-      ),
-    );
   }
-}
 
-class _CreateUserDialog extends StatefulWidget {
-  const _CreateUserDialog();
+  static String _name(Map<String, dynamic> d) =>
+      d['display_name']?.toString() ??
+      d['displayName']?.toString() ??
+      'Unnamed';
 
-  @override
-  State<_CreateUserDialog> createState() => _CreateUserDialogState();
-}
-
-class _CreateUserDialogState extends State<_CreateUserDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
-  final _nameCtrl = TextEditingController();
-  String _role = 'parishioner';
-
-  @override
-  void dispose() {
-    _emailCtrl.dispose();
-    _passwordCtrl.dispose();
-    _nameCtrl.dispose();
-    super.dispose();
+  static String _registeredLabel(Map<String, dynamic> d) {
+    final dt = parseFirestoreDate(
+      d['created_at'] ?? d['createdAt'] ?? d['updatedAt'],
+    );
+    return dt != null ? DateFormat('MMM d, yyyy').format(dt) : '—';
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Create New User'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: 'Display Name'),
-                validator: (v) => v?.isEmpty == true ? 'Required' : null,
-              ),
-              TextFormField(
-                controller: _emailCtrl,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress,
-                validator: (v) => v?.isEmpty == true ? 'Required' : null,
-              ),
-              TextFormField(
-                controller: _passwordCtrl,
-                decoration: const InputDecoration(labelText: 'Password'),
-                obscureText: true,
-                validator: (v) =>
-                    ((v?.length ?? 0) < 6) ? 'Min 6 characters' : null,
-              ),
-              DropdownButtonFormField<String>(
-                initialValue: _role,
-                decoration: const InputDecoration(labelText: 'Role'),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'parishioner',
-                    child: Text('Parishioner'),
-                  ),
-                  DropdownMenuItem(value: 'staff', child: Text('Staff')),
-                  DropdownMenuItem(value: 'finance', child: Text('Finance')),
-                  DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                ],
-                onChanged: (v) => setState(() => _role = v!),
-              ),
-            ],
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final primary = cs.primary;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
           ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (_formKey.currentState!.validate()) {
-              Navigator.pop(context, {
-                'email': _emailCtrl.text.trim(),
-                'password': _passwordCtrl.text,
-                'displayName': _nameCtrl.text.trim(),
-                'role': _role,
-              });
-            }
-          },
-          child: const Text('Create'),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minWidth: MediaQuery.sizeOf(context).width - 40,
+                ),
+                child: DataTable(
+                  headingRowColor: WidgetStatePropertyAll(
+                    primary.withValues(alpha: 0.1),
+                  ),
+                  headingTextStyle: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: primary,
+                  ),
+                  dataRowMinHeight: 48,
+                  columnSpacing: 24,
+                  horizontalMargin: 16,
+                  columns: const [
+                    DataColumn(label: Text('Name')),
+                    DataColumn(label: Text('Email')),
+                    DataColumn(label: Text('Role')),
+                    DataColumn(label: Text('Registered')),
+                    DataColumn(label: Text('Status')),
+                    DataColumn(label: Text('Actions')),
+                  ],
+                  rows: users.map((d) {
+                    final id =
+                        d['uid']?.toString() ?? d['id']?.toString() ?? '';
+                    final role =
+                        (d['role'] ?? 'parishioner').toString().toLowerCase();
+                    final roleColor = _roleColor(role);
+                    final disabled = d['disabled'] == true;
+                    final email = d['email']?.toString() ?? '—';
+
+                    return DataRow(
+                      cells: [
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(
+                                radius: 16,
+                                backgroundColor: roleColor.withValues(
+                                  alpha: 0.12,
+                                ),
+                                child: Text(
+                                  _name(d).isNotEmpty
+                                      ? _name(d)[0].toUpperCase()
+                                      : '?',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: roleColor,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Flexible(
+                                child: Text(
+                                  _name(d),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            width: 200,
+                            child: Text(
+                              email,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: roleColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              role.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: roleColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                        DataCell(Text(_registeredLabel(d))),
+                        DataCell(
+                          Text(
+                            disabled ? 'Disabled' : 'Active',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: disabled
+                                  ? Colors.grey.shade600
+                                  : Colors.green.shade700,
+                            ),
+                          ),
+                        ),
+                        DataCell(
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert_rounded),
+                            onSelected: (value) {
+                              switch (value) {
+                                case 'edit':
+                                  onEdit(id, d);
+                                case 'reset':
+                                  onResetPassword(email);
+                                case 'toggle':
+                                  onToggleStatus(id, disabled);
+                                case 'delete':
+                                  onDelete(id, d);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Edit'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'reset',
+                                child: Text('Reset password'),
+                              ),
+                              PopupMenuItem(
+                                value: 'toggle',
+                                child: Text(
+                                  disabled ? 'Enable' : 'Disable',
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Text(
+                                  'Delete',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );

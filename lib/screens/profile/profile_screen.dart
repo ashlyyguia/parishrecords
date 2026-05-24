@@ -1,10 +1,12 @@
-import 'dart:io';
+import 'dart:io' show File;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import '../../providers/auth_provider.dart';
+import '../../utils/network_connectivity.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -25,12 +27,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _checkingOnline = true;
     });
 
-    bool isOnline = false;
+    bool isOnline = true;
     try {
-      final result = await InternetAddress.lookup('google.com');
-      isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      isOnline = await isNetworkOnline();
     } catch (_) {
-      isOnline = false;
+      isOnline = kIsWeb;
     }
 
     if (!mounted) return;

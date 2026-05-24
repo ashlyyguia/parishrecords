@@ -5,6 +5,14 @@ const { verifyFirebaseToken, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Collection names for different record types
+const RECORD_COLLECTIONS = [
+  'baptism_records',
+  'marriage_records',
+  'confirmation_records',
+  'funeral_records',
+];
+
 router.use(verifyFirebaseToken);
 router.use(requireAdmin);
 
@@ -111,27 +119,45 @@ router.get('/records/recent', async (req, res) => {
     const days = Math.min(parseInt(req.query.days, 10) || 7, 3650);
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const snap = await db
-      .collection('records')
-      .where('created_at', '>=', since)
-      .orderBy('created_at', 'desc')
-      .limit(limit)
-      .get();
+    // Query all record type collections
+    const allRecords = [];
 
-    const rows = snap.docs.map((doc) => {
-      const data = doc.data() || {};
-      return {
-        id: doc.id,
-        type: data.type || null,
-        text: data.text || null,
-        image_ref: data.image_ref || null,
-        source: data.source || null,
-        notes: data.notes || null,
-        certificate_status: data.certificate_status || null,
-        created_at: toIso(data.created_at) || null,
-      };
+    for (const collection of RECORD_COLLECTIONS) {
+      try {
+        const snap = await db
+          .collection(collection)
+          .where('created_at', '>=', since)
+          .orderBy('created_at', 'desc')
+          .limit(limit)
+          .get();
+
+        const type = collection.replace('_records', '');
+        for (const doc of snap.docs) {
+          const data = doc.data() || {};
+          allRecords.push({
+            id: doc.id,
+            type: type,
+            text: data.text || null,
+            image_ref: data.image_ref || null,
+            source: data.source || null,
+            notes: data.notes || null,
+            certificate_status: data.certificate_status || null,
+            created_at: toIso(data.created_at) || null,
+          });
+        }
+      } catch (e) {
+        console.error(`Error fetching from ${collection}:`, e.message);
+      }
+    }
+
+    // Sort by created_at desc and limit
+    allRecords.sort((a, b) => {
+      const dateA = new Date(a.created_at || 0);
+      const dateB = new Date(b.created_at || 0);
+      return dateB - dateA;
     });
 
+    const rows = allRecords.slice(0, limit);
     return res.json({ rows, count: rows.length });
   } catch (error) {
     console.error('Admin recent records error:', error);
@@ -147,36 +173,49 @@ router.get('/records', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     const userId = req.query.user_id ? req.query.user_id.toString() : null;
 
-    // Avoid composite index requirements (where(created_by_uid==X) + orderBy(created_at)).
-    // Instead, query by created_at and filter in memory.
-    const fetchLimit = userId ? Math.min(limit * 10, 500) : limit;
-    const snap = await db
-      .collection('records')
-      .orderBy('created_at', 'desc')
-      .limit(fetchLimit)
-      .get();
+    // Query all record type collections
+    const allRecords = [];
 
-    let docs = snap.docs;
-    if (userId) {
-      docs = docs.filter((d) => {
-        const data = d.data() || {};
-        return (data.created_by_uid || '').toString() === userId;
-      });
+    for (const collection of RECORD_COLLECTIONS) {
+      try {
+        const fetchLimit = userId ? Math.min(limit * 10, 500) : limit;
+        const snap = await db
+          .collection(collection)
+          .orderBy('created_at', 'desc')
+          .limit(fetchLimit)
+          .get();
+
+        const type = collection.replace('_records', '');
+        for (const doc of snap.docs) {
+          const data = doc.data() || {};
+
+          // Filter by user_id if specified
+          if (userId && (data.created_by_uid || '').toString() !== userId) {
+            continue;
+          }
+
+          allRecords.push({
+            id: doc.id,
+            type: type,
+            text: data.text || null,
+            image_ref: data.image_ref || null,
+            source: data.source || null,
+            created_at: toIso(data.created_at) || null,
+          });
+        }
+      } catch (e) {
+        console.error(`Error fetching from ${collection}:`, e.message);
+      }
     }
-    docs = docs.slice(0, limit);
 
-    const rows = docs.map((doc) => {
-      const data = doc.data() || {};
-      return {
-        id: doc.id,
-        type: data.type || null,
-        text: data.text || null,
-        image_ref: data.image_ref || null,
-        source: data.source || null,
-        created_at: toIso(data.created_at) || null,
-      };
+    // Sort by created_at desc and limit
+    allRecords.sort((a, b) => {
+      const dateA = new Date(a.created_at || 0);
+      const dateB = new Date(b.created_at || 0);
+      return dateB - dateA;
     });
 
+    const rows = allRecords.slice(0, limit);
     return res.json({ rows, count: rows.length });
   } catch (error) {
     console.error('Admin records list error:', error);
@@ -199,9 +238,29 @@ router.put('/records/:id', async (req, res) => {
     if (data.text !== undefined) updates.text = data.text.toString();
     if (data.source !== undefined) updates.source = data.source.toString();
     if (data.image_ref !== undefined) updates.image_ref = data.image_ref ? data.image_ref.toString() : null;
+    if (data.notes !== undefined) updates.notes = data.notes ? data.notes.toString() : null;
+    if (data.certificate_status !== undefined) updates.certificate_status = data.certificate_status ? data.certificate_status.toString() : null;
     updates.updated_at = new Date();
 
-    await db.collection('records').doc(id).set(updates, { merge: true });
+    // Try to find and update in any of the record collections
+    let updated = false;
+    for (const collection of RECORD_COLLECTIONS) {
+      try {
+        const docRef = db.collection(collection).doc(id);
+        const doc = await docRef.get();
+        if (doc.exists) {
+          await docRef.update(updates);
+          updated = true;
+          break;
+        }
+      } catch (e) {
+        // Continue to next collection
+      }
+    }
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Record not found in any collection' });
+    }
 
     return res.json({ message: 'Record updated successfully', id });
   } catch (error) {
@@ -224,15 +283,33 @@ router.delete('/records/:id', async (req, res) => {
       (req.user && (req.user.email || req.user.uid)) ||
       'admin';
 
-    await db.collection('records').doc(id).set(
-      {
-        deleted_at: new Date(),
-        deleted_by: deletedBy.toString(),
-        deleted_reason: 'Deleted via admin',
-        updated_at: new Date(),
-      },
-      { merge: true },
-    );
+    // Try to find and soft-delete in any of the record collections
+    let deleted = false;
+    for (const collection of RECORD_COLLECTIONS) {
+      try {
+        const docRef = db.collection(collection).doc(id);
+        const doc = await docRef.get();
+        if (doc.exists) {
+          await docRef.set(
+            {
+              deleted_at: new Date(),
+              deleted_by: deletedBy.toString(),
+              deleted_reason: 'Deleted via admin',
+              updated_at: new Date(),
+            },
+            { merge: true },
+          );
+          deleted = true;
+          break;
+        }
+      } catch (e) {
+        // Continue to next collection
+      }
+    }
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Record not found in any collection' });
+    }
 
     return res.json({ message: 'Record deleted successfully' });
   } catch (error) {
@@ -249,21 +326,31 @@ router.get('/summary', async (req, res) => {
     const days = Math.min(parseInt(req.query.days, 10) || 7, 365);
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const recordsSnap = await db
-      .collection('records')
-      .where('created_at', '>=', since)
-      .get();
-
+    // Query all record type collections
     const recordsByType = {};
     const certificatesByStatus = {};
+    let totalRecords = 0;
 
-    recordsSnap.docs.forEach((doc) => {
-      const d = doc.data() || {};
-      const type = (d.type || 'unknown').toString();
-      const status = (d.certificate_status || 'unknown').toString();
-      recordsByType[type] = (recordsByType[type] || 0) + 1;
-      certificatesByStatus[status] = (certificatesByStatus[status] || 0) + 1;
-    });
+    for (const collection of RECORD_COLLECTIONS) {
+      try {
+        const snap = await db
+          .collection(collection)
+          .where('created_at', '>=', since)
+          .get();
+
+        const type = collection.replace('_records', '');
+        recordsByType[type] = snap.size;
+        totalRecords += snap.size;
+
+        for (const doc of snap.docs) {
+          const d = doc.data() || {};
+          const status = (d.certificate_status || 'unknown').toString();
+          certificatesByStatus[status] = (certificatesByStatus[status] || 0) + 1;
+        }
+      } catch (e) {
+        console.error(`Error counting ${collection}:`, e.message);
+      }
+    }
 
     const usersSnap = await db.collection('users').get();
     const usersByRole = {};
@@ -273,7 +360,7 @@ router.get('/summary', async (req, res) => {
     });
 
     return res.json({
-      total_records_last_days: recordsSnap.size,
+      total_records_last_days: totalRecords,
       records_by_type: recordsByType,
       certificates_by_status: certificatesByStatus,
       total_users: usersSnap.size,
@@ -294,19 +381,27 @@ router.get('/metrics/records/daily', async (req, res) => {
     const days = Math.min(parseInt(req.query.days, 10) || 14, 365);
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const snap = await db
-      .collection('records')
-      .where('created_at', '>=', since)
-      .get();
-
+    // Query all record type collections
     const countsByDate = {};
-    snap.docs.forEach((doc) => {
-      const d = doc.data() || {};
-      const iso = toIso(d.created_at);
-      if (!iso) return;
-      const key = iso.substring(0, 10);
-      countsByDate[key] = (countsByDate[key] || 0) + 1;
-    });
+
+    for (const collection of RECORD_COLLECTIONS) {
+      try {
+        const snap = await db
+          .collection(collection)
+          .where('created_at', '>=', since)
+          .get();
+
+        for (const doc of snap.docs) {
+          const d = doc.data() || {};
+          const iso = toIso(d.created_at);
+          if (!iso) continue;
+          const key = iso.substring(0, 10);
+          countsByDate[key] = (countsByDate[key] || 0) + 1;
+        }
+      } catch (e) {
+        console.error(`Error fetching daily metrics from ${collection}:`, e.message);
+      }
+    }
 
     const daysArr = [];
     for (let i = days - 1; i >= 0; i--) {

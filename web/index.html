@@ -10,20 +10,42 @@
  
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Parish Records Management System">
+  <meta name="description" content="Holy Rosary Parish — Oroquieta City">
   
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="parishrecord">
+  <meta name="apple-mobile-web-app-title" content="Holy Rosary">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>parishrecord</title>
+  <title>Holy Rosary</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Tesseract.js for register OCR on web (Chrome/desktop browser) -->
+  <script src="https://unpkg.com/tesseract.js@v4.1.1/dist/tesseract.min.js"></script>
+  <script>
+    async function _extractText(imagePath, mapData) {
+      var lang = (mapData && mapData.language) ? mapData.language : 'eng';
+      var args = (mapData && mapData.args) ? mapData.args : {};
+      var worker = await Tesseract.createWorker(lang, 1, {
+        workerPath: 'https://unpkg.com/tesseract.js@v4.1.1/dist/worker.min.js',
+        corePath: 'https://unpkg.com/tesseract.js-core@v4.0.4',
+      });
+      if (Object.keys(args).length > 0) {
+        await worker.setParameters(args);
+      }
+      var rtn = await worker.recognize(imagePath);
+      await worker.terminate();
+      if (args['tessjs_create_hocr']) {
+        return (rtn.data && rtn.data.hocr) ? rtn.data.hocr : '';
+      }
+      return (rtn.data && rtn.data.text) ? rtn.data.text : '';
+    }
+  </script>
 
   <script>
     // The value below is injected by flutter build, do not touch.

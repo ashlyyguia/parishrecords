@@ -132,7 +132,13 @@ class _AdminIntegrationsPageState extends State<AdminIntegrationsPage> {
                       subtitle: 'Firebase Storage (configured)',
                       icon: Icons.cloud_upload,
                       isConfigured: true,
-                      onTap: () {},
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Cloud Storage is configured'),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),

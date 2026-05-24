@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/record.dart';
+import '../models/register_ocr_entry.dart';
 import '../providers/auth_provider.dart';
 import '../screens/admin/enhanced_admin_shell.dart';
 import '../screens/admin/pages/announcements_page.dart';
@@ -11,10 +12,10 @@ import '../screens/admin/pages/audit_logs_page.dart';
 import '../screens/admin/pages/integrations_page.dart';
 import '../screens/admin/pages/notifications_page.dart';
 import '../screens/admin/pages/ocr_queue_page.dart';
-import '../screens/admin/pages/admin_finance_page.dart';
+import '../screens/admin/pages/admin_donations_page.dart';
+import '../screens/admin/pages/admin_certificate_fees_page.dart';
 import '../screens/admin/pages/enhanced_admin_dashboard_page.dart';
 import '../screens/admin/pages/admin_user_management_page.dart';
-import '../screens/admin/pages/admin_parishioners_page.dart';
 import '../screens/admin/pages/settings_page.dart';
 import '../screens/admin/pages/records_page.dart';
 import '../screens/admin/pages/reports_page.dart';
@@ -23,7 +24,7 @@ import '../screens/admin/pages/system_health_page.dart';
 import '../screens/finance/finance_shell.dart';
 import '../screens/finance/pages/donations_ledger_page.dart';
 import '../screens/finance/pages/finance_dashboard_page.dart';
-import '../screens/finance/pages/finance_reconcile_page.dart';
+import '../screens/finance/pages/finance_certificate_fees_page.dart';
 import '../screens/finance/pages/finance_reports_page.dart';
 import '../screens/login/forgot_password_screen.dart';
 import '../screens/login/login_screen.dart';
@@ -35,12 +36,12 @@ import '../screens/landing/landing_shell.dart';
 import '../screens/landing/home_section.dart';
 import '../screens/landing/about_section.dart';
 import '../screens/landing/mass_time_section.dart';
-import '../screens/landing/events_section.dart';
 import '../screens/landing/donations_section.dart';
 import '../screens/landing/announcements_section.dart';
 import '../screens/landing/contact_section.dart';
 import '../screens/records/certificate_request_form_screen.dart';
 import '../screens/records/certificate_requests_list_screen.dart';
+import '../screens/records/certificate_template_screen.dart';
 import '../screens/records/confirmation_form_screen.dart';
 import '../screens/records/death_form_screen.dart';
 import '../screens/records/enhanced_baptism_form_screen.dart';
@@ -55,11 +56,14 @@ import '../screens/staff/pages/staff_household_detail_page.dart';
 import '../screens/staff/pages/staff_ocr_sacrament_match_page.dart';
 import '../screens/staff/pages/staff_dashboard_page.dart';
 import '../screens/staff/pages/staff_ocr_preprocess_page.dart';
+import '../screens/staff/pages/staff_ocr_bulk_records_page.dart';
 import '../screens/staff/pages/staff_ocr_upload_page.dart';
 import '../screens/staff/pages/staff_ocr_verify_page.dart';
 import '../screens/staff/pages/staff_requests_inbox_page.dart';
+import '../models/register_marriage_entry.dart';
+import '../screens/staff/pages/staff_manual_baptism_page.dart';
+import '../screens/staff/pages/staff_manual_marriage_page.dart';
 import '../screens/staff/pages/staff_records_page.dart';
-import '../screens/staff/pages/staff_schedule_page.dart';
 import '../screens/staff/staff_shell.dart';
 import '../screens/user/user_household_list_screen.dart';
 import '../screens/user/user_add_household_screen.dart';
@@ -69,16 +73,23 @@ import '../screens/user/user_add_family_member_screen.dart';
 import '../screens/user/user_member_detail_screen.dart';
 import '../screens/user/user_ocr_sacrament_link_screen.dart';
 import '../screens/user/dashboard_screen.dart';
+import '../screens/user/user_announcements_screen.dart';
+import '../screens/user/user_donate_screen.dart';
 import '../screens/user/user_donations_screen.dart';
 import '../screens/user/user_shell.dart';
 import '../screens/user/user_profile_household_screen.dart';
 import '../screens/user/user_request_detail_screen.dart';
 import '../screens/user/user_requests_list_screen.dart';
 import '../screens/user/user_sacraments_screen.dart';
+import '../screens/user/user_mass_schedule_screen.dart';
 import '../widgets/app_loading_screen.dart';
+import 'notification_routes.dart';
 
 GoRouter createRouter() {
-  final isMobile = !kIsWeb && (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android);
+  final isMobile =
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
   return GoRouter(
     initialLocation: isMobile ? '/splash' : '/',
     errorBuilder: (context, state) => const NotFoundScreen(),
@@ -97,10 +108,6 @@ GoRouter createRouter() {
             builder: (context, state) => const MassTimeSection(),
           ),
           GoRoute(
-            path: '/events',
-            builder: (context, state) => const EventsSection(),
-          ),
-          GoRoute(
             path: '/donations',
             builder: (context, state) => const DonationsSection(),
           ),
@@ -117,6 +124,10 @@ GoRouter createRouter() {
       GoRoute(
         path: '/dashboard',
         builder: (context, state) => const _DashboardRedirectScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const _NotificationsRedirectScreen(),
       ),
       GoRoute(
         path: '/splash',
@@ -154,6 +165,14 @@ GoRouter createRouter() {
           GoRoute(
             path: '/user/profile',
             builder: (context, state) => const UserProfileHouseholdScreen(),
+          ),
+          GoRoute(
+            path: '/user/announcements',
+            builder: (context, state) => const UserAnnouncementsScreen(),
+          ),
+          GoRoute(
+            path: '/user/mass-schedule',
+            builder: (context, state) => const UserMassScheduleScreen(),
           ),
           GoRoute(
             path: '/user/donations',
@@ -213,8 +232,15 @@ GoRouter createRouter() {
             ),
           ),
           GoRoute(
+            path: '/user/households/:id/members/:memberId/ocr-link',
+            builder: (context, state) => UserOcrSacramentLinkScreen(
+              householdId: state.pathParameters['id'] ?? '',
+              memberId: state.pathParameters['memberId'],
+            ),
+          ),
+          GoRoute(
             path: '/donate',
-            builder: (context, state) => const DonationsSection(),
+            builder: (context, state) => const UserDonateScreen(),
           ),
           GoRoute(
             path: '/records',
@@ -225,64 +251,12 @@ GoRouter createRouter() {
             builder: (context, state) => const CertificateRequestsListScreen(),
           ),
           GoRoute(
-            path: '/records/new',
-            builder: (context, state) => const RecordFormScreen(),
-          ),
-          GoRoute(
-            path: '/records/new/baptism',
-            builder: (context, state) {
-              final extra = state.extra;
-              return EnhancedBaptismFormScreen(
-                existing: extra is ParishRecord ? extra : null,
-                startWithOcr: extra is String && extra == 'ocr',
-              );
-            },
-          ),
-          GoRoute(
-            path: '/records/new/marriage',
-            builder: (context, state) {
-              final extra = state.extra;
-              return MarriageFormScreen(
-                existing: extra is ParishRecord ? extra : null,
-                startWithOcr: extra is String && extra == 'ocr',
-              );
-            },
-          ),
-          GoRoute(
-            path: '/records/new/confirmation',
-            builder: (context, state) {
-              final extra = state.extra;
-              return ConfirmationFormScreen(
-                existing: extra is ParishRecord ? extra : null,
-                startWithOcr: extra is String && extra == 'ocr',
-              );
-            },
-          ),
-          GoRoute(
-            path: '/records/new/death',
-            builder: (context, state) {
-              final extra = state.extra;
-              return DeathFormScreen(
-                existing: extra is ParishRecord ? extra : null,
-                startWithOcr: extra is String && extra == 'ocr',
-              );
-            },
-          ),
-          GoRoute(
-            path: '/records/enhanced-baptism',
-            builder: (context, state) {
-              final extra = state.extra;
-              return EnhancedBaptismFormScreen(
-                existing: extra is ParishRecord ? extra : null,
-              );
-            },
-          ),
-          GoRoute(
             path: '/records/certificate-request',
             builder: (context, state) => CertificateRequestFormScreen(
               initialRecordType: state.extra is String
                   ? state.extra as String
                   : null,
+              userMode: state.uri.queryParameters['user'] == '1',
             ),
           ),
           GoRoute(
@@ -291,22 +265,138 @@ GoRouter createRouter() {
                 RecordDetailScreen(recordId: state.pathParameters['id'] ?? ''),
           ),
           GoRoute(
-            path: '/records/:id/edit',
+            path: '/records/:id/certificate',
             builder: (context, state) {
-              // The edit screen will receive an existing record via state.extra when navigated from list
-              final existing = state.extra;
-              return RecordFormScreen(existing: existing as dynamic);
+              final extra = state.extra;
+              return CertificateTemplateScreen(
+                recordId: state.pathParameters['id'] ?? '',
+                recordType: extra is RecordType ? extra : RecordType.baptism,
+              );
             },
           ),
           GoRoute(
             path: '/profile',
             builder: (context, state) => const ProfileScreen(),
           ),
-          GoRoute(
-            path: '/notifications',
-            builder: (context, state) => const NotificationsScreen(),
-          ),
         ],
+      ),
+
+      // Record form routes - accessible to all authenticated users (outside shells)
+      GoRoute(
+        path: '/records/new',
+        builder: (context, state) => const RecordFormScreen(),
+      ),
+      GoRoute(
+        path: '/records/new/baptism',
+        builder: (context, state) {
+          final extra = state.extra;
+          ParishRecord? existing;
+          bool fromStaff = false;
+          bool startWithOcr = false;
+
+          if (extra is ParishRecord) {
+            existing = extra;
+          } else if (extra is Map<String, dynamic>) {
+            existing = extra['record'] as ParishRecord?;
+            fromStaff = extra['fromStaff'] == true;
+          } else if (extra is String && extra == 'ocr') {
+            startWithOcr = true;
+          }
+
+          return EnhancedBaptismFormScreen(
+            existing: existing,
+            fromStaff: fromStaff,
+            startWithOcr: startWithOcr,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/records/new/marriage',
+        builder: (context, state) {
+          final extra = state.extra;
+          ParishRecord? existing;
+          bool fromStaff = false;
+          bool startWithOcr = false;
+
+          if (extra is ParishRecord) {
+            existing = extra;
+          } else if (extra is Map<String, dynamic>) {
+            existing = extra['record'] as ParishRecord?;
+            fromStaff = extra['fromStaff'] == true;
+          } else if (extra is String && extra == 'ocr') {
+            startWithOcr = true;
+          }
+
+          return MarriageFormScreen(
+            existing: existing,
+            fromStaff: fromStaff,
+            startWithOcr: startWithOcr,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/records/new/confirmation',
+        builder: (context, state) {
+          final extra = state.extra;
+          ParishRecord? existing;
+          bool fromStaff = false;
+          bool startWithOcr = false;
+
+          if (extra is ParishRecord) {
+            existing = extra;
+          } else if (extra is Map<String, dynamic>) {
+            existing = extra['record'] as ParishRecord?;
+            fromStaff = extra['fromStaff'] == true;
+          } else if (extra is String && extra == 'ocr') {
+            startWithOcr = true;
+          }
+
+          return ConfirmationFormScreen(
+            existing: existing,
+            fromStaff: fromStaff,
+            startWithOcr: startWithOcr,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/records/new/death',
+        builder: (context, state) {
+          final extra = state.extra;
+          ParishRecord? existing;
+          bool fromStaff = false;
+          bool startWithOcr = false;
+
+          if (extra is ParishRecord) {
+            existing = extra;
+          } else if (extra is Map<String, dynamic>) {
+            existing = extra['record'] as ParishRecord?;
+            fromStaff = extra['fromStaff'] == true;
+          } else if (extra is String && extra == 'ocr') {
+            startWithOcr = true;
+          }
+
+          return DeathFormScreen(
+            existing: existing,
+            fromStaff: fromStaff,
+            startWithOcr: startWithOcr,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/records/enhanced-baptism',
+        builder: (context, state) {
+          final extra = state.extra;
+          return EnhancedBaptismFormScreen(
+            existing: extra is ParishRecord ? extra : null,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/records/:id/edit',
+        builder: (context, state) {
+          final existing = state.extra;
+          return RecordFormScreen(existing: existing as dynamic);
+        },
       ),
 
       // Finance shell with role-based access and nested pages
@@ -329,9 +419,9 @@ GoRouter createRouter() {
             builder: (context, state) => const DonationsLedgerPage(),
           ),
           GoRoute(
-            path: '/finance/reconcile',
-            name: 'finance_reconcile',
-            builder: (context, state) => const FinanceReconcilePage(),
+            path: '/finance/certificate-fees',
+            name: 'finance_certificate_fees',
+            builder: (context, state) => const FinanceCertificateFeesPage(),
           ),
           GoRoute(
             path: '/finance/reports',
@@ -384,8 +474,82 @@ GoRouter createRouter() {
             builder: (context, state) => const StaffRecordsPage(),
           ),
           GoRoute(
+            path: '/staff/records/manual-baptism',
+            builder: (context, state) {
+              final extra = state.extra;
+              if (extra is Map) {
+                final ocr = extra['ocrEntries'];
+                return StaffManualBaptismPage(
+                  initialOcrEntries: ocr is List<RegisterOcrEntry>
+                      ? ocr
+                      : (ocr is List
+                          ? ocr.whereType<RegisterOcrEntry>().toList()
+                          : null),
+                  initialVolNo: extra['volNo']?.toString(),
+                  initialSeriesNo: extra['seriesNo']?.toString(),
+                );
+              }
+              return StaffManualBaptismPage(
+                existing: extra is ParishRecord ? extra : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/staff/records/manual-marriage',
+            builder: (context, state) {
+              final extra = state.extra;
+              if (extra is Map) {
+                final rows = extra['marriageEntries'];
+                return StaffManualMarriagePage(
+                  initialMarriageEntries: rows is List<RegisterMarriageEntry>
+                      ? rows
+                      : (rows is List
+                          ? rows.whereType<RegisterMarriageEntry>().toList()
+                          : null),
+                  initialVolNo: extra['volNo']?.toString(),
+                  initialSeriesNo: extra['seriesNo']?.toString(),
+                );
+              }
+              return StaffManualMarriagePage(
+                existing: extra is ParishRecord ? extra : null,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/staff/records/:id',
+            builder: (context, state) =>
+                RecordDetailScreen(recordId: state.pathParameters['id'] ?? ''),
+          ),
+          GoRoute(
+            path: '/staff/records/:id/certificate',
+            builder: (context, state) {
+              final extra = state.extra;
+              return CertificateTemplateScreen(
+                recordId: state.pathParameters['id'] ?? '',
+                recordType: extra is RecordType ? extra : RecordType.baptism,
+              );
+            },
+          ),
+          GoRoute(
             path: '/staff/ocr/upload',
             builder: (context, state) => const StaffOcrUploadPage(),
+          ),
+          GoRoute(
+            path: '/staff/ocr/bulk-records',
+            builder: (context, state) {
+              final extra = state.extra;
+              final map = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
+              final entries = map['entries'];
+              return StaffOcrBulkRecordsPage(
+                rawText: map['rawText']?.toString() ?? '',
+                recordType: map['recordType']?.toString() ?? 'baptism',
+                volNumber: map['volNumber']?.toString() ?? '',
+                seriesNumber: map['seriesNumber']?.toString() ?? '',
+                initialEntries: entries is List<RegisterOcrEntry>
+                    ? List<RegisterOcrEntry>.from(entries)
+                    : null,
+              );
+            },
           ),
           GoRoute(
             path: '/staff/ocr/preprocess',
@@ -394,10 +558,6 @@ GoRouter createRouter() {
           GoRoute(
             path: '/staff/ocr/verify',
             builder: (context, state) => const StaffOcrVerifyPage(),
-          ),
-          GoRoute(
-            path: '/staff/schedule',
-            builder: (context, state) => const StaffSchedulePage(),
           ),
           GoRoute(
             path: '/staff/notifications',
@@ -435,10 +595,6 @@ GoRouter createRouter() {
             ),
           ),
           GoRoute(
-            path: '/admin/parishioners',
-            builder: (context, state) => const AdminParishionersPage(),
-          ),
-          GoRoute(
             path: '/admin/records',
             builder: (context, state) => const AdminRecordsPage(),
           ),
@@ -446,6 +602,16 @@ GoRouter createRouter() {
             path: '/admin/records/:id',
             builder: (context, state) =>
                 RecordDetailScreen(recordId: state.pathParameters['id'] ?? ''),
+          ),
+          GoRoute(
+            path: '/admin/records/:id/certificate',
+            builder: (context, state) {
+              final extra = state.extra;
+              return CertificateTemplateScreen(
+                recordId: state.pathParameters['id'] ?? '',
+                recordType: extra is RecordType ? extra : RecordType.baptism,
+              );
+            },
           ),
           GoRoute(
             path: '/admin/requests',
@@ -456,8 +622,28 @@ GoRouter createRouter() {
             builder: (context, state) => const AdminOcrQueuePage(),
           ),
           GoRoute(
+            path: '/admin/ocr/upload',
+            builder: (context, state) => const StaffOcrUploadPage(),
+          ),
+          GoRoute(
+            path: '/admin/ocr/preprocess',
+            builder: (context, state) => const StaffOcrPreprocessPage(),
+          ),
+          GoRoute(
+            path: '/admin/ocr/verify',
+            builder: (context, state) => const StaffOcrVerifyPage(),
+          ),
+          GoRoute(
             path: '/admin/finance',
-            builder: (context, state) => const AdminFinancePage(),
+            redirect: (context, state) => '/admin/donations',
+          ),
+          GoRoute(
+            path: '/admin/donations',
+            builder: (context, state) => const AdminDonationsPage(),
+          ),
+          GoRoute(
+            path: '/admin/certificate-fees',
+            builder: (context, state) => const AdminCertificateFeesPage(),
           ),
           GoRoute(
             path: '/admin/reports',
@@ -502,12 +688,58 @@ GoRouter createRouter() {
             },
           ),
           GoRoute(
+            path: '/admin/records/manual-baptism',
+            builder: (context, state) {
+              final extra = state.extra;
+              if (extra is Map) {
+                final ocr = extra['ocrEntries'];
+                return StaffManualBaptismPage(
+                  initialOcrEntries: ocr is List<RegisterOcrEntry>
+                      ? ocr
+                      : (ocr is List
+                          ? ocr.whereType<RegisterOcrEntry>().toList()
+                          : null),
+                  initialVolNo: extra['volNo']?.toString(),
+                  initialSeriesNo: extra['seriesNo']?.toString(),
+                  returnRoute: '/admin/records',
+                );
+              }
+              return StaffManualBaptismPage(
+                existing: extra is ParishRecord ? extra : null,
+                returnRoute: '/admin/records',
+              );
+            },
+          ),
+          GoRoute(
             path: '/admin/records/new/marriage',
             builder: (context, state) {
               final extra = state.extra;
               return MarriageFormScreen(
                 existing: extra is ParishRecord ? extra : null,
                 fromAdmin: true,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/admin/records/manual-marriage',
+            builder: (context, state) {
+              final extra = state.extra;
+              if (extra is Map) {
+                final rows = extra['marriageEntries'];
+                return StaffManualMarriagePage(
+                  initialMarriageEntries: rows is List<RegisterMarriageEntry>
+                      ? rows
+                      : (rows is List
+                          ? rows.whereType<RegisterMarriageEntry>().toList()
+                          : null),
+                  initialVolNo: extra['volNo']?.toString(),
+                  initialSeriesNo: extra['seriesNo']?.toString(),
+                  returnRoute: '/admin/records',
+                );
+              }
+              return StaffManualMarriagePage(
+                existing: extra is ParishRecord ? extra : null,
+                returnRoute: '/admin/records',
               );
             },
           ),
@@ -556,6 +788,13 @@ class _FinanceGateState extends ConsumerState<_FinanceGate> {
       return const LoginScreen();
     }
     final role = auth.user!.role.trim().toLowerCase();
+    if (role == 'admin') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        context.go('/admin/dashboard');
+      });
+      return const AppLoadingScreen(message: 'Redirecting...');
+    }
     final allowed = role == 'finance' || role == 'admin';
     if (!allowed) {
       return const _FinanceAccessDenied();
@@ -599,7 +838,7 @@ class _FinanceAccessDenied extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     OutlinedButton(
-                      onPressed: () => context.go('/home'),
+                      onPressed: () => context.go('/dashboard'),
                       child: const Text('Go to Home'),
                     ),
                   ],
@@ -638,8 +877,8 @@ class NotFoundScreen extends StatelessWidget {
                       child: const Text('Login'),
                     ),
                     OutlinedButton(
-                      onPressed: () => context.go('/admin/dashboard'),
-                      child: const Text('Admin Home'),
+                      onPressed: () => context.go('/dashboard'),
+                      child: const Text('Go to Dashboard'),
                     ),
                   ],
                 ),
@@ -679,7 +918,11 @@ class _AdminGateState extends ConsumerState<_AdminGate> {
     }
 
     if (!isRoleAdmin) {
-      return const _AdminAccessDenied();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        context.go('/dashboard');
+      });
+      return const AppLoadingScreen(message: 'Redirecting...');
     }
 
     return widget.child;
@@ -771,7 +1014,7 @@ class _AdminAccessDeniedState extends ConsumerState<_AdminAccessDenied> {
                               : const Text('Refresh Access'),
                         ),
                         OutlinedButton(
-                          onPressed: () => context.go('/home'),
+                          onPressed: () => context.go('/dashboard'),
                           child: const Text('Go to Home'),
                         ),
                       ],
@@ -811,11 +1054,33 @@ class _DashboardRedirectScreen extends ConsumerWidget {
       } else if (role == 'staff') {
         context.go('/staff/dashboard');
       } else {
-        context.go('/home');
+        context.go('/user/dashboard');
       }
     });
 
     return const AppLoadingScreen(message: 'Redirecting...');
+  }
+}
+
+/// Sends `/notifications` to the correct shell route for the signed-in role.
+class _NotificationsRedirectScreen extends ConsumerWidget {
+  const _NotificationsRedirectScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      if (!auth.initialized) return;
+      if (auth.user == null) {
+        context.go('/login');
+        return;
+      }
+      context.go(notificationsRouteForRole(auth.user!.role));
+    });
+
+    return const AppLoadingScreen(message: 'Opening notifications...');
   }
 }
 
@@ -838,11 +1103,18 @@ class _StaffGateState extends ConsumerState<_StaffGate> {
       return const LoginScreen();
     }
     final role = auth.user!.role.trim().toLowerCase();
-    final allowed = role == 'staff' || role == 'admin';
+    if (role == 'admin') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        context.go('/admin/dashboard');
+      });
+      return const AppLoadingScreen(message: 'Redirecting...');
+    }
+    final allowed = role == 'staff';
     if (!allowed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;
-        context.go('/home');
+        context.go('/dashboard');
       });
       return const AppLoadingScreen(message: 'Redirecting...');
     }

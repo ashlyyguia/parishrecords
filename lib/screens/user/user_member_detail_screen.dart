@@ -486,7 +486,9 @@ class _UserMemberDetailScreenState extends ConsumerState<UserMemberDetailScreen>
 
   void _showEditMemberDialog() {
     // Navigate to edit member screen
-    context.push('/user/households/${widget.householdId}/members/${widget.memberId}/edit');
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Edit member functionality coming soon')),
+    );
   }
 
   void _showDeleteDialog() {

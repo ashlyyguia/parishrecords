@@ -16,6 +16,35 @@ class OcrJobsRepository {
     return uid;
   }
 
+  Future<List<Map<String, dynamic>>> listAssigned({int limit = 50}) async {
+    final snap = await _db
+        .collection('ocr_jobs')
+        .orderBy('created_at', descending: true)
+        .limit(limit * 3)
+        .get()
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('OCR jobs list timed out'),
+        );
+
+    String toIso(dynamic v) {
+      if (v == null) return '';
+      if (v is Timestamp) return v.toDate().toIso8601String();
+      if (v is DateTime) return v.toIso8601String();
+      return v.toString();
+    }
+
+    final filtered = snap.docs
+        .where((d) {
+          final m = d.data();
+          final assigned = m['assigned_to'];
+          return assigned != null && assigned.toString().trim().isNotEmpty;
+        })
+        .take(limit);
+
+    return filtered.map((d) => _jobFromDoc(d, toIso)).toList();
+  }
+
   Future<List<Map<String, dynamic>>> listAssignedTo(
     String uid, {
     int limit = 50,
@@ -47,17 +76,7 @@ class OcrJobsRepository {
         })
         .take(limit);
 
-    return filtered.map((d) {
-      final m = d.data();
-      return <String, dynamic>{
-        'id': d.id,
-        'type': m['type'],
-        'status': m['status'],
-        'title': m['title'],
-        'assigned_to': m['assigned_to'],
-        'created_at': toIso(m['created_at']),
-      };
-    }).toList();
+    return filtered.map((d) => _jobFromDoc(d, toIso)).toList();
   }
 
   Future<List<Map<String, dynamic>>> listUnassigned({int limit = 50}) async {
@@ -87,24 +106,76 @@ class OcrJobsRepository {
         })
         .take(limit);
 
-    return filtered.map((d) {
-      final m = d.data();
-      return <String, dynamic>{
-        'id': d.id,
-        'type': m['type'],
-        'status': m['status'],
-        'title': m['title'],
-        'assigned_to': m['assigned_to'],
-        'created_at': toIso(m['created_at']),
-      };
-    }).toList();
+    return filtered.map((d) => _jobFromDoc(d, toIso)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> listAll({int limit = 50}) async {
+    final snap = await _db
+        .collection('ocr_jobs')
+        .orderBy('created_at', descending: true)
+        .limit(limit)
+        .get()
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('OCR jobs list timed out'),
+        );
+
+    String toIso(dynamic v) {
+      if (v == null) return '';
+      if (v is Timestamp) return v.toDate().toIso8601String();
+      if (v is DateTime) return v.toIso8601String();
+      return v.toString();
+    }
+
+    return snap.docs.map((d) => _jobFromDoc(d, toIso)).toList();
+  }
+
+  Map<String, dynamic> _jobFromDoc(
+    QueryDocumentSnapshot<Map<String, dynamic>> d,
+    String Function(dynamic) toIso,
+  ) {
+    final m = d.data();
+    final parsed = m['parsed_entries'];
+    final recordCount = parsed is List
+        ? parsed.length
+        : (m['record_count'] as int? ?? 0);
+    return <String, dynamic>{
+      'id': d.id,
+      'type': m['type'],
+      'status': m['status'],
+      'title': m['title'],
+      'assigned_to': m['assigned_to'],
+      'vol_number': _volNumberFromMap(m),
+      'series_number': m['series_number']?.toString(),
+      'raw_text': m['raw_text'],
+      'parsed_entries': parsed is List ? parsed : const [],
+      'record_count': recordCount,
+      'created_at': toIso(m['created_at']),
+    };
+  }
+
+  /// Resolves volume number; supports legacy book/page/notes fields.
+  static String? _volNumberFromMap(Map<String, dynamic> m) {
+    final vol = m['vol_number']?.toString().trim();
+    if (vol != null && vol.isNotEmpty) return vol;
+
+    final book = m['book_number']?.toString().trim() ?? '';
+    final page = m['page_number']?.toString().trim() ?? '';
+    final notes = m['notes']?.toString().trim() ?? '';
+
+    if (book.isNotEmpty && page.isNotEmpty) return 'Book $book · Page $page';
+    if (book.isNotEmpty) return 'Book $book';
+    if (page.isNotEmpty) return 'Page $page';
+    if (notes.isNotEmpty) return notes;
+    return null;
   }
 
   Future<String> createJob({
     required String type,
-    String? bookNumber,
-    String? pageNumber,
-    String? notes,
+    String? volNumber,
+    String? seriesNumber,
+    String? rawText,
+    List<Map<String, dynamic>>? parsedEntries,
   }) async {
     final uid = _requireUid();
     final doc = await _db
@@ -112,12 +183,16 @@ class OcrJobsRepository {
         .add({
           'type': type,
           'title': '$type OCR Job',
-          'status': 'processing',
+          'status': 'in_review',
           'assigned_to': uid,
           'created_by': uid,
-          'book_number': bookNumber,
-          'page_number': pageNumber,
-          'notes': notes,
+          'vol_number': volNumber,
+          'series_number': seriesNumber,
+          'raw_text': rawText,
+          if (parsedEntries != null && parsedEntries.isNotEmpty) ...{
+            'parsed_entries': parsedEntries,
+            'record_count': parsedEntries.length,
+          },
           'created_at': FieldValue.serverTimestamp(),
           'updated_at': FieldValue.serverTimestamp(),
           'locked': false,
@@ -155,6 +230,106 @@ class OcrJobsRepository {
         );
 
     return claimed ? jobId : null;
+  }
+
+  Future<void> updateJob(String jobId, Map<String, dynamic> data) async {
+    _requireUid();
+
+    // Always update the 'updated_at' field
+    final updateData = Map<String, dynamic>.from(data);
+    updateData['updated_at'] = FieldValue.serverTimestamp();
+
+    // If type is updated, update the title as well for consistency
+    if (updateData.containsKey('type')) {
+      updateData['title'] = '${updateData['type']} OCR Job';
+    }
+
+    await _db
+        .collection('ocr_jobs')
+        .doc(jobId)
+        .update(updateData)
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Update OCR job timed out'),
+        );
+  }
+
+  Future<void> deleteJob(String jobId) async {
+    _requireUid();
+    await _db
+        .collection('ocr_jobs')
+        .doc(jobId)
+        .delete()
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Delete OCR job timed out'),
+        );
+  }
+
+  Future<Map<String, dynamic>?> getJob(String jobId) async {
+    _requireUid();
+    final snap = await _db
+        .collection('ocr_jobs')
+        .doc(jobId)
+        .get()
+        .timeout(
+          _timeout,
+          onTimeout: () => throw TimeoutException('Get OCR job timed out'),
+        );
+    if (!snap.exists) return null;
+    String toIso(dynamic v) {
+      if (v == null) return '';
+      if (v is Timestamp) return v.toDate().toIso8601String();
+      if (v is DateTime) return v.toIso8601String();
+      return v.toString();
+    }
+    final data = snap.data() ?? {};
+    final parsed = data['parsed_entries'];
+    final recordCount = parsed is List
+        ? parsed.length
+        : (data['record_count'] as int? ?? 0);
+    return <String, dynamic>{
+      'id': snap.id,
+      'type': data['type'],
+      'status': data['status'],
+      'title': data['title'],
+      'assigned_to': data['assigned_to'],
+      'vol_number': _volNumberFromMap(data),
+      'series_number': data['series_number']?.toString(),
+      'raw_text': data['raw_text'],
+      'parsed_entries': parsed is List ? parsed : const [],
+      'record_count': recordCount,
+      'locked': data['locked'] == true,
+      'created_at': toIso(data['created_at']),
+    };
+  }
+
+  /// Staff verifies fields, optionally publishes official records, locks the job.
+  Future<void> saveAndLockJob({
+    required String jobId,
+    required List<Map<String, dynamic>> parsedEntries,
+    String? rawText,
+    int? recordCount,
+  }) async {
+    final uid = _requireUid();
+    await updateJob(jobId, {
+      'parsed_entries': parsedEntries,
+      if (rawText != null) 'raw_text': rawText,
+      'record_count': recordCount ?? parsedEntries.length,
+      'status': 'completed',
+      'locked': true,
+      'verified_by': uid,
+      'verified_at': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> releaseJob(String jobId) async {
+    _requireUid();
+    await updateJob(jobId, {
+      'assigned_to': null,
+      'status': 'pending',
+      'locked': false,
+    });
   }
 
   Future<String?> claimNextAvailable() async {

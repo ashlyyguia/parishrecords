@@ -24,6 +24,47 @@ class AuthNotifier extends Notifier<AuthState> {
   bool _userDocSyncDenied = false;
   bool _userDocListenDenied = false;
 
+  static const Duration _tokenTimeout = Duration(seconds: 4);
+
+  String _roleFromClaims(Map<String, dynamic>? claims, {String? fallback}) {
+    final isAdminClaim =
+        claims?['admin'] == true ||
+        claims?['isAdmin'] == true ||
+        (claims?['role']?.toString().trim().toLowerCase() == 'admin');
+    final isStaffClaim =
+        claims?['staff'] == true ||
+        claims?['isStaff'] == true ||
+        (claims?['role']?.toString().trim().toLowerCase() == 'staff');
+    final isFinanceClaim =
+        claims?['finance'] == true ||
+        claims?['isFinance'] == true ||
+        (claims?['role']?.toString().trim().toLowerCase() == 'finance');
+    if (isAdminClaim) return 'admin';
+    if (isStaffClaim) return 'staff';
+    if (isFinanceClaim) return 'finance';
+    final fb = fallback?.trim().toLowerCase();
+    if (fb != null && fb.isNotEmpty) return fb;
+    return 'parishioner';
+  }
+
+  Future<Map<String, dynamic>?> _readClaims(User user, {bool forceRefresh = false}) async {
+    try {
+      final result = await user
+          .getIdTokenResult(forceRefresh)
+          .timeout(_tokenTimeout);
+      return result.claims;
+    } catch (e) {
+      debugPrint('AuthNotifier: getIdTokenResult failed (force=$forceRefresh): $e');
+      if (forceRefresh) return null;
+      try {
+        final cached = await user.getIdTokenResult(false).timeout(_tokenTimeout);
+        return cached.claims;
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
   AppUser _fallbackUserFromFirebase(
     User fbUser, {
     required String role,
@@ -86,7 +127,10 @@ class AuthNotifier extends Notifier<AuthState> {
             await AuditService.log(
               action: 'logout',
               userId: previousUser.id,
-              details: 'User ${previousUser.email} logged out',
+              userEmail: previousUser.email,
+              userName: previousUser.displayName,
+              userRole: previousUser.role,
+              details: 'User logged out',
             );
           } catch (_) {}
         }
@@ -99,8 +143,7 @@ class AuthNotifier extends Notifier<AuthState> {
       // Get user data from Firestore
       try {
         debugPrint('AuthNotifier: getting user data for ${user.uid}');
-        final idTokenResult = await user.getIdTokenResult(true);
-        final claims = idTokenResult.claims;
+        final claims = await _readClaims(user);
         final isAdminClaim =
             claims?['admin'] == true ||
             claims?['isAdmin'] == true ||
@@ -124,14 +167,25 @@ class AuthNotifier extends Notifier<AuthState> {
 
         if (appUser != null) {
           final roleFromDoc = appUser.role.trim().toLowerCase();
-          final role = roleFromDoc.isNotEmpty
-              ? roleFromDoc
-              : (isAdminClaim
-                    ? 'admin'
-                    : (isStaffClaim
-                          ? 'staff'
-                          : (isFinanceClaim ? 'finance' : 'parishioner')));
+          // Prioritize custom claims over Firestore role when they indicate higher privilege
+          // This fixes issues where Firestore has stale role data
+          String role;
+          if (isAdminClaim) {
+            role = 'admin';
+          } else if (isStaffClaim) {
+            role = 'staff';
+          } else if (isFinanceClaim) {
+            role = 'finance';
+          } else if (roleFromDoc.isNotEmpty) {
+            role = roleFromDoc;
+          } else {
+            role = 'parishioner';
+          }
+          debugPrint(
+            'AuthNotifier: role resolution - Firestore="$roleFromDoc", claims admin=$isAdminClaim, staff=$isStaffClaim, finance=$isFinanceClaim, final="$role"',
+          );
           final updatedUser = appUser.copyWith(role: role);
+          safetyTimeout?.cancel();
           state = AuthState(user: updatedUser, initialized: true);
           debugPrint(
             'AuthNotifier: set state to initialized=true with existing user, role=$role',
@@ -142,7 +196,10 @@ class AuthNotifier extends Notifier<AuthState> {
               await AuditService.log(
                 action: 'login',
                 userId: updatedUser.id,
-                details: 'User ${updatedUser.email} logged in',
+                userEmail: updatedUser.email,
+                userName: updatedUser.displayName,
+                userRole: updatedUser.role,
+                details: 'User logged in',
               );
             } catch (_) {}
           }
@@ -186,6 +243,7 @@ class AuthNotifier extends Notifier<AuthState> {
             emailVerified: user.emailVerified,
             role: role,
           );
+          safetyTimeout?.cancel();
           state = AuthState(user: newUser, initialized: true);
           debugPrint(
             'AuthNotifier: set state to initialized=true with new user, role=$role',
@@ -214,7 +272,10 @@ class AuthNotifier extends Notifier<AuthState> {
               await AuditService.log(
                 action: 'login',
                 userId: newUser.id,
-                details: 'User ${newUser.email} logged in',
+                userEmail: newUser.email,
+                userName: newUser.displayName,
+                userRole: newUser.role,
+                details: 'User logged in',
               );
             } catch (_) {}
           }
@@ -222,45 +283,19 @@ class AuthNotifier extends Notifier<AuthState> {
       } catch (e, stack) {
         debugPrint('AuthNotifier: Error in auth state handler: $e');
         debugPrint('AuthNotifier: Stack trace: $stack');
-        // Fallback: still mark as initialized to prevent infinite loading
-        try {
-          final idTokenResult = await user.getIdTokenResult(true);
-          final claims = idTokenResult.claims;
-          final isAdminClaim =
-              claims?['admin'] == true ||
-              claims?['isAdmin'] == true ||
-              (claims?['role']?.toString().trim().toLowerCase() == 'admin');
-
-          final isStaffClaim =
-              claims?['staff'] == true ||
-              claims?['isStaff'] == true ||
-              (claims?['role']?.toString().trim().toLowerCase() == 'staff');
-          final isFinanceClaim =
-              claims?['finance'] == true ||
-              claims?['isFinance'] == true ||
-              (claims?['role']?.toString().trim().toLowerCase() == 'finance');
-          final role = isAdminClaim
-              ? 'admin'
-              : (isStaffClaim
-                    ? 'staff'
-                    : (isFinanceClaim
-                          ? 'finance'
-                          : (previousUser?.role ?? 'parishioner')));
-          final fallback = _fallbackUserFromFirebase(
-            user,
-            role: role,
-            previous: previousUser,
-          );
-          state = AuthState(user: fallback, initialized: true);
-          debugPrint('AuthNotifier: set fallback state with initialized=true');
+        // Offline / Firestore error: use cached token + last known user (no network).
+        final claims = await _readClaims(user, forceRefresh: false);
+        final role = _roleFromClaims(claims, fallback: previousUser?.role);
+        final fallback = _fallbackUserFromFirebase(
+          user,
+          role: role,
+          previous: previousUser,
+        );
+        state = AuthState(user: fallback, initialized: true);
+        debugPrint('AuthNotifier: set fallback state with initialized=true');
+        safetyTimeout?.cancel();
+        if (!_userDocListenDenied) {
           _startUserDocListener(fallback.id);
-        } catch (e2) {
-          debugPrint('AuthNotifier: Fallback user creation failed: $e2');
-          // Final fallback: mark as initialized even if we can't get user data
-          state = AuthState(user: previousUser, initialized: true);
-          debugPrint(
-            'AuthNotifier: set state to initialized=true (error recovery)',
-          );
         }
       }
     });
@@ -508,13 +543,19 @@ class AuthNotifier extends Notifier<AuthState> {
 
         if (!isVerified) {
           // Dev Mode Bypass: We auto-verify them if they somehow got stuck with an unverified account.
-          debugPrint('Dev Mode: Bypassing verification check for ${cred.user!.uid}');
+          debugPrint(
+            'Dev Mode: Bypassing verification check for ${cred.user!.uid}',
+          );
           await FirebaseFirestore.instance
               .collection('users')
               .doc(cred.user!.uid)
               .update({'verificationCodeVerified': true});
         }
-        
+
+        // Explicitly reload user data to ensure auth state is updated immediately
+        // This fixes the race condition where redirect happens before state update
+        await reloadUser();
+
         return (true, 'Login successful');
       }
       return (false, 'Login failed. Please try again.');
@@ -549,43 +590,103 @@ class AuthNotifier extends Notifier<AuthState> {
     state = const AuthState(initialized: true);
   }
 
-  /// Reloads the current user from Firebase Auth
+  /// Reloads the current user from Firebase Auth and Firestore
   Future<void> reloadUser() async {
     try {
       await FirebaseAuth.instance.currentUser?.reload();
       final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser != null) {
-        final email = currentUser.email ?? currentUser.uid;
-        final idTokenResult = await currentUser.getIdTokenResult(true);
-        final claims = idTokenResult.claims;
-        final isAdminClaim =
-            claims?['admin'] == true ||
-            claims?['isAdmin'] == true ||
-            (claims?['role']?.toString().trim().toLowerCase() == 'admin');
-        final isStaffClaim =
-            claims?['staff'] == true ||
-            claims?['isStaff'] == true ||
-            (claims?['role']?.toString().trim().toLowerCase() == 'staff');
-        final isFinanceClaim =
-            claims?['finance'] == true ||
-            claims?['isFinance'] == true ||
-            (claims?['role']?.toString().trim().toLowerCase() == 'finance');
-        
-        final role = isAdminClaim 
-            ? 'admin' 
-            : (isStaffClaim 
-                ? 'staff' 
-                : (isFinanceClaim ? 'finance' : 'parishioner'));
-        final appUser = AppUser(
-          id: currentUser.uid,
-          email: email,
-          displayName: currentUser.displayName,
-          role: role,
-          emailVerified: currentUser.emailVerified,
-          lastLogin: DateTime.now(),
-        );
-        state = AuthState(user: appUser, initialized: true);
+
+      // Reset flags for fresh user session
+      _userDocListenDenied = false;
+      _userDocSyncDenied = false;
+
+      if (currentUser == null) {
+        state = const AuthState(user: null, initialized: true);
+        return;
       }
+
+      final email = currentUser.email ?? currentUser.uid;
+      final idTokenResult = await currentUser.getIdTokenResult(true);
+      final claims = idTokenResult.claims;
+
+      final isAdminClaim =
+          claims?['admin'] == true ||
+          claims?['isAdmin'] == true ||
+          (claims?['role']?.toString().trim().toLowerCase() == 'admin');
+      final isStaffClaim =
+          claims?['staff'] == true ||
+          claims?['isStaff'] == true ||
+          (claims?['role']?.toString().trim().toLowerCase() == 'staff');
+      final isFinanceClaim =
+          claims?['finance'] == true ||
+          claims?['isFinance'] == true ||
+          (claims?['role']?.toString().trim().toLowerCase() == 'finance');
+
+      // Try to get Firestore user data for additional info
+      AppUser? appUser;
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
+
+        if (userDoc.exists) {
+          final data = userDoc.data()!;
+          final roleFromDoc = (data['role'] ?? 'parishioner')
+              .toString()
+              .trim()
+              .toLowerCase();
+
+          // Prioritize claims over Firestore role when they indicate higher privilege
+          final role = isAdminClaim
+              ? 'admin'
+              : (isStaffClaim
+                    ? 'staff'
+                    : (isFinanceClaim ? 'finance' : roleFromDoc));
+
+          appUser = AppUser(
+            id: currentUser.uid,
+            email: email,
+            displayName:
+                data['displayName'] ??
+                currentUser.displayName ??
+                email.split('@').first,
+            role: role,
+            emailVerified: currentUser.emailVerified,
+            lastLogin: DateTime.now(),
+            createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+          );
+        }
+      } catch (e) {
+        debugPrint('AuthNotifier: Failed to fetch user doc in reloadUser: $e');
+      }
+
+      // Fallback to Firebase Auth data if Firestore fetch failed
+      appUser ??= AppUser(
+        id: currentUser.uid,
+        email: email,
+        displayName: currentUser.displayName ?? email.split('@').first,
+        role: isAdminClaim
+            ? 'admin'
+            : (isStaffClaim
+                  ? 'staff'
+                  : (isFinanceClaim ? 'finance' : 'parishioner')),
+        emailVerified: currentUser.emailVerified,
+        lastLogin: DateTime.now(),
+      );
+
+      // Cancel any existing listener before starting new one
+      await _userDocSubscription?.cancel();
+      _userDocSubscription = null;
+
+      state = AuthState(user: appUser, initialized: true);
+
+      // Start fresh user doc listener
+      _startUserDocListener(appUser.id);
+
+      debugPrint(
+        'AuthNotifier: reloadUser completed for ${appUser.email} with role ${appUser.role}',
+      );
     } catch (e) {
       debugPrint('Error reloading user: $e');
     }

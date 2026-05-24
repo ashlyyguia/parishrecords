@@ -376,7 +376,15 @@ class AdminDesignSystem {
             color: colorScheme.onSurface,
           ),
         ),
-        if (action != null) TextButton(onPressed: () {}, child: Text(action)),
+        if (action != null)
+          TextButton(
+            onPressed: () {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('$action clicked')));
+            },
+            child: Text(action),
+          ),
       ],
     );
   }

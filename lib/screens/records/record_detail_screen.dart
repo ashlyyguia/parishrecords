@@ -8,9 +8,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/record.dart';
+import '../../models/register_marriage_entry.dart';
 import '../../providers/records_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/records_repository.dart';
+import '../../utils/manual_register_notes.dart';
 
 class RecordDetailScreen extends ConsumerWidget {
   final String recordId;
@@ -18,21 +20,45 @@ class RecordDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final records = ref.watch(recordsProvider);
-    final rec = records
-        .where((r) => r.id == recordId)
-        .cast<ParishRecord?>()
-        .firstOrNull;
+    final recordAsync = ref.watch(recordByIdProvider(recordId));
 
-    if (rec == null) {
-      return Scaffold(
+    return recordAsync.when(
+      loading: () => Scaffold(
         appBar: AppBar(title: const Text('Record')),
-        body: const Center(child: Text('Record not found')),
-      );
-    }
+        body: Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, _) => Scaffold(
+        appBar: AppBar(title: const Text('Record')),
+        body: Center(child: Text('Failed to load record: $e')),
+      ),
+      data: (rec) {
+        if (rec == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Record')),
+            body: const Center(child: Text('Record not found')),
+          );
+        }
+        return _RecordDetailBody(rec: rec);
+      },
+    );
+  }
+}
 
+bool _isAdminRecordsContext(BuildContext context) {
+  return GoRouterState.of(context).uri.path.startsWith('/admin/records');
+}
+
+class _RecordDetailBody extends ConsumerWidget {
+  const _RecordDetailBody({required this.rec});
+
+  final ParishRecord rec;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).user;
+    final adminContext = _isAdminRecordsContext(context);
     final canDelete = user?.role == 'admin';
+    final isStaffOrAdmin = user?.role == 'admin' || user?.role == 'staff';
 
     final df = DateFormat.yMMMMd();
     Map<String, dynamic>? decodedNotes;
@@ -56,20 +82,71 @@ class RecordDetailScreen extends ConsumerWidget {
             onPressed: () {
               switch (rec.type) {
                 case RecordType.baptism:
-                  context.push('/records/new/baptism', extra: rec);
+                  if (ManualRegisterNotes.isManualBaptismRecord(rec)) {
+                    context.push(
+                      adminContext
+                          ? '/admin/records/manual-baptism'
+                          : '/staff/records/manual-baptism',
+                      extra: rec,
+                    );
+                  } else {
+                    context.push(
+                      adminContext
+                          ? '/admin/records/new/baptism'
+                          : '/records/new/baptism',
+                      extra: rec,
+                    );
+                  }
                   break;
                 case RecordType.marriage:
-                  context.push('/records/new/marriage', extra: rec);
+                  if (ManualRegisterNotes.isManualMarriageRecord(rec)) {
+                    context.push(
+                      adminContext
+                          ? '/admin/records/manual-marriage'
+                          : '/staff/records/manual-marriage',
+                      extra: rec,
+                    );
+                  } else {
+                    context.push(
+                      adminContext
+                          ? '/admin/records/new/marriage'
+                          : '/records/new/marriage',
+                      extra: rec,
+                    );
+                  }
                   break;
                 case RecordType.confirmation:
-                  context.push('/records/new/confirmation', extra: rec);
+                  context.push(
+                    adminContext
+                        ? '/admin/records/new/confirmation'
+                        : '/records/new/confirmation',
+                    extra: rec,
+                  );
                   break;
                 case RecordType.funeral:
-                  context.push('/records/new/death', extra: rec);
+                  context.push(
+                    adminContext
+                        ? '/admin/records/new/death'
+                        : '/records/new/death',
+                    extra: rec,
+                  );
                   break;
               }
             },
           ),
+          if (isStaffOrAdmin)
+            IconButton(
+              tooltip: 'Generate Certificate',
+              icon: const Icon(Icons.card_membership),
+              onPressed: () {
+                context.push(
+                  adminContext
+                      ? '/admin/records/${rec.id}/certificate'
+                      : '/records/${rec.id}/certificate',
+                  extra: rec.type,
+                );
+              },
+            ),
           if (canDelete)
             PopupMenuButton<String>(
               onSelected: (value) async {
@@ -270,6 +347,15 @@ class RecordDetailScreen extends ConsumerWidget {
           ),
         ],
       ),
+      floatingActionButton: isStaffOrAdmin
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                context.push('/records/${rec.id}/certificate', extra: rec.type);
+              },
+              icon: const Icon(Icons.card_membership),
+              label: const Text('Certificate'),
+            )
+          : null,
     );
   }
 
@@ -299,12 +385,17 @@ class RecordDetailScreen extends ConsumerWidget {
     Map<String, dynamic> data,
     DateFormat df,
   ) {
-    final registry = data['registry'] as Map<String, dynamic>?;
-    final child = data['child'] as Map<String, dynamic>?;
-    final parents = data['parents'] as Map<String, dynamic>?;
-    final godparents = data['godparents'] as Map<String, dynamic>?;
-    final baptism = data['baptism'] as Map<String, dynamic>?;
-    final metadata = data['metadata'] as Map<String, dynamic>?;
+    if (ManualRegisterNotes.usesFlatRegisterLayout(data)) {
+      return _buildFlatRegisterBaptismDetails(context, data);
+    }
+
+    final registry = _asMap(data['registry']);
+    final child = _asMap(data['child']);
+    final parents = _asMap(data['parents']);
+    final godparents = _asMap(data['godparents']);
+    final baptism = _asMap(data['baptism']);
+    final metadata = _asMap(data['metadata']);
+    final parentsText = parents == null ? _parentsAsText(data['parents']) : null;
 
     String fmtDate(String? iso) {
       if (iso == null || iso.isEmpty) return '';
@@ -366,6 +457,14 @@ class RecordDetailScreen extends ConsumerWidget {
               if (parents['marriageInfo'] != null)
                 Text('Marriage Info: ${parents['marriageInfo']}'),
               const SizedBox(height: 12),
+            ] else if (parentsText != null && parentsText.isNotEmpty) ...[
+              const Text(
+                'Name of the Parents',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(parentsText),
+              const SizedBox(height: 12),
             ],
             if (godparents != null) ...[
               const Text(
@@ -416,11 +515,228 @@ class RecordDetailScreen extends ConsumerWidget {
     );
   }
 
+  static Map<String, dynamic>? _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  static String _parentsAsText(dynamic value) {
+    if (value is String) return value.trim();
+    final map = _asMap(value);
+    if (map == null) return '';
+    final father = map['father']?.toString().trim() ?? '';
+    final mother = map['mother']?.toString().trim() ?? '';
+    if (father.isNotEmpty && mother.isNotEmpty) return '$father / $mother';
+    return father.isNotEmpty ? father : mother;
+  }
+
+  Widget _buildFlatRegisterBaptismDetails(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
+    final isTemporary = data['status'] == 'temporary';
+    final rows = <(String, String)>[
+      ('Volume Number', ManualRegisterNotes.field(data, 'volNo')),
+      ('Series Number', ManualRegisterNotes.field(data, 'seriesNo')),
+      ('No.', ManualRegisterNotes.field(data, 'lineNo')),
+      ('Name of Child', ManualRegisterNotes.field(data, 'nameOfChild')),
+      (
+        'Place & Date of Birth',
+        ManualRegisterNotes.field(data, 'placeAndBirthDate'),
+      ),
+      (
+        'Name of the Parents (Mother\'s Maiden Name)',
+        _parentsAsText(data['parents']),
+      ),
+      ('Resident Of', ManualRegisterNotes.field(data, 'residentsOf')),
+      ('Date of Baptism', ManualRegisterNotes.field(data, 'dateOfBaptism')),
+      ('Minister', ManualRegisterNotes.field(data, 'minister')),
+      ('Sponsor', ManualRegisterNotes.field(data, 'sponsors')),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  'Baptism Register',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                ),
+                if (isTemporary) ...[
+                  const SizedBox(width: 8),
+                  Chip(
+                    label: const Text('Temporary'),
+                    visualDensity: VisualDensity.compact,
+                    backgroundColor:
+                        Theme.of(context).colorScheme.tertiaryContainer,
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 12),
+            for (final row in rows)
+              if (row.$2.isNotEmpty) ...[
+                Text(
+                  row.$1,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.7),
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(row.$2, style: const TextStyle(fontSize: 15)),
+                const SizedBox(height: 10),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFlatRegisterMarriageDetails(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
+    final isTemporary = data['status'] == 'temporary';
+    final entry = ManualRegisterNotes.marriageEntryFromMap(data);
+    final headerRows = <(String, String)>[
+      ('Volume Number', ManualRegisterNotes.field(data, 'volNo')),
+      ('Series Number', ManualRegisterNotes.field(data, 'seriesNo')),
+      ('No.', ManualRegisterNotes.field(data, 'lineNo')),
+    ];
+    final sharedRows = <(String, String)>[
+      ('Date of Marriage', entry.dateOfMarriage),
+      ('Minister', entry.minister),
+      ('License Number', entry.licenseNumber),
+      ('Observations', entry.observations),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  'Marriage Register',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                ),
+                if (isTemporary) ...[
+                  const SizedBox(width: 8),
+                  Chip(
+                    label: const Text('Temporary'),
+                    visualDensity: VisualDensity.compact,
+                    backgroundColor:
+                        Theme.of(context).colorScheme.tertiaryContainer,
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 12),
+            for (final row in headerRows)
+              if (row.$2.isNotEmpty) _detailField(context, row.$1, row.$2),
+            _partyRegisterSection(context, 'Man', entry.groom),
+            _partyRegisterSection(context, 'Woman', entry.bride),
+            const SizedBox(height: 8),
+            Text(
+              'Shared',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.7),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (final row in sharedRows)
+              if (row.$2.isNotEmpty) _detailField(context, row.$1, row.$2),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _partyRegisterSection(
+    BuildContext context,
+    String label,
+    MarriagePartyInfo party,
+  ) {
+    final rows = <(String, String)>[
+      ('Contracting Party', party.name),
+      ('Legal Status', party.legalStatus),
+      ('Actual Address', party.actualAddress),
+      ('Dates & Place of Birth', party.datesPlaceOfBirth),
+      ('Dates & Place of Baptism', party.datesPlaceOfBaptism),
+      ('Parents', party.parents),
+      ('Sponsors of Marriage', party.sponsors),
+    ];
+    if (!party.hasData && rows.every((r) => r.$2.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          ),
+          const SizedBox(height: 6),
+          for (final row in rows)
+            if (row.$2.isNotEmpty) _detailField(context, row.$1, row.$2),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailField(BuildContext context, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.7),
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(value, style: const TextStyle(fontSize: 15)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMarriageDetails(
     BuildContext context,
     Map<String, dynamic> data,
     DateFormat df,
   ) {
+    if (ManualRegisterNotes.usesFlatMarriageRegisterLayout(data)) {
+      return _buildFlatRegisterMarriageDetails(context, data);
+    }
+
     final marriage = data['marriage'] as Map<String, dynamic>?;
     final groom = data['groom'] as Map<String, dynamic>?;
     final bride = data['bride'] as Map<String, dynamic>?;

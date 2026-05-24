@@ -5,6 +5,16 @@ import '../services/donations_repository.dart';
 import '../services/finance_repository.dart';
 import '../services/financial_reports_repository.dart';
 
+import '../services/certificate_fee_repository.dart';
+
+final certificateFeeRepositoryProvider = Provider<CertificateFeeRepository>((ref) {
+  return CertificateFeeRepository();
+});
+
+final certificateFeesProvider = FutureProvider<Map<String, double>>((ref) async {
+  return await ref.read(certificateFeeRepositoryProvider).getFees();
+});
+
 final financeRepositoryProvider = Provider<FinanceRepository>((ref) {
   return FinanceRepository();
 });
@@ -57,4 +67,10 @@ final donationsListProvider =
         debugPrint('donationsListProvider error: $e');
         return <Map<String, dynamic>>[];
       }
+    });
+
+/// Live donation list for Admin Donations and Finance ledger.
+final donationsStreamProvider =
+    StreamProvider.family<List<Map<String, dynamic>>, int>((ref, limit) {
+      return ref.read(donationsRepositoryProvider).watchAll(limit: limit);
     });

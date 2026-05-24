@@ -16,7 +16,16 @@ class StaffShell extends ConsumerWidget {
       Icons.document_scanner_outlined,
       '/staff/ocr/upload',
     ),
-    _NavItem('Schedule', Icons.event_outlined, '/staff/schedule'),
+    _NavItem(
+      'Preprocess',
+      Icons.tune_outlined,
+      '/staff/ocr/preprocess',
+    ),
+    _NavItem(
+      'OCR Verify',
+      Icons.fact_check_outlined,
+      '/staff/ocr/verify',
+    ),
     _NavItem(
       'Notifications',
       Icons.notifications_outlined,
@@ -26,7 +35,7 @@ class StaffShell extends ConsumerWidget {
   ];
 
   int _indexFromLocation(String location) {
-    for (int i = 0; i < _items.length; i++) {
+    for (int i = _items.length - 1; i >= 0; i--) {
       if (location.startsWith(_items[i].route)) return i;
     }
     return 0;
@@ -151,85 +160,89 @@ class StaffShell extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
 
-                    // Navigation items
-                    ..._items.asMap().entries.map((entry) {
-                      final i = entry.key;
-                      final item = entry.value;
-                      final isSelected = i == idx;
+                    // Navigation items — scroll when sidebar is shorter than content
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        itemCount: _items.length,
+                        itemBuilder: (context, i) {
+                          final item = _items[i];
+                          final isSelected = i == idx;
 
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0,
-                          vertical: 4.0,
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () => goSafe(item.route),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? Colors.white.withValues(alpha: 0.2)
-                                    : Colors.transparent,
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0,
+                              vertical: 3.0,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
                                 borderRadius: BorderRadius.circular(12),
-                                border: isSelected
-                                    ? Border.all(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.3,
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    item.icon,
-                                    color: isSelected
-                                        ? Colors.white
-                                        : Colors.white.withValues(alpha: 0.8),
-                                    size: 22,
+                                onTap: () => goSafe(item.route),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      item.label,
-                                      style: TextStyle(
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? Colors.white.withValues(alpha: 0.2)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: isSelected
+                                        ? Border.all(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.3,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        item.icon,
                                         color: isSelected
                                             ? Colors.white
-                                            : Colors.white.withValues(
-                                                alpha: 0.8,
-                                              ),
-                                        fontWeight: isSelected
-                                            ? FontWeight.w600
-                                            : FontWeight.w500,
-                                        fontSize: 15,
+                                            : Colors.white
+                                                .withValues(alpha: 0.8),
+                                        size: 22,
                                       ),
-                                    ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          item.label,
+                                          style: TextStyle(
+                                            color: isSelected
+                                                ? Colors.white
+                                                : Colors.white.withValues(
+                                                    alpha: 0.8,
+                                                  ),
+                                            fontWeight: isSelected
+                                                ? FontWeight.w600
+                                                : FontWeight.w500,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        Icon(
+                                          Icons.chevron_right,
+                                          color: Colors.white.withValues(
+                                            alpha: 0.8,
+                                          ),
+                                          size: 18,
+                                        ),
+                                    ],
                                   ),
-                                  if (isSelected)
-                                    Icon(
-                                      Icons.chevron_right,
-                                      color: Colors.white.withValues(
-                                        alpha: 0.8,
-                                      ),
-                                      size: 18,
-                                    ),
-                                ],
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      );
-                    }),
-
-                    const Spacer(),
+                          );
+                        },
+                      ),
+                    ),
 
                     // User section
                     Padding(
@@ -306,7 +319,7 @@ class StaffShell extends ConsumerWidget {
       );
     }
 
-    // Mobile bottom nav - limit to 5 essential items to prevent overflow
+    // Mobile bottom nav — manual register via Records screen button
     final mobileItems = [
       _items[0], // Dashboard
       _items[1], // Households

@@ -166,15 +166,36 @@ class _AdminAuditLogsPageState extends State<AdminAuditLogsPage> {
                           final action = (m['action'] ?? '').toString();
                           final details = (m['details'] ?? '').toString();
                           final userId = (m['user_id'] ?? '').toString();
+                          final userEmail = (m['user_email'] ?? '').toString();
+                          final userName = (m['user_name'] ?? '').toString();
+                          final userRole = (m['user_role'] ?? '').toString();
                           final ts = (m['timestamp'] ?? m['action_time'] ?? '')
                               .toString();
 
+                          // Build user display: prefer name, then email, fallback to ID
+                          final who = userName.isNotEmpty
+                              ? userName
+                              : (userEmail.isNotEmpty ? userEmail : userId);
+                          final whoLabel = userRole.isNotEmpty
+                              ? '$who (${userRole.toUpperCase()})'
+                              : who;
+
                           return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: colorScheme.primary.withValues(
+                                alpha: 0.1,
+                              ),
+                              child: Icon(
+                                Icons.person_outline,
+                                color: colorScheme.primary,
+                                size: 20,
+                              ),
+                            ),
                             title: Text(action.isEmpty ? 'Activity' : action),
                             subtitle: Text(
                               [
+                                'By: $whoLabel',
                                 if (details.isNotEmpty) details,
-                                if (userId.isNotEmpty) 'User: $userId',
                                 if (ts.isNotEmpty) ts,
                               ].join('\n'),
                               maxLines: 3,

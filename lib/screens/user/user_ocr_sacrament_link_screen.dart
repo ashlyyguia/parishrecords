@@ -412,32 +412,36 @@ class _UserOcrSacramentLinkScreenState extends ConsumerState<UserOcrSacramentLin
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (_extractedData['sacramentType'] != null)
-                        _buildExtractedField(
+                        _buildEditableField(
                           'Sacrament Type',
                           _extractedData['sacramentType']!.toString().toUpperCase(),
                           Icons.church_outlined,
                           Colors.purple,
+                          (val) => _extractedData['sacramentType'] = val,
                         ),
                       if (_extractedData['name'] != null)
-                        _buildExtractedField(
+                        _buildEditableField(
                           'Name',
                           _extractedData['name']!,
                           Icons.person_outline,
                           Colors.blue,
+                          (val) => _extractedData['name'] = val,
                         ),
                       if (_extractedData['date'] != null)
-                        _buildExtractedField(
+                        _buildEditableField(
                           'Date',
                           _extractedData['date']!,
                           Icons.calendar_today_outlined,
                           Colors.orange,
+                          (val) => _extractedData['date'] = val,
                         ),
                       if (_extractedData['parish'] != null)
-                        _buildExtractedField(
+                        _buildEditableField(
                           'Parish',
                           _extractedData['parish']!,
                           Icons.location_on_outlined,
                           Colors.green,
+                          (val) => _extractedData['parish'] = val,
                         ),
                     ],
                   ),
@@ -489,11 +493,11 @@ class _UserOcrSacramentLinkScreenState extends ConsumerState<UserOcrSacramentLin
     );
   }
 
-  Widget _buildExtractedField(String label, String value, IconData icon, Color color) {
+  Widget _buildEditableField(String label, String value, IconData icon, Color color, Function(String) onChanged) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             padding: const EdgeInsets.all(8),
@@ -505,25 +509,25 @@ class _UserOcrSacramentLinkScreenState extends ConsumerState<UserOcrSacramentLin
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
+            child: TextFormField(
+              initialValue: value,
+              decoration: InputDecoration(
+                labelText: label,
+                labelStyle: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade700,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-              ],
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+              ),
+              onChanged: onChanged,
             ),
           ),
         ],

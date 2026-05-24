@@ -29,21 +29,25 @@ class FinanceRepository {
     double total = 0;
     int count = 0;
     final byMethod = <String, double>{};
+    final byCampaign = <String, double>{};
 
     for (final doc in snap.docs) {
       final data = doc.data();
       final amount = (data['amount'] as num?)?.toDouble() ?? 0;
       final method = data['method'] as String? ?? 'cash';
+      final campaign = data['campaign'] as String? ?? 'General';
 
       total += amount;
       count++;
       byMethod[method] = (byMethod[method] ?? 0) + amount;
+      byCampaign[campaign] = (byCampaign[campaign] ?? 0) + amount;
     }
 
     return {
       'total_amount': total,
       'total_count': count,
       'by_method': byMethod,
+      'by_campaign': byCampaign,
       'period_days': days,
       'generated_at': DateTime.now().toIso8601String(),
     };

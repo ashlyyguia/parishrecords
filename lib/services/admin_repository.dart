@@ -156,7 +156,10 @@ class AdminRepository {
     ];
     for (final collection in collections) {
       try {
-        await _firestore.collection(collection).doc(id).delete();
+        final ref = _firestore.collection(collection).doc(id);
+        final snap = await ref.get();
+        if (!snap.exists) continue;
+        await ref.delete();
         return;
       } catch (e) {
         // Continue to next collection
@@ -204,24 +207,36 @@ class AdminRepository {
   }) async {
     try {
       final since = DateTime.now().subtract(Duration(days: days));
+      // Query by created_at (server timestamp) for proper date comparison
       final snap = await _firestore
           .collection('audit_logs')
-          .where('timestamp', isGreaterThan: Timestamp.fromDate(since))
-          .orderBy('timestamp', descending: true)
+          .where('created_at', isGreaterThan: Timestamp.fromDate(since))
+          .orderBy('created_at', descending: true)
           .limit(limit)
           .get();
 
       return snap.docs.map((doc) {
         final data = doc.data();
+        // Use created_at for timestamp, fallback to timestamp string
+        DateTime ts;
+        if (data['created_at'] is Timestamp) {
+          ts = (data['created_at'] as Timestamp).toDate();
+        } else if (data['timestamp'] is String) {
+          ts = DateTime.tryParse(data['timestamp']) ?? DateTime.now();
+        } else {
+          ts = DateTime.now();
+        }
         return {
           'id': doc.id,
           'user_id': data['user_id'] ?? '',
+          'user_email': data['user_email'] ?? '',
+          'user_name': data['user_name'] ?? '',
+          'user_role': data['user_role'] ?? '',
           'action': data['action'] ?? '',
           'details': data['details'] ?? data['new_values'] ?? '',
           'resource_id': data['resource_id'],
-          'timestamp': data['timestamp'] is Timestamp
-              ? (data['timestamp'] as Timestamp).toDate().toIso8601String()
-              : (data['timestamp'] ?? ''),
+          'timestamp': ts.toIso8601String(),
+          'action_time': ts.toIso8601String(),
         };
       }).toList();
     } catch (e) {
@@ -431,5 +446,199 @@ class AdminRepository {
     // No sync needed with direct Firestore
     final snap = await _firestore.collection('users').count().get();
     return snap.count ?? 0;
+  }
+
+  DateTime _activityDate(dynamic raw) {
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is DateTime) return raw;
+    if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
+    return DateTime.now();
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _recentDocs(
+    String collection, {
+    int limit = 10,
+    List<String> orderFields = const ['created_at', 'createdAt'],
+  }) async {
+    for (final field in orderFields) {
+      try {
+        final snap = await _firestore
+            .collection(collection)
+            .orderBy(field, descending: true)
+            .limit(limit)
+            .get();
+        return snap.docs;
+      } catch (e) {
+        developer.log(
+          'orderBy $field failed for $collection: $e',
+          name: 'AdminRepository',
+        );
+      }
+    }
+
+    final snap = await _firestore.collection(collection).limit(limit * 3).get();
+    final docs = snap.docs.toList()
+      ..sort((a, b) {
+        final ad = _activityDate(
+          a.data()['created_at'] ??
+              a.data()['createdAt'] ??
+              a.data()['requested_at'],
+        );
+        final bd = _activityDate(
+          b.data()['created_at'] ??
+              b.data()['createdAt'] ??
+              b.data()['requested_at'],
+        );
+        return bd.compareTo(ad);
+      });
+    return docs.take(limit).toList();
+  }
+
+  String _recordPersonName(String collectionName, Map<String, dynamic> data) {
+    final text = data['text']?.toString().trim();
+    if (text != null && text.isNotEmpty) return text;
+
+    switch (collectionName) {
+      case 'baptism_records':
+        return (data['child_name'] ?? data['name'] ?? 'Baptism Record')
+            .toString();
+      case 'marriage_records':
+        final groom = data['groom_name']?.toString() ?? '';
+        final bride = data['bride_name']?.toString() ?? '';
+        if (groom.isNotEmpty && bride.isNotEmpty) return '$groom & $bride';
+        return groom.isNotEmpty ? groom : (bride.isNotEmpty ? bride : 'Marriage Record');
+      case 'confirmation_records':
+        return (data['confirmed_name'] ?? data['name'] ?? 'Confirmation Record')
+            .toString();
+      case 'funeral_records':
+        return (data['deceased_name'] ?? data['name'] ?? 'Funeral Record')
+            .toString();
+      default:
+        return (data['name'] ?? 'Record').toString();
+    }
+  }
+
+  /// Get recent parish activity (records, requests, donations) - NOT audit logs
+  Future<List<Map<String, dynamic>>> getRecentActivity({int limit = 10}) async {
+    final List<Map<String, dynamic>> activities = [];
+    final perSource = (limit / 2).ceil().clamp(3, 20);
+
+    // Get recent records from all collections
+    final recordCollections = [
+      {
+        'name': 'baptism_records',
+        'type': 'Baptism Record',
+        'icon': 'water_drop',
+      },
+      {
+        'name': 'marriage_records',
+        'type': 'Marriage Record',
+        'icon': 'favorite',
+      },
+      {
+        'name': 'confirmation_records',
+        'type': 'Confirmation Record',
+        'icon': 'check_circle',
+      },
+      {'name': 'funeral_records', 'type': 'Funeral Record', 'icon': 'church'},
+    ];
+
+    for (final collection in recordCollections) {
+      try {
+        final docs = await _recentDocs(
+          collection['name']!,
+          limit: perSource,
+        );
+
+        for (final doc in docs) {
+          final data = doc.data();
+          final date = _activityDate(data['created_at'] ?? data['createdAt']);
+          final personName = _recordPersonName(collection['name']!, data);
+
+          activities.add({
+            'id': doc.id,
+            'type': collection['type'],
+            'title': 'New ${collection['type']}',
+            'subtitle': personName,
+            'date': date,
+            'icon': collection['icon'],
+            'category': 'record',
+          });
+        }
+      } catch (e) {
+        developer.log(
+          'Error loading ${collection['name']}: $e',
+          name: 'AdminRepository',
+        );
+      }
+    }
+
+    // Certificate / service requests (collection: requests)
+    try {
+      final requestDocs = await _recentDocs(
+        'requests',
+        limit: perSource,
+        orderFields: const ['requested_at', 'created_at', 'createdAt'],
+      );
+
+      for (final doc in requestDocs) {
+        final data = doc.data();
+        final date = _activityDate(
+          data['requested_at'] ?? data['created_at'] ?? data['createdAt'],
+        );
+        final requestType =
+            data['request_type'] ?? data['type'] ?? 'Certificate';
+        final requesterName = data['requester_name'] ??
+            data['requested_by'] ??
+            data['requesterName'] ??
+            'Unknown';
+
+        activities.add({
+          'id': doc.id,
+          'type': 'Certificate Request',
+          'title': '${requestType.toString()} Request',
+          'subtitle': requesterName.toString(),
+          'date': date,
+          'icon': 'verified',
+          'category': 'request',
+        });
+      }
+    } catch (e) {
+      developer.log(
+        'Error loading requests: $e',
+        name: 'AdminRepository',
+      );
+    }
+
+    // Donations
+    try {
+      final donationDocs = await _recentDocs('donations', limit: perSource);
+
+      for (final doc in donationDocs) {
+        final data = doc.data();
+        final date = _activityDate(data['created_at'] ?? data['createdAt']);
+        final donorName = data['donor_name'] ?? data['name'] ?? 'Anonymous';
+        final amount = (data['amount'] as num?)?.toDouble() ?? 0;
+
+        activities.add({
+          'id': doc.id,
+          'type': 'Donation',
+          'title': 'New Donation',
+          'subtitle': '$donorName • ₱${amount.toStringAsFixed(2)}',
+          'date': date,
+          'icon': 'volunteer_activism',
+          'category': 'donation',
+        });
+      }
+    } catch (e) {
+      developer.log('Error loading donations: $e', name: 'AdminRepository');
+    }
+
+    activities.sort((a, b) {
+      final ad = a['date'] as DateTime? ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bd = b['date'] as DateTime? ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bd.compareTo(ad);
+    });
+    return activities.take(limit).toList();
   }
 }
