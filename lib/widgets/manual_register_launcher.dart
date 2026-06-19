@@ -5,22 +5,22 @@ import 'package:go_router/go_router.dart';
 class ManualRegisterLauncher {
   ManualRegisterLauncher._();
 
-  static const _options = [
+  static List<_SacramentOption> _optionsFor(String recordsBasePath) => [
     _SacramentOption(
       type: 'baptism',
       label: 'Baptism Register',
       subtitle: 'Volume / series rows for baptisms',
       icon: Icons.water_drop_outlined,
-      color: Color(0xFF3B82F6),
-      route: '/staff/records/manual-baptism',
+      color: const Color(0xFF3B82F6),
+      route: '$recordsBasePath/manual-baptism',
     ),
     _SacramentOption(
       type: 'marriage',
       label: 'Marriage Register',
       subtitle: 'Volume / series rows for marriages',
       icon: Icons.favorite_outline,
-      color: Color(0xFFEC4899),
-      route: '/staff/records/manual-marriage',
+      color: const Color(0xFFEC4899),
+      route: '$recordsBasePath/manual-marriage',
     ),
   ];
 
@@ -28,7 +28,9 @@ class ManualRegisterLauncher {
   static Future<void> open(
     BuildContext context, {
     Object? extra,
+    String recordsBasePath = '/staff/records',
   }) async {
+    final options = _optionsFor(recordsBasePath);
     final theme = Theme.of(context);
     final selected = await showModalBottomSheet<String>(
       context: context,
@@ -55,9 +57,9 @@ class ManualRegisterLauncher {
                   ),
                 ),
                 const SizedBox(height: 16),
-                for (final opt in _options) ...[
+                for (final opt in options) ...[
                   _SacramentTile(option: opt),
-                  if (opt != _options.last) const SizedBox(height: 8),
+                  if (opt != options.last) const SizedBox(height: 8),
                 ],
               ],
             ),
@@ -68,8 +70,8 @@ class ManualRegisterLauncher {
 
     if (selected == null || !context.mounted) return;
 
-    final route = _options
-        .firstWhere((o) => o.type == selected, orElse: () => _options.first)
+    final route = options
+        .firstWhere((o) => o.type == selected, orElse: () => options.first)
         .route;
     context.push(route, extra: extra);
   }

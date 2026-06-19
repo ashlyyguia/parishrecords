@@ -42,3 +42,12 @@ final requestDetailProvider = FutureProvider.family<Map<String, dynamic>, String
 final mySacramentsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   return ref.read(userSacramentsRepositoryProvider).listMine();
 });
+
+final hasLinkedSacramentsProvider = FutureProvider<bool>((ref) async {
+  return ref.read(userSacramentsRepositoryProvider).hasLinkedSacramentRecords();
+});
+
+final householdLinkedSacramentStubsProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  return ref.read(userSacramentsRepositoryProvider).listHouseholdLinkedStubs();
+});

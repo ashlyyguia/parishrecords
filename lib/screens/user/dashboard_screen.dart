@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/user_providers.dart';
+import '../../widgets/user_certificate_request_launcher.dart';
 import 'widgets/dashboard_kpi_card.dart';
 import 'widgets/quick_action_button.dart';
 import 'widgets/recent_activities_list.dart';
@@ -131,7 +132,8 @@ class DashboardScreen extends ConsumerWidget {
             runSpacing: 12,
             children: [
               QuickActionButton(
-                onPressed: () => context.go('/records/certificate-request?user=1'),
+                onPressed: () =>
+                    UserCertificateRequestLauncher.open(context, ref),
                 icon: Icons.add_circle_outline,
                 label: 'Request Certificate',
                 color: colorScheme.primary,

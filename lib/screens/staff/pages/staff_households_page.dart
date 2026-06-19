@@ -459,7 +459,6 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
                 onView: () => context.go('$basePath/${household.id}'),
                 onEdit: () => _showEditHouseholdDialog(context, household),
                 onArchive: () => _toggleArchive(context, household),
-                onDelete: () => _confirmDelete(context, household),
               );
             },
           ),
@@ -489,7 +488,6 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
           onTap: () => context.go('$basePath/${household.id}'),
           onEdit: () => _showEditHouseholdDialog(context, household),
           onArchive: () => _toggleArchive(context, household),
-          onDelete: () => _confirmDelete(context, household),
         );
       },
     );
@@ -738,39 +736,6 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
     }
   }
 
-  Future<void> _confirmDelete(BuildContext context, Household household) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Household?'),
-        content: Text(
-          'This will permanently delete ${household.familyName} (${household.householdId}) and all its members. This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      final notifier = ref.read(householdOperationsProvider.notifier);
-      final success = await notifier.deleteHousehold(household.id);
-
-      if (success && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Household deleted')));
-      }
-    }
-  }
 }
 
 /// Enhanced card widget for displaying a household
@@ -779,14 +744,12 @@ class _HouseholdCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onArchive;
-  final VoidCallback onDelete;
 
   const _HouseholdCard({
     required this.household,
     required this.onTap,
     required this.onEdit,
     required this.onArchive,
-    required this.onDelete,
   });
 
   @override
@@ -980,8 +943,6 @@ class _HouseholdCard extends StatelessWidget {
               onEdit();
             case 'archive':
               onArchive();
-            case 'delete':
-              onDelete();
           }
         },
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1018,23 +979,6 @@ class _HouseholdCard extends StatelessWidget {
                   household.isArchived ? 'Restore' : 'Archive',
                   style: TextStyle(
                     color: colorScheme.onSurface,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const PopupMenuDivider(),
-          PopupMenuItem(
-            value: 'delete',
-            child: Row(
-              children: [
-                const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                const SizedBox(width: 12),
-                const Text(
-                  'Delete',
-                  style: TextStyle(
-                    color: Colors.red,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1171,14 +1115,12 @@ class _TableRow extends StatelessWidget {
   final VoidCallback onView;
   final VoidCallback onEdit;
   final VoidCallback onArchive;
-  final VoidCallback onDelete;
 
   const _TableRow({
     required this.household,
     required this.onView,
     required this.onEdit,
     required this.onArchive,
-    required this.onDelete,
   });
 
   @override
@@ -1292,11 +1234,6 @@ class _TableRow extends StatelessWidget {
                   onPressed: onEdit,
                   icon: const Icon(Icons.edit_outlined),
                   color: colorScheme.secondary,
-                ),
-                IconButton(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline),
-                  color: colorScheme.error,
                 ),
               ],
             ),

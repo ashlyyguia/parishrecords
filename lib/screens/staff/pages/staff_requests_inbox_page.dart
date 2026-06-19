@@ -5,8 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../providers/requests_provider.dart';
 import '../../../services/requests_repository.dart';
 import '../../../services/audit_service.dart';
-import 'package:go_router/go_router.dart';
-import '../../../models/record.dart';
 
 class StaffRequestsInboxPage extends ConsumerStatefulWidget {
   const StaffRequestsInboxPage({super.key});
@@ -195,13 +193,7 @@ class _StaffRequestsInboxPageState
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _buildRefreshButton(colorScheme, isMobile),
-                    const SizedBox(width: 12),
-                    _buildCreateButton(colorScheme, isMobile),
-                  ],
-                ),
+                _buildRefreshButton(colorScheme, isMobile),
               ],
             )
           : Row(
@@ -248,13 +240,7 @@ class _StaffRequestsInboxPageState
                     ],
                   ),
                 ),
-                Row(
-                  children: [
-                    _buildRefreshButton(colorScheme, isMobile),
-                    const SizedBox(width: 12),
-                    _buildCreateButton(colorScheme, isMobile),
-                  ],
-                ),
+                _buildRefreshButton(colorScheme, isMobile),
               ],
             ),
     );
@@ -272,67 +258,6 @@ class _StaffRequestsInboxPageState
         padding: isMobile
             ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
             : const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      ),
-    );
-  }
-
-  Widget _buildCreateButton(ColorScheme colorScheme, bool isMobile) {
-    return FilledButton.icon(
-      onPressed: () => _showCreateCertificateOptions(context),
-      icon: Icon(Icons.add_circle_outline, size: isMobile ? 16 : 18),
-      label: Text(isMobile ? 'Create' : 'Create Certificate'),
-      style: FilledButton.styleFrom(
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        padding: isMobile
-            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
-            : const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      ),
-    );
-  }
-
-  void _showCreateCertificateOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                child: Text(
-                  'Select Certificate Template',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.water_drop, color: Colors.blue),
-                title: const Text('Baptism'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/staff/records/new/certificate',
-                      extra: RecordType.baptism);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.church, color: Colors.purple),
-                title: const Text('Confirmation'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/staff/records/new/certificate',
-                      extra: RecordType.confirmation);
-                },
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -555,27 +480,6 @@ class _StaffRequestsInboxPageState
                       onReject: status == 'pending'
                           ? () => _setStatus(r, 'rejected')
                           : null,
-                      onCreateCertificate: status == 'approved'
-                          ? () {
-                              RecordType rType = RecordType.baptism;
-                              final typeLower = type.toLowerCase();
-                              if (typeLower.contains('marriage')) {
-                                rType = RecordType.marriage;
-                              } else if (typeLower.contains('confirm')) {
-                                rType = RecordType.confirmation;
-                              } else if (typeLower.contains('death') ||
-                                  typeLower.contains('funeral')) {
-                                rType = RecordType.funeral;
-                              }
-                              final recordId =
-                                  (r['record_id'] ?? 'new').toString();
-                              final targetId = recordId.isEmpty ? 'new' : recordId;
-                              context.push(
-                                '/staff/records/$targetId/certificate',
-                                extra: rType,
-                              );
-                            }
-                          : null,
                       colorScheme: colorScheme,
                       theme: theme,
                     ),
@@ -597,7 +501,6 @@ class _RequestCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onApprove;
   final VoidCallback? onReject;
-  final VoidCallback? onCreateCertificate;
   final ColorScheme colorScheme;
   final ThemeData theme;
 
@@ -610,7 +513,6 @@ class _RequestCard extends StatelessWidget {
     required this.onTap,
     this.onApprove,
     this.onReject,
-    this.onCreateCertificate,
     required this.colorScheme,
     required this.theme,
   });
@@ -765,24 +667,6 @@ class _RequestCard extends StatelessWidget {
                         ),
                       ),
                   ],
-                ),
-              ],
-              if (onCreateCertificate != null) ...[
-                const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: onCreateCertificate,
-                    icon: const Icon(Icons.card_membership, size: 18),
-                    label: const Text('Create Certificate'),
-                    style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
                 ),
               ],
             ],

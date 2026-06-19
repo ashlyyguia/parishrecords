@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -1495,10 +1496,15 @@ class _CertificateTemplateScreenState
     return DateFormat('MMMM d, yyyy').format(date);
   }
 
+  bool _isAdminRecordsContext(BuildContext context) {
+    return GoRouterState.of(context).uri.path.startsWith('/admin/records');
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final showPrint = !_isAdminRecordsContext(context);
 
     ref.listen<List<ParishRecord>>(recordsProvider, (previous, next) {
       if (_recordApplied || widget.recordId.isEmpty || _isLoading) return;
@@ -1525,11 +1531,12 @@ class _CertificateTemplateScreenState
               ),
             )
           else ...[
-            IconButton(
-              icon: const Icon(Icons.print),
-              tooltip: 'Print',
-              onPressed: _generateAndPrint,
-            ),
+            if (showPrint)
+              IconButton(
+                icon: const Icon(Icons.print),
+                tooltip: 'Print',
+                onPressed: _generateAndPrint,
+              ),
             IconButton(
               icon: const Icon(Icons.picture_as_pdf),
               tooltip: 'Save as PDF',

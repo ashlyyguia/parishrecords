@@ -10,6 +10,7 @@ import '../../../services/admin_repository.dart';
 import '../../../utils/record_date_filter.dart';
 import '../../../widgets/record_date_range_filters.dart';
 import '../../../utils/manual_register_notes.dart';
+import '../../../widgets/manual_register_launcher.dart';
 import '../admin_design_system.dart';
 
 class AdminRecordsPage extends StatefulWidget {
@@ -145,6 +146,26 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     if (mounted) await _loadFromBackend();
   }
 
+  Future<void> _openNewRecord() async {
+    await _openManualRegister();
+  }
+
+  Future<void> _openManualRegister() async {
+    await ManualRegisterLauncher.open(
+      context,
+      recordsBasePath: '/admin/records',
+    );
+    if (mounted) await _loadFromBackend();
+  }
+
+  Future<void> _viewRecord(ParishRecord record) async {
+    await context.push(
+      '/admin/records/${record.id}',
+      extra: record,
+    );
+    if (mounted) await _loadFromBackend();
+  }
+
   Future<void> _importCsvDialog() async {
     final ctrl = TextEditingController();
     int imported = 0;
@@ -161,7 +182,8 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Paste CSV with headers: id(optional), name, type, date(YYYY-MM-DD)',
+                  'Paste CSV with headers: id(optional), name, type, date(YYYY-MM-DD). '
+                  'Type must be baptism or marriage only.',
                 ),
               ),
               const SizedBox(height: 8),
@@ -212,10 +234,7 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
             ? r[idxDate].toString().trim()
             : '';
         if (name.isEmpty) continue;
-        if (!(type == 'baptism' ||
-            type == 'marriage' ||
-            type == 'funeral' ||
-            type == 'confirmation')) {
+        if (type != 'baptism' && type != 'marriage') {
           continue;
         }
         DateTime? d = DateTime.tryParse(dateStr);
@@ -227,7 +246,7 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
         );
         imported++;
       }
-      if (mounted) setState(() {});
+      if (mounted) await _loadFromBackend();
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -242,12 +261,12 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     }
   }
 
-  Future<void> _delete(String key) async {
+  Future<void> _deleteRecord(ParishRecord record) async {
     try {
-      await _adminRepo.delete(key);
+      await _repo.deleteForType(record.id, record.type);
       if (!mounted) return;
       setState(() {
-        _records = _records.where((r) => r.id != key).toList();
+        _records = _records.where((r) => r.id != record.id).toList();
       });
       await _loadFromBackend();
       if (!mounted) return;
@@ -255,10 +274,23 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
         context,
       ).showSnackBar(const SnackBar(content: Text('Record deleted.')));
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+      try {
+        await _adminRepo.delete(record.id);
+        if (!mounted) return;
+        setState(() {
+          _records = _records.where((r) => r.id != record.id).toList();
+        });
+        await _loadFromBackend();
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Record deleted.')));
+      } catch (e2) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Delete failed: $e2')));
+      }
     }
   }
 
@@ -272,7 +304,6 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
   @override
   Widget build(BuildContext context) {
     final items = _load();
-    final df = DateFormat.yMMMd();
     final parishSet = <String>{};
     for (final m in items) {
       final p = (m['parish'] ?? '').toString();
@@ -281,38 +312,64 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     final parishOptions = ['all', ...parishSet.toList()..sort()];
     final colorScheme = Theme.of(context).colorScheme;
 
+    final isCompact = MediaQuery.sizeOf(context).width < 600;
+    final pagePadding = isCompact ? 12.0 : 24.0;
+
     return Container(
       decoration: AdminDesignSystem.pageBackground(context),
       child: Column(
         children: [
-          AdminDesignSystem.pageHeader(
-            context,
-            title: 'Records Management',
-            subtitle:
-                'Manage, search, and export ${items.length} parish records securely.',
-            icon: Icons.folder_shared_outlined,
-            actions: [
-              AdminDesignSystem.actionButton(
-                context,
-                label: 'Import CSV',
-                icon: Icons.file_upload_outlined,
-                onPressed: _importCsvDialog,
-                isPrimary: false,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 12),
-              AdminDesignSystem.actionButton(
-                context,
-                label: 'OCR Scan',
-                icon: Icons.document_scanner,
-                onPressed: () => context.go('/admin/ocr/upload'),
-                isPrimary: true,
-              ),
-            ],
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              pagePadding,
+              pagePadding,
+              pagePadding,
+              0,
+            ),
+            child: AdminDesignSystem.pageHeader(
+              context,
+              title: 'Records Management',
+              subtitle:
+                  'Manage baptism and marriage register records (${items.length} total).',
+              icon: Icons.folder_shared_outlined,
+              actions: [
+                AdminDesignSystem.actionButton(
+                  context,
+                  label: 'Manual Register',
+                  icon: Icons.edit_note_outlined,
+                  onPressed: _openManualRegister,
+                  isPrimary: false,
+                  color: Colors.white,
+                ),
+                AdminDesignSystem.actionButton(
+                  context,
+                  label: 'Import CSV',
+                  icon: Icons.file_upload_outlined,
+                  onPressed: _importCsvDialog,
+                  isPrimary: false,
+                  color: Colors.white,
+                ),
+                AdminDesignSystem.actionButton(
+                  context,
+                  label: 'OCR Scan',
+                  icon: Icons.document_scanner,
+                  onPressed: () => context.go('/admin/ocr/upload'),
+                  isPrimary: false,
+                  color: Colors.white,
+                ),
+                AdminDesignSystem.actionButton(
+                  context,
+                  label: 'Add Record',
+                  icon: Icons.add_rounded,
+                  onPressed: _openNewRecord,
+                  isPrimary: true,
+                ),
+              ],
+            ),
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.all(pagePadding),
               child: Container(
                 decoration: AdminDesignSystem.cardDecoration(context),
                 child: Column(
@@ -320,14 +377,14 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                   children: [
                     // FILTERS BAR
                     Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: EdgeInsets.all(isCompact ? 12 : 20),
                       child: Wrap(
                         spacing: 12,
                         runSpacing: 12,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           SizedBox(
-                            width: 320,
+                            width: isCompact ? double.infinity : 320,
                             child: AdminDesignSystem.searchBar(
                               context,
                               controller: _searchCtrl,
@@ -350,14 +407,6 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                               DropdownMenuItem(
                                 value: 'marriage',
                                 child: Text('Marriage'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'funeral',
-                                child: Text('Funeral'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'confirmation',
-                                child: Text('Confirmation'),
                               ),
                             ],
                             onChanged: (v) =>
@@ -408,19 +457,25 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                       child: items.isEmpty
                           ? AdminDesignSystem.emptyState(
                               context,
-                              message:
-                                  'No records found matching your filters.',
-                              icon: Icons.search_off,
-                              actionLabel: 'Clear Search',
-                              onAction: () {
-                                _searchCtrl.clear();
-                                setState(() {
-                                  _type = 'all';
-                                  _parish = 'all';
-                                  _from = null;
-                                  _to = null;
-                                });
-                              },
+                              message: _records.isEmpty
+                                  ? 'No records yet. Add baptism or marriage register entries.'
+                                  : 'No records found matching your filters.',
+                              icon: _records.isEmpty
+                                  ? Icons.folder_open_outlined
+                                  : Icons.search_off,
+                              actionLabel:
+                                  _records.isEmpty ? 'Add Record' : 'Clear Search',
+                              onAction: _records.isEmpty
+                                  ? _openNewRecord
+                                  : () {
+                                      _searchCtrl.clear();
+                                      setState(() {
+                                        _type = 'all';
+                                        _parish = 'all';
+                                        _from = null;
+                                        _to = null;
+                                      });
+                                    },
                             )
                           : _buildTable(items, colorScheme),
                     ),
@@ -563,12 +618,9 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                           tooltip: 'View Details',
                           color: colorScheme.secondary,
                           onPressed: () {
-                            if (id.isNotEmpty) {
-                              final record = m['record'];
-                              context.push(
-                                '/admin/records/$id',
-                                extra: record is ParishRecord ? record : null,
-                              );
+                            final record = m['record'];
+                            if (record is ParishRecord) {
+                              _viewRecord(record);
                             }
                           },
                         ),
@@ -623,7 +675,12 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                                 ],
                               ),
                             );
-                            if (ok == true) await _delete(id);
+                            if (ok == true) {
+                              final record = m['record'];
+                              if (record is ParishRecord) {
+                                await _deleteRecord(record);
+                              }
+                            }
                           },
                         ),
                       ],
@@ -653,3 +710,4 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     }
   }
 }
+

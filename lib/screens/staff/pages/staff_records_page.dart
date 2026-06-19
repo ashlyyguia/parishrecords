@@ -129,52 +129,63 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
       );
     }
 
+    final isCompact = MediaQuery.sizeOf(context).width < 600;
+    final pagePadding = isCompact ? 12.0 : 24.0;
+
     return Container(
       decoration: AdminDesignSystem.pageBackground(context),
       child: Column(
         children: [
-          AdminDesignSystem.pageHeader(
-            context,
-            title: 'Records Management',
-            subtitle:
-                'Manage, search, and view ${items.length} parish records.',
-            icon: Icons.folder_shared_outlined,
-            actions: [
-              AdminDesignSystem.actionButton(
-                context,
-                label: 'Manual Register',
-                icon: Icons.edit_note_outlined,
-                onPressed: () => ManualRegisterLauncher.open(context),
-                isPrimary: true,
-                color: Colors.white,
-              ),
-              AdminDesignSystem.actionButton(
-                context,
-                label: 'Refresh',
-                icon: Icons.refresh,
-                onPressed: () => ref.read(recordsProvider.notifier).load(),
-                isPrimary: false,
-                color: Colors.white,
-              ),
-            ],
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              pagePadding,
+              pagePadding,
+              pagePadding,
+              0,
+            ),
+            child: AdminDesignSystem.pageHeader(
+              context,
+              title: 'Records Management',
+              subtitle:
+                  'Manage, search, and view ${items.length} parish records.',
+              icon: Icons.folder_shared_outlined,
+              actions: [
+                AdminDesignSystem.actionButton(
+                  context,
+                  label: 'Manual Register',
+                  icon: Icons.edit_note_outlined,
+                  onPressed: () => ManualRegisterLauncher.open(context),
+                  isPrimary: true,
+                  color: Colors.white,
+                ),
+                AdminDesignSystem.actionButton(
+                  context,
+                  label: 'Refresh',
+                  icon: Icons.refresh,
+                  onPressed: () => ref.read(recordsProvider.notifier).load(),
+                  isPrimary: false,
+                  color: Colors.white,
+                ),
+              ],
+            ),
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.all(pagePadding),
               child: Container(
                 decoration: AdminDesignSystem.cardDecoration(context),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: EdgeInsets.all(isCompact ? 12 : 20),
                       child: Wrap(
                         spacing: 12,
                         runSpacing: 12,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           SizedBox(
-                            width: 320,
+                            width: isCompact ? double.infinity : 320,
                             child: AdminDesignSystem.searchBar(
                               context,
                               controller: _searchCtrl,

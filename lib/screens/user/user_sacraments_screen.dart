@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers/user_providers.dart';
+import '../../widgets/user_certificate_request_launcher.dart';
 
 class UserSacramentsScreen extends ConsumerWidget {
   const UserSacramentsScreen({super.key});
@@ -123,8 +123,13 @@ class UserSacramentsScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(16),
               itemCount: rows.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, i) =>
-                  _buildSacramentTile(rows[i], theme, colorScheme, context),
+              itemBuilder: (context, i) => _buildSacramentTile(
+                rows[i],
+                theme,
+                colorScheme,
+                context,
+                ref,
+              ),
             ),
           );
         },
@@ -191,6 +196,7 @@ class UserSacramentsScreen extends ConsumerWidget {
     ThemeData theme,
     ColorScheme colorScheme,
     BuildContext context,
+    WidgetRef ref,
   ) {
     final title = (r['title'] ?? 'Record').toString();
     final date = (r['date'] ?? '').toString();
@@ -300,11 +306,8 @@ class UserSacramentsScreen extends ConsumerWidget {
                         )
                       else
                         OutlinedButton.icon(
-                          onPressed: () {
-                            context.push(
-                              '/records/certificate-request?user=1',
-                            );
-                          },
+                          onPressed: () =>
+                              UserCertificateRequestLauncher.open(context, ref),
                           icon: const Icon(Icons.description_outlined, size: 18),
                           label: const Text('Request certificate'),
                         ),

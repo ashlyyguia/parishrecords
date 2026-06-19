@@ -190,8 +190,41 @@ class UserSacramentsRepository {
     };
   }
 
-  /// Sacraments linked to the user's household members, plus records they created.
-  Future<List<Map<String, dynamic>>> listMine({int limit = 30}) async {
+  /// Linked parish sacrament records on the user's household members only.
+  Future<List<Map<String, dynamic>>> listHouseholdLinkedStubs() async {
+    return _collectHouseholdLinkedStubs();
+  }
+
+  /// True when at least one household member has a linked parish sacrament record.
+  Future<bool> hasLinkedSacramentRecords() async {
+    final stubs = await listHouseholdLinkedStubs();
+    return stubs.isNotEmpty;
+  }
+
+  static String stubKey(Map<String, dynamic> stub) {
+    final type = (stub['type'] ?? '').toString().toLowerCase();
+    final id = (stub['id'] ?? '').toString();
+    return '$type:$id';
+  }
+
+  static String stubDisplayLabel(Map<String, dynamic> stub) {
+    final title = (stub['cached_title'] ?? '').toString().trim();
+    final member = (stub['member_name'] ?? '').toString().trim();
+    if (title.isNotEmpty && member.isNotEmpty && title.toLowerCase() != member.toLowerCase()) {
+      return '$title — $member';
+    }
+    if (title.isNotEmpty) return title;
+    if (member.isNotEmpty) return member;
+    return 'Linked record';
+  }
+
+  static String stubCertificateName(Map<String, dynamic> stub) {
+    final title = (stub['cached_title'] ?? '').toString().trim();
+    if (title.isNotEmpty) return title;
+    return (stub['member_name'] ?? '').toString().trim();
+  }
+
+  Future<List<Map<String, dynamic>>> _collectHouseholdLinkedStubs() async {
     final uid = _requireUid();
     final stubs = <Map<String, dynamic>>[];
     final seen = <String>{};
@@ -285,6 +318,45 @@ class UserSacramentsRepository {
         }
       }
     } catch (_) {}
+
+    return stubs;
+  }
+
+  /// Sacraments linked to the user's household members, plus records they created.
+  Future<List<Map<String, dynamic>>> listMine({int limit = 30}) async {
+    final uid = _requireUid();
+    final stubs = <Map<String, dynamic>>[];
+    final seen = <String>{};
+
+    void addStub({
+      required String type,
+      required String id,
+      required String memberName,
+      String? cachedTitle,
+      dynamic cachedDate,
+    }) {
+      if (id.isEmpty || type.isEmpty) return;
+      final key = '${type.toLowerCase()}:$id';
+      if (seen.contains(key)) return;
+      seen.add(key);
+      stubs.add({
+        'type': type.toLowerCase(),
+        'id': id,
+        'member_name': memberName,
+        'cached_title': cachedTitle,
+        'cached_date': cachedDate,
+      });
+    }
+
+    for (final stub in await listHouseholdLinkedStubs()) {
+      addStub(
+        type: stub['type'] as String,
+        id: stub['id'] as String,
+        memberName: stub['member_name'] as String,
+        cachedTitle: stub['cached_title'] as String?,
+        cachedDate: stub['cached_date'],
+      );
+    }
 
     final collections = [
       ('baptism_records', 'baptism'),

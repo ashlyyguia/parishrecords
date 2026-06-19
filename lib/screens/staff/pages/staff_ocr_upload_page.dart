@@ -720,13 +720,28 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
     );
   }
 
-  Widget _buildDropdown(ColorScheme colorScheme, ThemeData theme) {
-    final sacramentTypes = [
+  List<(String, String, IconData, Color)> _sacramentTypeOptions() {
+    const all = [
       ('baptism', 'Baptism', Icons.water_drop_outlined, Colors.blue),
       ('marriage', 'Marriage', Icons.favorite_outline, Colors.pink),
       ('confirmation', 'Confirmation', Icons.church_outlined, Colors.purple),
       ('death', 'Death', Icons.sentiment_dissatisfied_outlined, Colors.grey),
     ];
+    final path = GoRouterState.of(context).uri.path;
+    if (path.startsWith('/admin')) {
+      return all.where((t) => t.$1 == 'baptism' || t.$1 == 'marriage').toList();
+    }
+    return all;
+  }
+
+  Widget _buildDropdown(ColorScheme colorScheme, ThemeData theme) {
+    final sacramentTypes = _sacramentTypeOptions();
+    if (!sacramentTypes.any((t) => t.$1 == _type)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _type = sacramentTypes.first.$1);
+      });
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

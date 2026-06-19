@@ -88,12 +88,6 @@ class _StaffHouseholdDetailPageState
                     onPressed: () =>
                         _showEditHouseholdDialog(context, household),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete),
-                    tooltip: 'Delete Household',
-                    color: colorScheme.error,
-                    onPressed: () => _confirmDelete(context, household),
-                  ),
                 ],
               ),
             ],
@@ -185,40 +179,6 @@ class _StaffHouseholdDetailPageState
     }
   }
 
-  Future<void> _confirmDelete(BuildContext context, Household household) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Household?'),
-        content: Text(
-          'This will permanently delete ${household.familyName} (${household.householdId}) and all its members. This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      final notifier = ref.read(householdOperationsProvider.notifier);
-      final success = await notifier.deleteHousehold(household.id);
-
-      if (success && mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Household deleted')));
-        if (mounted) context.pop();
-      }
-    }
-  }
 }
 
 /// Members Tab

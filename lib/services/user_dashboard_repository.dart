@@ -22,32 +22,29 @@ class UserDashboardRepository {
     return null;
   }
 
-  int _countSacramentsFromMember(Map<String, dynamic> m, Set<String> seen) {
-    var added = 0;
-    const fields = [
-      'baptismRecordId',
-      'confirmationRecordId',
-      'marriageRecordId',
-      'deathRecordId',
-    ];
-    for (final field in fields) {
-      final id = m[field]?.toString();
+  /// Registers unique sacrament links using `type:recordId` (same as My Sacraments).
+  void _registerSacramentsFromMember(Map<String, dynamic> m, Set<String> seen) {
+    const fieldToType = {
+      'baptismRecordId': 'baptism',
+      'confirmationRecordId': 'confirmation',
+      'marriageRecordId': 'marriage',
+      'deathRecordId': 'death',
+    };
+    for (final entry in fieldToType.entries) {
+      final id = m[entry.key]?.toString();
       if (id == null || id.isEmpty) continue;
-      final key = '$field:$id';
-      if (seen.add(key)) added++;
+      seen.add('${entry.value}:$id');
     }
     final cached = m['linkedSacraments'];
     if (cached is List) {
       for (final raw in cached) {
         if (raw is! Map) continue;
-        final type = (raw['type'] ?? '').toString();
+        final type = (raw['type'] ?? '').toString().trim().toLowerCase();
         final id = (raw['recordId'] ?? '').toString();
-        if (id.isEmpty) continue;
-        final key = '$type:$id';
-        if (seen.add(key)) added++;
+        if (type.isEmpty || id.isEmpty) continue;
+        seen.add('$type:$id');
       }
     }
-    return added;
   }
 
   Future<QuerySnapshot<Map<String, dynamic>>?> _fetchHouseholdMembers(
@@ -103,7 +100,7 @@ class UserDashboardRepository {
         final m = memberDoc.data();
         m['id'] = memberDoc.id;
         members.add(m);
-        _countSacramentsFromMember(m, sacramentKeys);
+        _registerSacramentsFromMember(m, sacramentKeys);
       }
     }
 

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/user_providers.dart';
 import '../../services/requests_repository.dart';
 import '../../services/user_requests_repository.dart';
+import '../../widgets/user_certificate_request_launcher.dart';
 
 class UserRequestsListScreen extends ConsumerStatefulWidget {
   const UserRequestsListScreen({super.key});
@@ -171,9 +172,7 @@ class _UserRequestsListScreenState
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          context.go('/records/certificate-request?user=1');
-        },
+        onPressed: () => UserCertificateRequestLauncher.open(context, ref),
         icon: const Icon(Icons.add),
         label: const Text('New Request'),
         backgroundColor: colorScheme.primaryContainer,
@@ -274,20 +273,28 @@ class _UserRequestsListScreenState
               ),
               const SizedBox(height: 8),
               Text(
-                'Submit a new certificate request to get started.',
+                hasSacraments
+                    ? 'Submit a new certificate request to get started.'
+                    : 'Link a family member\'s sacrament record in My Profile before you can request a certificate.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: () {
-                  context.go('/records/certificate-request?user=1');
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('New Request'),
-              ),
+              if (hasSacraments)
+                FilledButton.icon(
+                  onPressed: () =>
+                      UserCertificateRequestLauncher.open(context, ref),
+                  icon: const Icon(Icons.add),
+                  label: const Text('New Request'),
+                )
+              else
+                FilledButton.icon(
+                  onPressed: () => context.go('/user/profile'),
+                  icon: const Icon(Icons.person_outline),
+                  label: const Text('Go to My Profile'),
+                ),
             ],
           ),
         ),
