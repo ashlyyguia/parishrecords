@@ -202,9 +202,9 @@ class _AdminDonationsPageState extends ConsumerState<AdminDonationsPage> {
       await _exportDonationsPdf(donations);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Report failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Report failed: $e')));
       }
     }
   }
@@ -449,9 +449,9 @@ class _AdminDonationsInfoBanner extends StatelessWidget {
               'public Donations page are saved separately — view them under '
               'Finance → Donations.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    height: 1.45,
-                    color: const Color(0xFF475569),
-                  ),
+                height: 1.45,
+                color: const Color(0xFF475569),
+              ),
             ),
           ),
         ],
@@ -490,12 +490,7 @@ class _DonationsPanel extends StatelessWidget {
     required this.onDelete,
   });
 
-  static const _donationTypes = [
-    'Tithes',
-    'Projects',
-    'Outreach',
-    'General',
-  ];
+  static const _donationTypes = ['Tithes', 'Projects', 'Outreach', 'General'];
 
   @override
   Widget build(BuildContext context) {
@@ -584,7 +579,9 @@ class _DonationsPanel extends StatelessWidget {
               style: style,
               trailing: snap.hasData && donations.isNotEmpty
                   ? TextButton.icon(
-                      onPressed: pdfBusy ? null : () => onExportTable(donations),
+                      onPressed: pdfBusy
+                          ? null
+                          : () => onExportTable(donations),
                       icon: pdfBusy
                           ? SizedBox(
                               width: 14,
@@ -595,7 +592,10 @@ class _DonationsPanel extends StatelessWidget {
                               ),
                             )
                           : Icon(Icons.download_rounded, color: style.accent),
-                      label: Text('Export', style: TextStyle(color: style.accent)),
+                      label: Text(
+                        'Export',
+                        style: TextStyle(color: style.accent),
+                      ),
                     )
                   : null,
             ),
@@ -707,11 +707,7 @@ class _DonationsTopToolbar extends StatelessWidget {
           if (stacked) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                filters,
-                const SizedBox(height: 12),
-                actions,
-              ],
+              children: [filters, const SizedBox(height: 12), actions],
             );
           }
           return Row(
@@ -767,10 +763,7 @@ class _DonationsAnalyticsGrid extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                style.accent.withValues(alpha: 0.12),
-                style.accentSoft,
-              ],
+              colors: [style.accent.withValues(alpha: 0.12), style.accentSoft],
             ),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: style.accent.withValues(alpha: 0.2)),
@@ -979,7 +972,9 @@ class _DonationsDataTable extends StatelessWidget {
           decoration: BoxDecoration(
             color: cs.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.45),
+            ),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
@@ -1003,10 +998,7 @@ class _DonationsDataTable extends StatelessWidget {
                     DataColumn(label: Text('Date')),
                     DataColumn(label: Text('Name')),
                     DataColumn(label: Text('Type of Donation')),
-                    DataColumn(
-                      label: Text('Payment'),
-                      numeric: true,
-                    ),
+                    DataColumn(label: Text('Payment'), numeric: true),
                     DataColumn(label: Text('Actions')),
                   ],
                   rows: donations.map((d) {
@@ -1039,8 +1031,8 @@ class _DonationsDataTable extends StatelessWidget {
                                         _donorName(d),
                                         style: theme.textTheme.bodyMedium
                                             ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                       ),
                                     ),
                                     if (isOnlineDonation(d)) ...[
@@ -1052,8 +1044,9 @@ class _DonationsDataTable extends StatelessWidget {
                                         ),
                                         decoration: BoxDecoration(
                                           color: Colors.blue.shade50,
-                                          borderRadius:
-                                              BorderRadius.circular(6),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
                                           border: Border.all(
                                             color: Colors.blue.shade200,
                                           ),
@@ -1062,9 +1055,9 @@ class _DonationsDataTable extends StatelessWidget {
                                           'Online',
                                           style: theme.textTheme.labelSmall
                                               ?.copyWith(
-                                            color: Colors.blue.shade700,
-                                            fontWeight: FontWeight.w700,
-                                          ),
+                                                color: Colors.blue.shade700,
+                                                fontWeight: FontWeight.w700,
+                                              ),
                                         ),
                                       ),
                                     ],
@@ -1078,7 +1071,9 @@ class _DonationsDataTable extends StatelessWidget {
                                       if (donorPhone(d) != null) donorPhone(d),
                                     ].join(' · '),
                                     style: theme.textTheme.bodySmall?.copyWith(
-                                      color: cs.onSurface.withValues(alpha: 0.55),
+                                      color: cs.onSurface.withValues(
+                                        alpha: 0.55,
+                                      ),
                                     ),
                                   ),
                               ],
@@ -1086,10 +1081,7 @@ class _DonationsDataTable extends StatelessWidget {
                           ),
                         ),
                         DataCell(
-                          FinanceCategoryBadge(
-                            label: type,
-                            color: typeColor,
-                          ),
+                          FinanceCategoryBadge(label: type, color: typeColor),
                         ),
                         DataCell(
                           Column(
@@ -1132,8 +1124,9 @@ class _DonationsDataTable extends StatelessWidget {
                                   color: cs.error,
                                 ),
                                 tooltip: 'Delete',
-                                onPressed:
-                                    id.isEmpty ? null : () => onDelete(id),
+                                onPressed: id.isEmpty
+                                    ? null
+                                    : () => onDelete(id),
                               ),
                             ],
                           ),
@@ -1257,9 +1250,9 @@ class _RecordDonationFormState extends State<_RecordDonationForm> {
             ),
             child: Text(
               'Cash (in-person)',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
           const SizedBox(height: 14),
@@ -1302,4 +1295,3 @@ class _RecordDonationFormState extends State<_RecordDonationForm> {
     );
   }
 }
-

@@ -8,7 +8,7 @@ class MassTimeSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LandingCommon.sectionShell(
-      title: 'Schedule of Mass',
+      title: 'Schedule of Mass1',
       subtitle: 'Holy Rosary Parish — weekly liturgy schedule.',
       left: LandingCommon.churchImageCard(),
       right: ParishMassSchedule(accentColor: LandingCommon.primary),

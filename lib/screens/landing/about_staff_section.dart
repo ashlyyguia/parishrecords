@@ -11,17 +11,20 @@ class AboutStaffSection extends StatelessWidget {
     _StaffMember(
       name: 'Rev. Fr. Juan D. Santos',
       role: 'Parish Priest',
-      description: 'Fr. Santos has served Holy Rosary Parish since 2018. He oversees spiritual leadership, sacramental administration, and parish development programs.',
+      description:
+          'Fr. Santos has served Holy Rosary Parish since 2018. He oversees spiritual leadership, sacramental administration, and parish development programs.',
     ),
     _StaffMember(
       name: 'Rev. Fr. Michael P. Reyes',
       role: 'Assistant Parish Priest',
-      description: 'Fr. Reyes assists in daily Masses, confession schedules, and youth ministry programs while supporting parish outreach initiatives.',
+      description:
+          'Fr. Reyes assists in daily Masses, confession schedules, and youth ministry programs while supporting parish outreach initiatives.',
     ),
     _StaffMember(
       name: 'Ms. Maria L. Cruz',
       role: 'Parish Secretary',
-      description: 'Responsible for record management, certificate processing, and parish office operations.',
+      description:
+          'Responsible for record management, certificate processing, and parish office operations.',
     ),
   ];
 
@@ -63,7 +66,8 @@ class AboutStaffSection extends StatelessWidget {
                         return ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: _staff.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 16),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: 16),
                           itemBuilder: (_, index) => SizedBox(
                             width: 280,
                             child: _StaffCard(member: _staff[index]),
@@ -74,7 +78,9 @@ class AboutStaffSection extends StatelessWidget {
                         children: _staff.map((member) {
                           return Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
                               child: _StaffCard(member: member),
                             ),
                           );
@@ -131,7 +137,9 @@ class _StaffCard extends StatelessWidget {
             height: 8,
             decoration: BoxDecoration(
               color: LandingCommon.primary,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
             ),
           ),
           Expanded(
@@ -145,7 +153,10 @@ class _StaffCard extends StatelessWidget {
                     height: 100,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: LandingCommon.primary, width: 2),
+                      border: Border.all(
+                        color: LandingCommon.primary,
+                        width: 2,
+                      ),
                       color: Colors.white,
                     ),
                     child: Icon(
