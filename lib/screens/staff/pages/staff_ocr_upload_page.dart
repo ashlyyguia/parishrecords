@@ -71,7 +71,8 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (context) => StaffOcrResultPage(
-          imagePath: _extractedTextCtrl.text.trim().isEmpty &&
+          imagePath:
+              _extractedTextCtrl.text.trim().isEmpty &&
                   _lastParsedEntries.isEmpty
               ? _lastImagePath
               : null,
@@ -125,9 +126,9 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
       _lastLineCount = result.lineCount > 0
           ? result.lineCount
           : _extractedTextCtrl.text
-              .split(RegExp(r'\r?\n'))
-              .where((l) => l.trim().isNotEmpty)
-              .length;
+                .split(RegExp(r'\r?\n'))
+                .where((l) => l.trim().isNotEmpty)
+                .length;
       _lastCellCount = _isMarriage
           ? _lastMarriageEntries.length
           : _lastParsedEntries.length;
@@ -244,7 +245,9 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
       final entries = _marriageEntriesForForm();
       if (entries.isEmpty && _extractedTextCtrl.text.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Scan or upload a register photo first.')),
+          const SnackBar(
+            content: Text('Scan or upload a register photo first.'),
+          ),
         );
         return;
       }
@@ -279,9 +282,7 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
     final text = _extractedTextCtrl.text.trim();
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Scan or paste register text first.'),
-        ),
+        const SnackBar(content: Text('Scan or paste register text first.')),
       );
       return;
     }
@@ -372,7 +373,6 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
       if (mounted) setState(() => _creating = false);
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -501,8 +501,10 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
               decoration: InputDecoration(
                 labelText: 'Vol Number',
                 hintText: 'Enter register volume number',
-                prefixIcon: Icon(Icons.library_books_outlined,
-                    color: colorScheme.primary),
+                prefixIcon: Icon(
+                  Icons.library_books_outlined,
+                  color: colorScheme.primary,
+                ),
                 filled: true,
                 fillColor: colorScheme.surfaceContainerLowest,
                 border: OutlineInputBorder(
@@ -528,8 +530,10 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
               decoration: InputDecoration(
                 labelText: 'Series Number',
                 hintText: 'Enter register series number',
-                prefixIcon: Icon(Icons.numbers_outlined,
-                    color: colorScheme.primary),
+                prefixIcon: Icon(
+                  Icons.numbers_outlined,
+                  color: colorScheme.primary,
+                ),
                 filled: true,
                 fillColor: colorScheme.surfaceContainerLowest,
                 border: OutlineInputBorder(
@@ -591,17 +595,17 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
                     const SizedBox(height: 8),
                     Text(
                       (_isMarriage
-                              ? _lastMarriageEntries.length
-                              : _lastParsedEntries.length) >
-                          0
+                                  ? _lastMarriageEntries.length
+                                  : _lastParsedEntries.length) >
+                              0
                           ? '${_isMarriage ? _lastMarriageEntries.length : _lastParsedEntries.length} '
-                              'record(s) from ${_scannedPageCount > 0 ? _scannedPageCount : 1} '
-                              'page(s). Add another page to merge by register No.'
+                                'record(s) from ${_scannedPageCount > 0 ? _scannedPageCount : 1} '
+                                'page(s). Add another page to merge by register No.'
                           : (_isMarriage
-                              ? 'Scan left page (Man/Woman rows), then right page '
-                                  '(Parents, Sponsors, Minister, License).'
-                              : 'Scan left page first, then add the opposite page '
-                                  'for Residents, Baptism, Minister, Sponsors.'),
+                                ? 'Scan left page (Man/Woman rows), then right page '
+                                      '(Parents, Sponsors, Minister, License).'
+                                : 'Scan left page first, then add the opposite page '
+                                      'for Residents, Baptism, Minister, Sponsors.'),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurface.withValues(alpha: 0.75),
                       ),
@@ -645,7 +649,9 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
                       width: double.infinity,
                       height: 44,
                       child: FilledButton.tonalIcon(
-                        onPressed: _hasRegisterData ? _openManualRegister : null,
+                        onPressed: _hasRegisterData
+                            ? _openManualRegister
+                            : null,
                         icon: const Icon(Icons.edit_note_outlined),
                         label: Text(
                           _isMarriage
@@ -664,7 +670,8 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
                       width: double.infinity,
                       height: 44,
                       child: OutlinedButton.icon(
-                        onPressed: (_extractedTextCtrl.text.trim().isNotEmpty ||
+                        onPressed:
+                            (_extractedTextCtrl.text.trim().isNotEmpty ||
                                 _lastParsedEntries.isNotEmpty ||
                                 _lastMarriageEntries.isNotEmpty)
                             ? _openBulkImport
