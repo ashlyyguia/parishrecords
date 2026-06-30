@@ -159,10 +159,7 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
   }
 
   Future<void> _viewRecord(ParishRecord record) async {
-    await context.push(
-      '/admin/records/${record.id}',
-      extra: record,
-    );
+    await context.push('/admin/records/${record.id}', extra: record);
     if (mounted) await _loadFromBackend();
   }
 
@@ -463,8 +460,9 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                               icon: _records.isEmpty
                                   ? Icons.folder_open_outlined
                                   : Icons.search_off,
-                              actionLabel:
-                                  _records.isEmpty ? 'Add Record' : 'Clear Search',
+                              actionLabel: _records.isEmpty
+                                  ? 'Add Record'
+                                  : 'Clear Search',
                               onAction: _records.isEmpty
                                   ? _openNewRecord
                                   : () {
@@ -527,169 +525,164 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
       scrollDirection: Axis.vertical,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minWidth: MediaQuery.of(context).size.width - 48,
+        child: DataTable(
+          headingRowColor: WidgetStateProperty.all(
+            colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
           ),
-          child: DataTable(
-            headingRowColor: WidgetStateProperty.all(
-              colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          dataRowMinHeight: 64,
+          dataRowMaxHeight: 64,
+          showCheckboxColumn: false,
+          columns: const [
+            DataColumn(
+              label: Text(
+                'Record Date',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
-            dataRowMinHeight: 64,
-            dataRowMaxHeight: 64,
-            showCheckboxColumn: false,
-            columns: const [
-              DataColumn(
-                label: Text(
-                  'Record Date',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+            DataColumn(
+              label: Text(
+                'Full Name',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              DataColumn(
-                label: Text(
-                  'Full Name',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+            ),
+            DataColumn(
+              label: Text(
+                'Sacrament Type',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              DataColumn(
-                label: Text(
-                  'Sacrament Type',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+            ),
+            DataColumn(
+              label: Text(
+                'Parish Location',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              DataColumn(
-                label: Text(
-                  'Parish Location',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+            ),
+            DataColumn(
+              label: Text(
+                'Actions',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              DataColumn(
-                label: Text(
-                  'Actions',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-            rows: items.map((m) {
-              final id = m['id']?.toString() ?? '';
-              final dateStr = m['date']?.toString() ?? '';
-              final date = DateTime.tryParse(dateStr) ?? DateTime.now();
-              final type = m['type']?.toString() ?? '';
+            ),
+          ],
+          rows: items.map((m) {
+            final id = m['id']?.toString() ?? '';
+            final dateStr = m['date']?.toString() ?? '';
+            final date = DateTime.tryParse(dateStr) ?? DateTime.now();
+            final type = m['type']?.toString() ?? '';
 
-              Color badgeColor;
-              switch (type) {
-                case 'baptism':
-                  badgeColor = Colors.blue;
-                  break;
-                case 'marriage':
-                  badgeColor = Colors.pink;
-                  break;
-                case 'funeral':
-                  badgeColor = Colors.grey;
-                  break;
-                default:
-                  badgeColor = Colors.orange;
-                  break;
-              }
+            Color badgeColor;
+            switch (type) {
+              case 'baptism':
+                badgeColor = Colors.blue;
+                break;
+              case 'marriage':
+                badgeColor = Colors.pink;
+                break;
+              case 'funeral':
+                badgeColor = Colors.grey;
+                break;
+              default:
+                badgeColor = Colors.orange;
+                break;
+            }
 
-              return DataRow(
-                cells: [
-                  DataCell(Text(df.format(date))),
-                  DataCell(
-                    Text(
-                      m['name']?.toString() ?? 'Untitled',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
+            return DataRow(
+              cells: [
+                DataCell(Text(df.format(date))),
+                DataCell(
+                  Text(
+                    m['name']?.toString() ?? 'Untitled',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  DataCell(
-                    AdminDesignSystem.statusBadge(
-                      context,
-                      type.toUpperCase(),
-                      badgeColor,
-                    ),
+                ),
+                DataCell(
+                  AdminDesignSystem.statusBadge(
+                    context,
+                    type.toUpperCase(),
+                    badgeColor,
                   ),
-                  DataCell(Text(m['parish']?.toString() ?? '-')),
-                  DataCell(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.visibility_outlined, size: 20),
-                          tooltip: 'View Details',
-                          color: colorScheme.secondary,
-                          onPressed: () {
-                            final record = m['record'];
-                            if (record is ParishRecord) {
-                              _viewRecord(record);
-                            }
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined, size: 20),
-                          tooltip: 'Edit',
-                          color: colorScheme.primary,
-                          onPressed: () {
-                            final record = m['record'];
-                            if (record is ParishRecord) {
-                              _editRecord(record);
-                            }
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.card_membership, size: 20),
-                          tooltip: 'Certificate',
-                          color: Colors.orange,
-                          onPressed: () {
-                            if (id.isNotEmpty) {
-                              context.push(
-                                '/admin/records/$id/certificate',
-                                extra: _strToType(type),
-                              );
-                            }
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 20),
-                          tooltip: 'Delete',
-                          color: colorScheme.error,
-                          onPressed: () async {
-                            final ok = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Delete record?'),
-                                content: Text(
-                                  'Are you sure you want to delete "${m['name']}"?',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx, false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () => Navigator.pop(ctx, true),
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: colorScheme.error,
-                                    ),
-                                    child: const Text('Delete'),
-                                  ),
-                                ],
-                              ),
+                ),
+                DataCell(Text(m['parish']?.toString() ?? '-')),
+                DataCell(
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.visibility_outlined, size: 20),
+                        tooltip: 'View Details',
+                        color: colorScheme.secondary,
+                        onPressed: () {
+                          final record = m['record'];
+                          if (record is ParishRecord) {
+                            _viewRecord(record);
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined, size: 20),
+                        tooltip: 'Edit',
+                        color: colorScheme.primary,
+                        onPressed: () {
+                          final record = m['record'];
+                          if (record is ParishRecord) {
+                            _editRecord(record);
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.card_membership, size: 20),
+                        tooltip: 'Certificate',
+                        color: Colors.orange,
+                        onPressed: () {
+                          if (id.isNotEmpty) {
+                            context.push(
+                              '/admin/records/$id/certificate',
+                              extra: _strToType(type),
                             );
-                            if (ok == true) {
-                              final record = m['record'];
-                              if (record is ParishRecord) {
-                                await _deleteRecord(record);
-                              }
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 20),
+                        tooltip: 'Delete',
+                        color: colorScheme.error,
+                        onPressed: () async {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Delete record?'),
+                              content: Text(
+                                'Are you sure you want to delete "${m['name']}"?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: colorScheme.error,
+                                  ),
+                                  child: const Text('Delete'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (ok == true) {
+                            final record = m['record'];
+                            if (record is ParishRecord) {
+                              await _deleteRecord(record);
                             }
-                          },
-                        ),
-                      ],
-                    ),
+                          }
+                        },
+                      ),
+                    ],
                   ),
-                ],
-              );
-            }).toList(),
-          ),
+                ),
+              ],
+            );
+          }).toList(),
         ),
       ),
     );
@@ -710,4 +703,3 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     }
   }
 }
-
