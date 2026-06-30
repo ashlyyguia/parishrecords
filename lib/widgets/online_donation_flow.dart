@@ -270,7 +270,10 @@ class _OnlineDonationFlowState extends State<OnlineDonationFlow> {
           );
         }),
         const SizedBox(height: 24),
-        _buildNextButton(),
+        SizedBox(
+          width: double.infinity,
+          child: _buildNextButton(),
+        ),
       ],
     );
   }
