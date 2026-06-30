@@ -31,15 +31,15 @@ class UserAnnouncementsScreen extends ConsumerWidget {
                   Text(
                     'Announcements',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Latest updates and notices from the parish.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -50,9 +50,7 @@ class UserAnnouncementsScreen extends ConsumerWidget {
               child: Center(child: CircularProgressIndicator()),
             ),
             error: (e, st) => SliverFillRemaining(
-              child: Center(
-                child: Text('Could not load announcements: $e'),
-              ),
+              child: Center(child: Text('Could not load announcements: $e')),
             ),
             data: (items) {
               if (items.isEmpty) {
@@ -87,15 +85,12 @@ class UserAnnouncementsScreen extends ConsumerWidget {
               return SliverPadding(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
                 sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      return _AnnouncementCard(
-                        announcement: sorted[index],
-                        onTap: () => _showDetail(context, sorted[index]),
-                      );
-                    },
-                    childCount: sorted.length,
-                  ),
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    return _AnnouncementCard(
+                      announcement: sorted[index],
+                      onTap: () => _showDetail(context, sorted[index]),
+                    );
+                  }, childCount: sorted.length),
                 ),
               );
             },
@@ -123,10 +118,7 @@ class UserAnnouncementsScreen extends ConsumerWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AnnouncementCard extends StatelessWidget {
-  const _AnnouncementCard({
-    required this.announcement,
-    required this.onTap,
-  });
+  const _AnnouncementCard({required this.announcement, required this.onTap});
 
   final Announcement announcement;
   final VoidCallback onTap;
@@ -135,8 +127,7 @@ class _AnnouncementCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final a = announcement;
-    final dateStr =
-        DateFormat('MMM d, yyyy  h:mm a').format(a.eventDateTime);
+    final dateStr = DateFormat('MMM d, yyyy  h:mm a').format(a.eventDateTime);
 
     final isMarriage = a.announcementType == 'marriage';
     final hasMarriagePhotos =
@@ -147,9 +138,10 @@ class _AnnouncementCard extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 640),
         child: Card(
-          elevation: 0,
+          elevation: 2,
           margin: const EdgeInsets.only(bottom: 14),
           clipBehavior: Clip.antiAlias,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
@@ -179,113 +171,117 @@ class _AnnouncementCard extends StatelessWidget {
                   ),
 
                 Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Type badge + pin
-                  Row(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _TypeBadge(type: a.announcementType),
-                      if (a.pinned) ...[
-                        const SizedBox(width: 8),
-                        _badge(
-                          context,
-                          Icons.push_pin,
-                          'Pinned',
-                          colorScheme.primary,
-                        ),
-                      ],
-                      const Spacer(),
-                      Icon(
-                        Icons.chevron_right,
-                        color: colorScheme.onSurfaceVariant,
+                      // Type badge + pin
+                      Row(
+                        children: [
+                          _TypeBadge(type: a.announcementType),
+                          if (a.pinned) ...[
+                            const SizedBox(width: 8),
+                            _badge(
+                              context,
+                              Icons.push_pin,
+                              'Pinned',
+                              colorScheme.primary,
+                            ),
+                          ],
+                          const Spacer(),
+                          Icon(
+                            Icons.chevron_right,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
+                      const SizedBox(height: 8),
 
-                  Text(
-                    a.title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  const SizedBox(height: 6),
+                      Text(
+                        a.title,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 6),
 
-                  // Description — show up to 3 lines
-                  Text(
-                    a.description,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      // Description — show up to 3 lines
+                      Text(
+                        a.description,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
-                  ),
-                  const SizedBox(height: 10),
+                      ),
+                      const SizedBox(height: 10),
 
-                  // Date & location row
-                  Row(
-                    children: [
-                      Icon(Icons.calendar_today_outlined,
-                          size: 14, color: colorScheme.primary),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          dateStr,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                      // Date & location row
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_outlined,
+                            size: 14,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              dateStr,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
                                     color: colorScheme.primary,
                                     fontWeight: FontWeight.w600,
                                   ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (a.location.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_on_outlined,
+                              size: 14,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                a.location,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      if (isMarriage &&
+                          !hasMarriagePhotos &&
+                          (a.person1Name != null || a.person2Name != null)) ...[
+                        const SizedBox(height: 8),
+                        _MarriageCoupleLine(
+                          person1: a.person1Name,
+                          person2: a.person2Name,
+                        ),
+                      ],
+
+                      // "Tap to read more" hint
+                      const SizedBox(height: 6),
+                      Text(
+                        'Tap to read more',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colorScheme.primary,
                         ),
                       ),
                     ],
                   ),
-                  if (a.location.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.location_on_outlined,
-                            size: 14, color: colorScheme.onSurfaceVariant),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            a.location,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                    color: colorScheme.onSurfaceVariant),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-
-                  if (isMarriage &&
-                      !hasMarriagePhotos &&
-                      (a.person1Name != null || a.person2Name != null)) ...[
-                    const SizedBox(height: 8),
-                    _MarriageCoupleLine(
-                      person1: a.person1Name,
-                      person2: a.person2Name,
-                    ),
-                  ],
-
-                  // "Tap to read more" hint
-                  const SizedBox(height: 6),
-                  Text(
-                    'Tap to read more',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colorScheme.primary,
-                        ),
-                  ),
-                ],
-              ),
-            ),
+                ),
               ],
             ),
           ),
@@ -294,24 +290,29 @@ class _AnnouncementCard extends StatelessWidget {
     );
   }
 
-  Widget _badge(BuildContext context, IconData icon, String label, Color color) {
+  Widget _badge(
+    BuildContext context,
+    IconData icon,
+    String label,
+    Color color,
+  ) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: color,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: color),
+          Icon(icon, size: 12, color: Colors.white),
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: color,
+              color: Colors.white,
             ),
           ),
         ],
@@ -333,8 +334,9 @@ class _AnnouncementDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final a = announcement;
-    final dateStr =
-        DateFormat('EEEE, MMMM d, yyyy  •  h:mm a').format(a.eventDateTime);
+    final dateStr = DateFormat(
+      'EEEE, MMMM d, yyyy  •  h:mm a',
+    ).format(a.eventDateTime);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.75,
@@ -396,24 +398,29 @@ class _AnnouncementDetailSheet extends StatelessWidget {
                               const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: colorScheme.primary
-                                      .withValues(alpha: 0.12),
+                                  color: colorScheme.primary,
                                   borderRadius: BorderRadius.circular(20),
                                 ),
-                                child: Row(
+                                child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.push_pin,
-                                        size: 12, color: colorScheme.primary),
-                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.push_pin,
+                                      size: 12,
+                                      color: Colors.white,
+                                    ),
+                                    SizedBox(width: 4),
                                     Text(
                                       'Pinned',
                                       style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: colorScheme.primary),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -426,9 +433,7 @@ class _AnnouncementDetailSheet extends StatelessWidget {
                         // Title
                         Text(
                           a.title,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
+                          style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 16),
@@ -442,9 +447,7 @@ class _AnnouncementDetailSheet extends StatelessWidget {
                             iconColor: Colors.pinkAccent,
                             text:
                                 '${a.person1Name ?? ''} & ${a.person2Name ?? ''}',
-                            textStyle: Theme.of(context)
-                                .textTheme
-                                .titleMedium
+                            textStyle: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(
                                   fontWeight: FontWeight.w700,
                                   color: Colors.pinkAccent,
@@ -473,16 +476,16 @@ class _AnnouncementDetailSheet extends StatelessWidget {
 
                         // Divider
                         Divider(
-                            color: colorScheme.outlineVariant
-                                .withValues(alpha: 0.5)),
+                          color: colorScheme.outlineVariant.withValues(
+                            alpha: 0.5,
+                          ),
+                        ),
                         const SizedBox(height: 16),
 
                         // Full description
                         Text(
                           'Details',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleSmall
+                          style: Theme.of(context).textTheme.titleSmall
                               ?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: colorScheme.onSurfaceVariant,
@@ -491,10 +494,9 @@ class _AnnouncementDetailSheet extends StatelessWidget {
                         const SizedBox(height: 8),
                         Text(
                           a.description,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(height: 1.6),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodyMedium?.copyWith(height: 1.6),
                         ),
 
                         // Second image (non-marriage single image2)
@@ -709,9 +711,9 @@ class _MarriageCoupleLine extends StatelessWidget {
           child: Text(
             names,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: Colors.pinkAccent,
-                ),
+              fontWeight: FontWeight.w700,
+              color: Colors.pinkAccent,
+            ),
           ),
         ),
       ],
@@ -790,10 +792,11 @@ class _InfoRow extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: textStyle ??
-                Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
+            style:
+                textStyle ??
+                Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
           ),
         ),
       ],
