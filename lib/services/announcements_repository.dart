@@ -131,12 +131,7 @@ class AnnouncementsRepository {
       attachmentUrl = _encodePdf(newAttachmentBytes);
     }
 
-    // simple auto-archive
     final now = DateTime.now();
-    String status = announcement.status;
-    if (announcement.eventDateTime.isBefore(now) && status == 'active') {
-      status = 'archived';
-    }
 
     final updated = announcement.copyWith(
       imageUrl: imageUrl,
@@ -145,7 +140,6 @@ class AnnouncementsRepository {
       imageStoragePath2: null,
       attachmentUrl: attachmentUrl,
       attachmentStoragePath: null,
-      status: status,
       updatedAt: now,
     );
 
