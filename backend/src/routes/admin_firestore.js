@@ -733,18 +733,110 @@ router.get('/analytics', async (_req, res) => {
   }
 });
 
+// POST /api/admin/users - Create new user
+router.post('/users', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const email = (body.email || '').toString().trim().toLowerCase();
+    const displayName = (body.displayName || body.display_name || '').toString().trim();
+    const role = (body.role || 'staff').toString().trim().toLowerCase();
+    const password = (body.password || '').toString();
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+
+    if (!displayName) {
+      return res.status(400).json({ error: 'Display name is required' });
+    }
+
+    if (!['admin', 'staff', 'finance', 'parishioner'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const admin = getAdmin();
+    const db = admin.firestore();
+
+    // Check if user already exists
+    try {
+      const existingUser = await admin.auth().getUserByEmail(email);
+      return res.status(409).json({ error: 'User with this email already exists' });
+    } catch (err) {
+      if (err.code !== 'auth/user-not-found') {
+        throw err;
+      }
+    }
+
+    // Create user in Firebase Auth
+    const userRecord = await admin.auth().createUser({
+      email,
+      password,
+      displayName,
+    });
+
+    // Set custom claims for role
+    const customClaims = {
+      role: role,
+    };
+    if (role === 'admin') {
+      customClaims.admin = true;
+    } else if (role === 'staff') {
+      customClaims.staff = true;
+    } else if (role === 'finance') {
+      customClaims.finance = true;
+    }
+
+    await admin.auth().setCustomUserClaims(userRecord.uid, customClaims);
+
+    // Create user document in Firestore
+    await db.collection('users').doc(userRecord.uid).set({
+      id: userRecord.uid,
+      uid: userRecord.uid,
+      email,
+      displayName,
+      role,
+      emailVerified: false,
+      disabled: false,
+      createdAt: new Date(),
+      createdBy: req.user?.uid || 'admin',
+      lastLogin: null,
+    });
+
+    return res.json({
+      success: true,
+      message: 'User created successfully',
+      user: {
+        id: userRecord.uid,
+        email,
+        displayName,
+        role,
+      },
+    });
+  } catch (error) {
+    console.error('Create user error:', error);
+    if (error.code === 'auth/email-already-exists') {
+      return res.status(409).json({ error: 'Email already in use' });
+    }
+    return res.status(500).json({ error: 'Failed to create user', details: error.message });
+  }
+});
+
 // DELETE /api/admin/users/:id - Delete user using Admin SDK
 router.delete('/users/:id', async (req, res) => {
   try {
     const userId = req.params.id;
     const admin = getAdmin();
-    
+
     // Delete from Firebase Auth using Admin SDK
     await admin.auth().deleteUser(userId);
-    
+
     // Delete from Firestore
     await admin.firestore().collection('users').doc(userId).delete();
-    
+
     return res.json({ success: true, message: 'User deleted successfully' });
   } catch (error) {
     console.error('Delete user error:', error);

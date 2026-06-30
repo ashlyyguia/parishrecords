@@ -5,12 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 import '../../../utils/firestore_date.dart';
 import '../../../utils/record_date_filter.dart';
 import '../../../widgets/app_loading.dart';
 import '../../../widgets/record_date_range_filters.dart';
 import '../../../services/users_repository.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../config/backend.dart';
 import '../admin_design_system.dart';
 
 /// User management with search, role filters, and registration date range.
@@ -48,6 +52,8 @@ class _AdminUserManagementPageState
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final authState = ref.watch(authProvider);
+    final isAdmin = authState.user?.role == 'admin';
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -67,9 +73,7 @@ class _AdminUserManagementPageState
                         children: [
                           Text(
                             'User Management',
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineSmall
+                            style: Theme.of(context).textTheme.headlineSmall
                                 ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           Text(
@@ -82,6 +86,13 @@ class _AdminUserManagementPageState
                         ],
                       ),
                     ),
+                    if (isAdmin)
+                      ElevatedButton.icon(
+                        onPressed: () => _showAddUserDialog(context, cs),
+                        icon: const Icon(Icons.person_add),
+                        label: const Text('Add User'),
+                      ),
+                    const SizedBox(width: 8),
                     IconButton.filledTonal(
                       tooltip: 'Refresh',
                       onPressed: () => setState(() => _refreshKey++),
@@ -160,11 +171,8 @@ class _AdminUserManagementPageState
                                   },
                                   child: _UsersDataTable(
                                     users: users,
-                                    onEdit: (id, data) => _showEditUserDialog(
-                                      context,
-                                      id,
-                                      data,
-                                    ),
+                                    onEdit: (id, data) =>
+                                        _showEditUserDialog(context, id, data),
                                     onResetPassword: (email) =>
                                         _resetPassword(context, email),
                                     onToggleStatus: (id, disabled) =>
@@ -173,11 +181,8 @@ class _AdminUserManagementPageState
                                           id,
                                           disabled,
                                         ),
-                                    onDelete: (id, data) => _confirmDeleteUser(
-                                      context,
-                                      id,
-                                      data,
-                                    ),
+                                    onDelete: (id, data) =>
+                                        _confirmDeleteUser(context, id, data),
                                   ),
                                 ),
                         ),
@@ -390,6 +395,175 @@ class _AdminUserManagementPageState
       }
     }
   }
+
+  void _showAddUserDialog(BuildContext parentContext, ColorScheme colorScheme) {
+    final emailController = TextEditingController();
+    final nameController = TextEditingController();
+    final passwordController = TextEditingController();
+    String selectedRole = 'staff';
+
+    showDialog(
+      context: parentContext,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) => AlertDialog(
+          title: const Text('Add New User'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Display Name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passwordController,
+                  decoration: const InputDecoration(
+                    labelText: 'Password',
+                    border: OutlineInputBorder(),
+                    helperText: 'Minimum 6 characters',
+                  ),
+                  obscureText: true,
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedRole,
+                  decoration: const InputDecoration(
+                    labelText: 'Role',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                    DropdownMenuItem(value: 'staff', child: Text('Staff')),
+                    DropdownMenuItem(value: 'finance', child: Text('Finance')),
+                    DropdownMenuItem(
+                      value: 'parishioner',
+                      child: Text('Parishioner'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => selectedRole = value);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final email = emailController.text.trim();
+                final name = nameController.text.trim();
+                final password = passwordController.text;
+
+                if (email.isEmpty || name.isEmpty) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter both email and display name.'),
+                    ),
+                  );
+                  return;
+                }
+
+                if (!email.contains('@')) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter a valid email address.'),
+                    ),
+                  );
+                  return;
+                }
+
+                if (password.isEmpty || password.length < 6) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Password must be at least 6 characters.'),
+                    ),
+                  );
+                  return;
+                }
+
+                try {
+                  final currentUser = FirebaseAuth.instance.currentUser;
+                  if (currentUser == null) {
+                    throw Exception('Not authenticated');
+                  }
+
+                  final idToken = await currentUser.getIdToken();
+
+                  final response = await http.post(
+                    Uri.parse(BackendConfig.adminUsersEndpoint),
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': 'Bearer $idToken',
+                    },
+                    body: jsonEncode({
+                      'email': email,
+                      'displayName': name,
+                      'password': password,
+                      'role': selectedRole,
+                    }),
+                  ).timeout(const Duration(seconds: 30));
+
+                  if (!parentContext.mounted) return;
+
+                  if (response.statusCode == 200 || response.statusCode == 201) {
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+
+                    ScaffoldMessenger.of(parentContext).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'User $email created successfully with role: $selectedRole',
+                        ),
+                        duration: const Duration(seconds: 5),
+                      ),
+                    );
+                    setState(() => _refreshKey++);
+                  } else {
+                    final responseBody = jsonDecode(response.body);
+                    final errorMessage = responseBody['error'] ?? 'Unknown error';
+                    ScaffoldMessenger.of(parentContext).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to create user: $errorMessage'),
+                        duration: const Duration(seconds: 5),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    SnackBar(
+                      content: Text('Error: $e'),
+                      duration: const Duration(seconds: 5),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Add User'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _UsersFilterToolbar extends StatelessWidget {
@@ -447,7 +621,9 @@ class _UsersFilterToolbar extends StatelessWidget {
                     )
                   : null,
               isDense: true,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
                 vertical: 10,
@@ -736,8 +912,9 @@ class _UsersDataTable extends StatelessWidget {
                   rows: users.map((d) {
                     final id =
                         d['uid']?.toString() ?? d['id']?.toString() ?? '';
-                    final role =
-                        (d['role'] ?? 'parishioner').toString().toLowerCase();
+                    final role = (d['role'] ?? 'parishioner')
+                        .toString()
+                        .toLowerCase();
                     final roleColor = _roleColor(role);
                     final disabled = d['disabled'] == true;
                     final email = d['email']?.toString() ?? '—';
@@ -780,10 +957,7 @@ class _UsersDataTable extends StatelessWidget {
                         DataCell(
                           SizedBox(
                             width: 200,
-                            child: Text(
-                              email,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            child: Text(email, overflow: TextOverflow.ellipsis),
                           ),
                         ),
                         DataCell(
@@ -845,9 +1019,7 @@ class _UsersDataTable extends StatelessWidget {
                               ),
                               PopupMenuItem(
                                 value: 'toggle',
-                                child: Text(
-                                  disabled ? 'Enable' : 'Disable',
-                                ),
+                                child: Text(disabled ? 'Enable' : 'Disable'),
                               ),
                               const PopupMenuItem(
                                 value: 'delete',
