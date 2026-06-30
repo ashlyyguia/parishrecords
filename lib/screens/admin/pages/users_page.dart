@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 import '../../../widgets/app_loading.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../config/backend.dart';
 import '../admin_design_system.dart';
 
 class AdminUsersPage extends ConsumerStatefulWidget {
@@ -23,7 +27,8 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-
+    final authState = ref.watch(authProvider);
+    final isAdmin = authState.user?.role == 'admin';
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: Container(
@@ -39,14 +44,17 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                   title: 'User Management',
                   subtitle: 'Manage user accounts and permissions',
                   icon: Icons.people,
-                  actions: [
-                    AdminDesignSystem.actionButton(
-                      context,
-                      label: 'Add User',
-                      icon: Icons.person_add,
-                      onPressed: () => _showAddUserDialog(context, colorScheme),
-                    ),
-                  ],
+                  actions: isAdmin
+                      ? [
+                          AdminDesignSystem.actionButton(
+                            context,
+                            label: 'Add User',
+                            icon: Icons.person_add,
+                            onPressed: () =>
+                                _showAddUserDialog(context, colorScheme),
+                          ),
+                        ]
+                      : [],
                 ),
               ),
 
@@ -130,7 +138,8 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
           ),
         ),
       ),
-      floatingActionButton: context.isWide
+      floatingActionButton:
+          (MediaQuery.of(context).size.width > 600 || !isAdmin)
           ? null
           : FloatingActionButton(
               onPressed: () => _showAddUserDialog(context, colorScheme),
@@ -427,116 +436,175 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
   void _showAddUserDialog(BuildContext parentContext, ColorScheme colorScheme) {
     final emailController = TextEditingController();
     final nameController = TextEditingController();
+    final passwordController = TextEditingController();
     String selectedRole = 'staff';
 
     showDialog(
       context: parentContext,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Add New User'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Display Name',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              initialValue: selectedRole,
-              decoration: const InputDecoration(
-                labelText: 'Role',
-                border: OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                DropdownMenuItem(value: 'staff', child: Text('Staff')),
-                DropdownMenuItem(value: 'finance', child: Text('Finance')),
-                DropdownMenuItem(
-                  value: 'parishioner',
-                  child: Text('Parishioner'),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) => AlertDialog(
+          title: const Text('Add New User'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Display Name',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passwordController,
+                  decoration: const InputDecoration(
+                    labelText: 'Password',
+                    border: OutlineInputBorder(),
+                    helperText: 'Minimum 6 characters',
+                  ),
+                  obscureText: true,
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedRole,
+                  decoration: const InputDecoration(
+                    labelText: 'Role',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                    DropdownMenuItem(value: 'staff', child: Text('Staff')),
+                    DropdownMenuItem(value: 'finance', child: Text('Finance')),
+                    DropdownMenuItem(
+                      value: 'parishioner',
+                      child: Text('Parishioner'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => selectedRole = value);
+                    }
+                  },
                 ),
               ],
-              onChanged: (value) => selectedRole = value!,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final email = emailController.text.trim();
+                final name = nameController.text.trim();
+                final password = passwordController.text;
+
+                if (email.isEmpty || name.isEmpty) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Please enter both email and display name.',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+
+                if (!email.contains('@')) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter a valid email address.'),
+                    ),
+                  );
+                  return;
+                }
+
+                if (password.isEmpty || password.length < 6) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Password must be at least 6 characters.'),
+                    ),
+                  );
+                  return;
+                }
+
+                try {
+                  // Get the current user's Firebase ID token
+                  final currentUser = FirebaseAuth.instance.currentUser;
+                  if (currentUser == null) {
+                    throw Exception('Not authenticated');
+                  }
+
+                  final idToken = await currentUser.getIdToken();
+
+                  // Call the backend endpoint to create the user
+                  final response = await http
+                      .post(
+                        Uri.parse(BackendConfig.adminUsersEndpoint),
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': 'Bearer $idToken',
+                        },
+                        body: jsonEncode({
+                          'email': email,
+                          'displayName': name,
+                          'password': password,
+                          'role': selectedRole,
+                        }),
+                      )
+                      .timeout(const Duration(seconds: 30));
+
+                  if (!parentContext.mounted) return;
+
+                  if (response.statusCode == 200 ||
+                      response.statusCode == 201) {
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+
+                    ScaffoldMessenger.of(parentContext).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'User $email created successfully with role: $selectedRole',
+                        ),
+                        duration: const Duration(seconds: 5),
+                      ),
+                    );
+                  } else {
+                    final responseBody = jsonDecode(response.body);
+                    final errorMessage =
+                        responseBody['error'] ?? 'Unknown error';
+                    ScaffoldMessenger.of(parentContext).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to create user: $errorMessage'),
+                        duration: const Duration(seconds: 5),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(parentContext).showSnackBar(
+                    SnackBar(
+                      content: Text('Error: $e'),
+                      duration: const Duration(seconds: 5),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Add User'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final email = emailController.text.trim();
-              final name = nameController.text.trim();
-
-              if (email.isEmpty || name.isEmpty) {
-                ScaffoldMessenger.of(parentContext).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please enter both email and display name.'),
-                  ),
-                );
-                return;
-              }
-
-              if (!email.contains('@')) {
-                ScaffoldMessenger.of(parentContext).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please enter a valid email address.'),
-                  ),
-                );
-                return;
-              }
-
-              try {
-                // Create pending user document in Firestore
-                // Note: Firebase Auth user must be created via Admin SDK or Firebase Console
-                final docRef = FirebaseFirestore.instance
-                    .collection('pending_users')
-                    .doc();
-
-                await docRef.set({
-                  'email': email,
-                  'displayName': name,
-                  'role': selectedRole,
-                  'status': 'pending_creation',
-                  'createdAt': FieldValue.serverTimestamp(),
-                  'createdBy': FirebaseAuth.instance.currentUser?.uid,
-                });
-
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
-                }
-
-                ScaffoldMessenger.of(parentContext).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'User request created for $email with role: $selectedRole. '
-                      'Create the user in Firebase Auth Console or use a backend function.',
-                    ),
-                    duration: const Duration(seconds: 5),
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(
-                  parentContext,
-                ).showSnackBar(SnackBar(content: Text('Error: $e')));
-              }
-            },
-            child: const Text('Add User'),
-          ),
-        ],
       ),
     );
   }
