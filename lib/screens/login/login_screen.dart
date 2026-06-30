@@ -145,7 +145,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           position: _slideAnimation,
                           child: Card(
                             elevation: 12,
-                            shadowColor: colorScheme.shadow.withValues(alpha: 0.2),
+                            shadowColor: colorScheme.shadow.withValues(
+                              alpha: 0.2,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(24),
                             ),
@@ -156,6 +158,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
+                                    // Back to home button
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: IconButton.outlined(
+                                        onPressed: () => context.go('/'),
+                                        icon: const Icon(Icons.arrow_back),
+                                        tooltip: 'Back to Home',
+                                        constraints: const BoxConstraints(
+                                          minWidth: 40,
+                                          minHeight: 40,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+
                                     // App Logo and Branding
                                     _buildHeader(colorScheme),
 
@@ -188,18 +205,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     ),
                   ),
                 ),
-              ),
-            ),
-            // Back to home button
-            Positioned(
-              top: 16,
-              left: 16,
-              child: FloatingActionButton.small(
-                onPressed: () => context.go('/'),
-                tooltip: 'Back to Home',
-                backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
-                foregroundColor: colorScheme.primary,
-                child: const Icon(Icons.arrow_back),
               ),
             ),
           ],
