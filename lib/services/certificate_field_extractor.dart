@@ -43,37 +43,37 @@ class CertificateFieldExtractor {
   );
 
   static final _parentPattern = RegExp(
-    r'Child\s+of\s+([A-Z][A-Za-z\s\.]+?)\s+and\s+([A-Z][A-Za-z\s\.]+?)(?=\s+born|$)',
+    r'Child\s+of\s+([A-Z][A-Za-z\s\.]+?)\s+and\s+([A-Z][A-Za-z\s\.]+?)(?=\s+born)',
     caseSensitive: false,
-    dotAll: true,
+    multiline: true,
   );
 
   static final _fatherPattern = RegExp(
-    r'Father:?\s+([A-Z][A-Za-z\s\.]+?)(?=\s+Mother|$)',
+    r'Child\s+of\s+([A-Z][A-Za-z\s\.]+?)\s+(?:and|$)',
     caseSensitive: false,
   );
 
   static final _motherPattern = RegExp(
-    r'Mother:?\s+([A-Z][A-Za-z\s\.]+?)(?=\s+born|$)',
+    r'and\s+([A-Z][A-Za-z\s\.]+?)\s+(?=born|$)',
     caseSensitive: false,
   );
 
   static final _birthPlacePattern = RegExp(
-    r'born\s+in\s+([A-Z][A-Za-z\s\.,]+?)(?=\s+on\s+the|,|$)',
+    r'born\s+in\s+([A-Z][A-Za-z\s\.,0-9]+?)(?=\s+on\.?the|\s+day|,|$)',
     caseSensitive: false,
   );
 
   static final _birthDatePattern = RegExp(
-    r'on\s+the\s+(\d{1,2}(?:st|nd|rd|th)?)\s+day\s+of\s+'
+    r'on\.?the\s+(\d{1,2})(?:st|nd|rd|th)?\s+day\s+of\s*'
     r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})',
     caseSensitive: false,
   );
 
   static final _sacramentDatePattern = RegExp(
-    r'Was\s+(?:Baptized|Confirmed|Married)\s+on\s+the\s+'
-    r'(\d{1,2}(?:st|nd|rd|th)?)\s+day\s+of\s+'
-    r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})',
+    r'Was\s+(?:Baptized|Confirmed|Married)\s+.*?'
+    r'(\d{1,2})(?:st|nd|rd|th)?\s+(?:on\s+the\s+)?day\s+of\s+(\w+)?\s+(\d{4})',
     caseSensitive: false,
+    multiline: true,
   );
 
   static final _sacramentTypePattern = RegExp(
@@ -82,7 +82,7 @@ class CertificateFieldExtractor {
   );
 
   static final _ministerPattern = RegExp(
-    r'(?:by\s+)?(?:the\s+)?(?:Rev\.?\s*)?(?:Fr\.?\s+)?([A-Z][A-Za-z\.\s]+?)(?=\s+The\s+Sponsor|\s*$)',
+    r'(?:by|Rev|Fr|Rev\.\s+Fr\.?)\s+([A-Z][A-Za-z\.\s]+?)(?=\s+(?:The|Sponsor|as\s+appears|$))',
     caseSensitive: false,
   );
 
@@ -160,10 +160,30 @@ class CertificateFieldExtractor {
     // Extract sacrament date (most important: the actual event date)
     final sacrDateMatch = _sacramentDatePattern.firstMatch(normalized);
     if (sacrDateMatch != null) {
+      var month = sacrDateMatch.group(2);
+      final year = sacrDateMatch.group(3);
+
+      // If month is missing, try to find it nearby
+      if ((month == null || month.isEmpty) && year != null) {
+        final dayNum = sacrDateMatch.group(1);
+        // Look for month within 30 chars after the date pattern
+        final dateIdx = normalized.indexOf(sacrDateMatch.group(0) ?? '');
+        if (dateIdx >= 0 && dateIdx + 30 < normalized.length) {
+          final after = normalized.substring(dateIdx, dateIdx + 30);
+          final monthMatch = RegExp(
+            r'(January|February|March|April|May|June|July|August|September|October|November|December)',
+            caseSensitive: false,
+          ).firstMatch(after);
+          if (monthMatch != null) {
+            month = monthMatch.group(1);
+          }
+        }
+      }
+
       sacramentDate = _formatDate(
         sacrDateMatch.group(1),
-        sacrDateMatch.group(2),
-        sacrDateMatch.group(3),
+        month,
+        year,
       );
     }
 
@@ -222,7 +242,11 @@ class CertificateFieldExtractor {
     text = text
         .replaceAll('|', 'I') // Pipe → I
         .replaceAll('O0', 'OO') // O-zero
-        .replaceAll('l1', 'll'); // l-one
+        .replaceAll('l1', 'll') // l-one
+        .replaceAll('on.the', 'on the') // Period instead of space
+        .replaceAll('ofApril', 'of April') // Missing space
+        .replaceAll('ihe', 'the') // Common OCR error
+        .replaceAll('IvICAR', 'VICAR'); // I instead of V
 
     return text.trim();
   }
@@ -238,7 +262,9 @@ class CertificateFieldExtractor {
 
   /// Format date from parts: (day, month_name, year) → "DD/MM/YYYY".
   static String _formatDate(String? day, String? month, String? year) {
-    if (day == null || month == null || year == null) return '';
+    // Return empty if critical parts are missing
+    if (day == null || year == null) return '';
+    if (day.replaceAll(RegExp(r'[^\d]'), '').isEmpty) return '';
 
     const months = {
       'january': '01', 'february': '02', 'march': '03', 'april': '04',
@@ -246,9 +272,15 @@ class CertificateFieldExtractor {
       'september': '09', 'october': '10', 'november': '11', 'december': '12',
     };
 
-    final monthNum = months[month.toLowerCase()] ?? '';
+    // Handle missing month gracefully (partial date)
+    final monthNum = month != null ? (months[month.toLowerCase()] ?? '') : '';
     final dayNum = day.replaceAll(RegExp(r'[^\d]'), '').padLeft(2, '0');
-    final yearNum = year.padLeft(4, '0');
+    final yearNum = year.replaceAll(RegExp(r'[^\d]'), '').padLeft(4, '0');
+
+    // Return partial date if month is missing
+    if (monthNum.isEmpty) {
+      return '$dayNum/??/$yearNum'; // Indicator that month is missing
+    }
 
     return '$dayNum/$monthNum/$yearNum';
   }

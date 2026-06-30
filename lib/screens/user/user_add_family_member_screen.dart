@@ -106,16 +106,19 @@ class _UserAddFamilyMemberScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Family member added successfully')),
         );
-        context.pop();
+        await Future.delayed(const Duration(milliseconds: 1200));
+        if (mounted) {
+          if (mounted) setState(() => _isSaving = false);
+          context.pop();
+        }
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _isSaving = false);
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -182,16 +185,21 @@ class _UserAddFamilyMemberScreenState
                       child: FilledButton.icon(
                         onPressed: _isSaving ? null : _saveMember,
                         icon: _isSaving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
                                 child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
+                                  strokeWidth: 2.5,
+                                  color: Theme.of(context).colorScheme.onPrimary,
                                 ),
                               )
                             : const Icon(Icons.save_outlined),
-                        label: Text(_isSaving ? 'Saving...' : 'Save Member'),
+                        label: Text(
+                          _isSaving ? 'Saving...' : 'Save Member',
+                          style: TextStyle(
+                            fontWeight: _isSaving ? FontWeight.w600 : FontWeight.w500,
+                          ),
+                        ),
                       ),
                     ),
                   const SizedBox(width: 12),
