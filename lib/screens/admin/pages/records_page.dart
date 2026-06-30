@@ -323,43 +323,46 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
               pagePadding,
               0,
             ),
-            child: AdminDesignSystem.pageHeader(
-              context,
-              title: 'Records Management',
-              subtitle:
-                  'Manage baptism and marriage register records (${items.length} total).',
-              icon: Icons.folder_shared_outlined,
-              actions: [
-                AdminDesignSystem.actionButton(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AdminDesignSystem.pageHeader(
                   context,
-                  label: 'Manual Register',
-                  icon: Icons.edit_note_outlined,
-                  onPressed: _openManualRegister,
-                  isPrimary: false,
-                  color: Colors.white,
+                  title: 'Records Management',
+                  subtitle:
+                      'Manage baptism and marriage register records (${items.length} total).',
+                  icon: Icons.folder_shared_outlined,
+                  actions: [],
                 ),
-                AdminDesignSystem.actionButton(
-                  context,
-                  label: 'Import CSV',
-                  icon: Icons.file_upload_outlined,
-                  onPressed: _importCsvDialog,
-                  isPrimary: false,
-                  color: Colors.white,
-                ),
-                AdminDesignSystem.actionButton(
-                  context,
-                  label: 'OCR Scan',
-                  icon: Icons.document_scanner,
-                  onPressed: () => context.go('/admin/ocr/upload'),
-                  isPrimary: false,
-                  color: Colors.white,
-                ),
-                AdminDesignSystem.actionButton(
-                  context,
-                  label: 'Add Record',
-                  icon: Icons.add_rounded,
-                  onPressed: _openNewRecord,
-                  isPrimary: true,
+                const SizedBox(height: 16),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: pagePadding),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: _openManualRegister,
+                        icon: const Icon(Icons.edit_note_outlined),
+                        label: const Text('Manual Register'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _importCsvDialog,
+                        icon: const Icon(Icons.file_upload_outlined),
+                        label: const Text('Import CSV'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: () => context.go('/admin/ocr/upload'),
+                        icon: const Icon(Icons.document_scanner),
+                        label: const Text('OCR Scan'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _openNewRecord,
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Add Record'),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -520,51 +523,47 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     ColorScheme colorScheme,
   ) {
     final df = DateFormat.yMMMd();
+    final theme = Theme.of(context);
+    final primary = colorScheme.primary;
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowColor: WidgetStateProperty.all(
-            colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+            ),
           ),
-          dataRowMinHeight: 64,
-          dataRowMaxHeight: 64,
-          showCheckboxColumn: false,
-          columns: const [
-            DataColumn(
-              label: Text(
-                'Record Date',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'Full Name',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'Sacrament Type',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'Parish Location',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            DataColumn(
-              label: Text(
-                'Actions',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-          rows: items.map((m) {
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minWidth: MediaQuery.sizeOf(context).width - 40,
+                ),
+                child: DataTable(
+                  headingRowColor: WidgetStateProperty.all(
+                    primary.withValues(alpha: 0.1),
+                  ),
+                  headingTextStyle: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: primary,
+                  ),
+                  dataRowMinHeight: 48,
+                  columnSpacing: 24,
+                  horizontalMargin: 16,
+                  columns: const [
+                    DataColumn(label: Text('Record Date')),
+                    DataColumn(label: Text('Full Name')),
+                    DataColumn(label: Text('Sacrament Type')),
+                    DataColumn(label: Text('Parish Location')),
+                    DataColumn(label: Text('Actions')),
+                  ],
+                  rows: items.map((m) {
             final id = m['id']?.toString() ?? '';
             final dateStr = m['date']?.toString() ?? '';
             final date = DateTime.tryParse(dateStr) ?? DateTime.now();
@@ -604,87 +603,103 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                 ),
                 DataCell(Text(m['parish']?.toString() ?? '-')),
                 DataCell(
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.visibility_outlined, size: 20),
-                        tooltip: 'View Details',
-                        color: colorScheme.secondary,
-                        onPressed: () {
-                          final record = m['record'];
-                          if (record is ParishRecord) {
-                            _viewRecord(record);
-                          }
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, size: 20),
-                        tooltip: 'Edit',
-                        color: colorScheme.primary,
-                        onPressed: () {
-                          final record = m['record'];
-                          if (record is ParishRecord) {
-                            _editRecord(record);
-                          }
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.card_membership, size: 20),
-                        tooltip: 'Certificate',
-                        color: Colors.orange,
-                        onPressed: () {
-                          if (id.isNotEmpty) {
-                            context.push(
-                              '/admin/records/$id/certificate',
-                              extra: _strToType(type),
-                            );
-                          }
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 20),
-                        tooltip: 'Delete',
-                        color: colorScheme.error,
-                        onPressed: () async {
-                          final ok = await showDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('Delete record?'),
-                              content: Text(
-                                'Are you sure you want to delete "${m['name']}"?',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx, false),
-                                  child: const Text('Cancel'),
-                                ),
-                                FilledButton(
-                                  onPressed: () => Navigator.pop(ctx, true),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: colorScheme.error,
-                                  ),
-                                  child: const Text('Delete'),
-                                ),
-                              ],
+                  PopupMenuButton<String>(
+                    onSelected: (action) async {
+                      final record = m['record'];
+                      if (action == 'view' && record is ParishRecord) {
+                        _viewRecord(record);
+                      } else if (action == 'edit' && record is ParishRecord) {
+                        _editRecord(record);
+                      } else if (action == 'certificate' && id.isNotEmpty) {
+                        context.push(
+                          '/admin/records/$id/certificate',
+                          extra: _strToType(type),
+                        );
+                      } else if (action == 'delete') {
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Delete record?'),
+                            content: Text(
+                              'Are you sure you want to delete "${m['name']}"?',
                             ),
-                          );
-                          if (ok == true) {
-                            final record = m['record'];
-                            if (record is ParishRecord) {
-                              await _deleteRecord(record);
-                            }
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: colorScheme.error,
+                                ),
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (ok == true) {
+                          final record = m['record'];
+                          if (record is ParishRecord) {
+                            await _deleteRecord(record);
                           }
-                        },
+                        }
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'view',
+                        child: Row(
+                          children: [
+                            Icon(Icons.visibility_outlined, size: 18),
+                            SizedBox(width: 8),
+                            Text('View Details'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit_outlined, size: 18),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'certificate',
+                        child: Row(
+                          children: [
+                            Icon(Icons.card_membership, size: 18),
+                            SizedBox(width: 8),
+                            Text('Certificate'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Delete', style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
               ],
             );
-          }).toList(),
+                  }).toList(),
+                ),
+              ),
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 
