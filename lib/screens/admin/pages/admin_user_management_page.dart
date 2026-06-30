@@ -87,10 +87,10 @@ class _AdminUserManagementPageState
                       ),
                     ),
                     if (isAdmin)
-                      ElevatedButton.icon(
-                        onPressed: () => _showAddUserDialog(context, cs),
-                        icon: const Icon(Icons.person_add),
-                        label: const Text('Add User'),
+                      FilledButton.icon(
+                        onPressed: () => _showAddUserDialog(),
+                        icon: const Icon(Icons.add),
+                        label: const Text('New User'),
                       ),
                     const SizedBox(width: 8),
                     IconButton.filledTonal(
@@ -396,172 +396,201 @@ class _AdminUserManagementPageState
     }
   }
 
-  void _showAddUserDialog(BuildContext parentContext, ColorScheme colorScheme) {
-    final emailController = TextEditingController();
-    final nameController = TextEditingController();
-    final passwordController = TextEditingController();
+  Future<void> _showAddUserDialog() async {
+    final emailCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final passwordCtrl = TextEditingController();
     String selectedRole = 'staff';
+    bool saving = false;
 
-    showDialog(
-      context: parentContext,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setState) => AlertDialog(
-          title: const Text('Add New User'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    border: OutlineInputBorder(),
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setS) {
+            Future<void> save() async {
+              final email = emailCtrl.text.trim();
+              final name = nameCtrl.text.trim();
+              final password = passwordCtrl.text;
+
+              if (email.isEmpty || name.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Email and display name are required'),
+                    backgroundColor: Colors.red,
                   ),
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Display Name',
-                    border: OutlineInputBorder(),
+                );
+                return;
+              }
+
+              if (!email.contains('@')) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter a valid email address'),
+                    backgroundColor: Colors.red,
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: passwordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Password',
-                    border: OutlineInputBorder(),
-                    helperText: 'Minimum 6 characters',
+                );
+                return;
+              }
+
+              if (password.isEmpty || password.length < 6) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Password must be at least 6 characters'),
+                    backgroundColor: Colors.red,
                   ),
-                  obscureText: true,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedRole,
-                  decoration: const InputDecoration(
-                    labelText: 'Role',
-                    border: OutlineInputBorder(),
+                );
+                return;
+              }
+
+              try {
+                setS(() => saving = true);
+
+                final currentUser = FirebaseAuth.instance.currentUser;
+                if (currentUser == null) throw Exception('Not authenticated');
+
+                final idToken = await currentUser.getIdToken();
+
+                final response = await http
+                    .post(
+                  Uri.parse(BackendConfig.adminUsersEndpoint),
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer $idToken',
+                  },
+                  body: jsonEncode({
+                    'email': email,
+                    'displayName': name,
+                    'password': password,
+                    'role': selectedRole,
+                  }),
+                )
+                    .timeout(const Duration(seconds: 30));
+
+                if (!context.mounted) return;
+
+                if (response.statusCode == 200 || response.statusCode == 201) {
+                  Navigator.of(dialogContext).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('User $email created successfully'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  setState(() => _refreshKey++);
+                } else {
+                  final responseBody = jsonDecode(response.body);
+                  final errorMessage = responseBody['error'] ?? 'Unknown error';
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed: $errorMessage'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error: $e'),
+                    backgroundColor: Colors.red,
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                    DropdownMenuItem(value: 'staff', child: Text('Staff')),
-                    DropdownMenuItem(value: 'finance', child: Text('Finance')),
-                    DropdownMenuItem(
-                      value: 'parishioner',
-                      child: Text('Parishioner'),
+                );
+              } finally {
+                if (context.mounted) setS(() => saving = false);
+              }
+            }
+
+            return AlertDialog(
+              scrollable: true,
+              title: const Text('New User'),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      controller: emailCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        hintText: 'user@example.com',
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                      enabled: !saving,
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Display Name',
+                        hintText: 'John Doe',
+                      ),
+                      enabled: !saving,
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: passwordCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Password',
+                        hintText: 'Min. 6 characters',
+                      ),
+                      obscureText: true,
+                      enabled: !saving,
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedRole,
+                      decoration: const InputDecoration(
+                        labelText: 'Role',
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                        DropdownMenuItem(value: 'staff', child: Text('Staff')),
+                        DropdownMenuItem(
+                          value: 'finance',
+                          child: Text('Finance'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'parishioner',
+                          child: Text('Parishioner'),
+                        ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) {
+                              if (value != null) {
+                                setS(() => selectedRole = value);
+                              }
+                            },
                     ),
                   ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => selectedRole = value);
-                    }
-                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: saving ? null : save,
+                  child: saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text('Add User'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final email = emailController.text.trim();
-                final name = nameController.text.trim();
-                final password = passwordController.text;
-
-                if (email.isEmpty || name.isEmpty) {
-                  ScaffoldMessenger.of(parentContext).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please enter both email and display name.'),
-                    ),
-                  );
-                  return;
-                }
-
-                if (!email.contains('@')) {
-                  ScaffoldMessenger.of(parentContext).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please enter a valid email address.'),
-                    ),
-                  );
-                  return;
-                }
-
-                if (password.isEmpty || password.length < 6) {
-                  ScaffoldMessenger.of(parentContext).showSnackBar(
-                    const SnackBar(
-                      content: Text('Password must be at least 6 characters.'),
-                    ),
-                  );
-                  return;
-                }
-
-                try {
-                  final currentUser = FirebaseAuth.instance.currentUser;
-                  if (currentUser == null) {
-                    throw Exception('Not authenticated');
-                  }
-
-                  final idToken = await currentUser.getIdToken();
-
-                  final response = await http.post(
-                    Uri.parse(BackendConfig.adminUsersEndpoint),
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': 'Bearer $idToken',
-                    },
-                    body: jsonEncode({
-                      'email': email,
-                      'displayName': name,
-                      'password': password,
-                      'role': selectedRole,
-                    }),
-                  ).timeout(const Duration(seconds: 30));
-
-                  if (!parentContext.mounted) return;
-
-                  if (response.statusCode == 200 || response.statusCode == 201) {
-                    if (dialogContext.mounted) {
-                      Navigator.pop(dialogContext);
-                    }
-
-                    ScaffoldMessenger.of(parentContext).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'User $email created successfully with role: $selectedRole',
-                        ),
-                        duration: const Duration(seconds: 5),
-                      ),
-                    );
-                    setState(() => _refreshKey++);
-                  } else {
-                    final responseBody = jsonDecode(response.body);
-                    final errorMessage = responseBody['error'] ?? 'Unknown error';
-                    ScaffoldMessenger.of(parentContext).showSnackBar(
-                      SnackBar(
-                        content: Text('Failed to create user: $errorMessage'),
-                        duration: const Duration(seconds: 5),
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  ScaffoldMessenger.of(parentContext).showSnackBar(
-                    SnackBar(
-                      content: Text('Error: $e'),
-                      duration: const Duration(seconds: 5),
-                    ),
-                  );
-                }
-              },
-              child: const Text('Add User'),
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 }
