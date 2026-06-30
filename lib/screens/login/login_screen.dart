@@ -117,66 +117,70 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                colorScheme.primary.withValues(alpha: 0.05),
-                colorScheme.surface,
-                colorScheme.secondary.withValues(alpha: 0.05),
-              ],
-            ),
-          ),
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: EdgeInsets.all(isTablet ? 32.0 : 16.0),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: isTablet ? 440.0 : 360.0,
-                  ),
-                  child: FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: SlideTransition(
-                      position: _slideAnimation,
-                      child: Card(
-                        elevation: 12,
-                        shadowColor: colorScheme.shadow.withValues(alpha: 0.2),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: Padding(
-                          padding: EdgeInsets.all(isTablet ? 32.0 : 24.0),
-                          child: Form(
-                            key: _formKey,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // App Logo and Branding
-                                _buildHeader(colorScheme),
+        child: Stack(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    colorScheme.primary.withValues(alpha: 0.05),
+                    colorScheme.surface,
+                    colorScheme.secondary.withValues(alpha: 0.05),
+                  ],
+                ),
+              ),
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: EdgeInsets.all(isTablet ? 32.0 : 16.0),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isTablet ? 440.0 : 360.0,
+                      ),
+                      child: FadeTransition(
+                        opacity: _fadeAnimation,
+                        child: SlideTransition(
+                          position: _slideAnimation,
+                          child: Card(
+                            elevation: 12,
+                            shadowColor: colorScheme.shadow.withValues(alpha: 0.2),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            child: Padding(
+                              padding: EdgeInsets.all(isTablet ? 32.0 : 24.0),
+                              child: Form(
+                                key: _formKey,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // App Logo and Branding
+                                    _buildHeader(colorScheme),
 
-                                SizedBox(height: isTablet ? 40 : 32),
+                                    SizedBox(height: isTablet ? 40 : 32),
 
-                                // Welcome Section
-                                _buildWelcomeSection(theme),
+                                    // Welcome Section
+                                    _buildWelcomeSection(theme),
 
-                                SizedBox(height: isTablet ? 24 : 20),
+                                    SizedBox(height: isTablet ? 24 : 20),
 
-                                // Login Form
-                                _buildLoginForm(colorScheme),
+                                    // Login Form
+                                    _buildLoginForm(colorScheme),
 
-                                SizedBox(height: isTablet ? 24 : 20),
+                                    SizedBox(height: isTablet ? 24 : 20),
 
-                                // Login Button
-                                _buildLoginButton(colorScheme),
+                                    // Login Button
+                                    _buildLoginButton(colorScheme),
 
-                                SizedBox(height: isTablet ? 24 : 20),
+                                    SizedBox(height: isTablet ? 24 : 20),
 
-                                // Additional Actions
-                                _buildAdditionalActions(colorScheme),
-                              ],
+                                    // Additional Actions
+                                    _buildAdditionalActions(colorScheme),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -186,7 +190,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 ),
               ),
             ),
-          ),
+            // Back to home button
+            Positioned(
+              top: 16,
+              left: 16,
+              child: FloatingActionButton.small(
+                onPressed: () => context.go('/'),
+                tooltip: 'Back to Home',
+                backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                foregroundColor: colorScheme.primary,
+                child: const Icon(Icons.arrow_back),
+              ),
+            ),
+          ],
         ),
       ),
     );
