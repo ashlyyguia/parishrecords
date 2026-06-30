@@ -39,18 +39,110 @@ class ParishMassSchedule extends StatelessWidget {
           accentColor: _accent(context),
         ),
         const SizedBox(height: 16),
-        MassScheduleCard(
-          day: 'Sunday',
-          times: const [
-            '1ST MASS – 5:00 AM',
-            '2ND MASS – 6:30 AM',
-            '3RD MASS – 8:00 AM',
-            '4TH MASS – 3:30 PM',
-            '5TH MASS – 5:00 PM',
-          ],
-          icon: Icons.wb_sunny_outlined,
-          isHighlighted: true,
-          accentColor: _accent(context),
+        // Sunday schedule with detailed layout
+        Text(
+          'Sunday',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _accent(context),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: _accent(context).withValues(alpha: 0.3),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.wb_sunny_outlined,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Sunday Masses',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        '5 masses available',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Grid of mass times
+              Column(
+                children: [
+                  _SundayMassItem(
+                    order: '1st',
+                    time: '5:00 AM',
+                    timeOfDay: 'Morning',
+                    description: 'Early Dawn Mass',
+                  ),
+                  const SizedBox(height: 10),
+                  _SundayMassItem(
+                    order: '2nd',
+                    time: '6:30 AM',
+                    timeOfDay: 'Morning',
+                    description: 'Early Morning Mass',
+                  ),
+                  const SizedBox(height: 10),
+                  _SundayMassItem(
+                    order: '3rd',
+                    time: '8:00 AM',
+                    timeOfDay: 'Morning',
+                    description: 'Main Sunday Mass',
+                    isHighlight: true,
+                  ),
+                  const SizedBox(height: 10),
+                  _SundayMassItem(
+                    order: '4th',
+                    time: '3:30 PM',
+                    timeOfDay: 'Afternoon',
+                    description: 'Afternoon Mass',
+                  ),
+                  const SizedBox(height: 10),
+                  _SundayMassItem(
+                    order: '5th',
+                    time: '5:00 PM',
+                    timeOfDay: 'Evening',
+                    description: 'Evening Mass',
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -199,6 +291,103 @@ class MassScheduleCard extends StatelessWidget {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SundayMassItem extends StatelessWidget {
+  const _SundayMassItem({
+    required this.order,
+    required this.time,
+    required this.timeOfDay,
+    required this.description,
+    this.isHighlight = false,
+  });
+
+  final String order;
+  final String time;
+  final String timeOfDay;
+  final String description;
+  final bool isHighlight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: isHighlight
+            ? Colors.white.withValues(alpha: 0.15)
+            : Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isHighlight
+              ? Colors.white.withValues(alpha: 0.4)
+              : Colors.white.withValues(alpha: 0.15),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Order badge
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              order,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Time and description
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  time,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Time period badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              timeOfDay,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ),
         ],
       ),
     );
