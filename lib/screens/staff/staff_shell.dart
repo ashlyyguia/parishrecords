@@ -43,10 +43,9 @@ class StaffShell extends ConsumerWidget {
     final location = GoRouterState.of(context).uri.toString();
     final idx = _indexFromLocation(location);
     final isWide = MediaQuery.of(context).size.width >= 1024;
-    final unreadCount = ref.watch(unreadNotificationsCountStreamProvider).maybeWhen(
-          data: (count) => count,
-          orElse: () => 0,
-        );
+    final unreadCount = ref
+        .watch(unreadNotificationsCountStreamProvider)
+        .maybeWhen(data: (count) => count, orElse: () => 0);
 
     void goSafe(String route) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -173,7 +172,7 @@ class StaffShell extends ConsumerWidget {
                           final isSelected = i == idx;
                           final showBadge =
                               item.route == '/staff/notifications' &&
-                                  unreadCount > 0;
+                              unreadCount > 0;
 
                           return Padding(
                             padding: const EdgeInsets.symmetric(
@@ -209,8 +208,9 @@ class StaffShell extends ConsumerWidget {
                                         item.icon,
                                         color: isSelected
                                             ? Colors.white
-                                            : Colors.white
-                                                .withValues(alpha: 0.8),
+                                            : Colors.white.withValues(
+                                                alpha: 0.8,
+                                              ),
                                         size: 22,
                                       ),
                                       const SizedBox(width: 12),
@@ -240,24 +240,27 @@ class StaffShell extends ConsumerWidget {
                                         ),
                                       if (showBadge)
                                         Container(
-                                          margin: const EdgeInsets.only(left: 8),
+                                          margin: const EdgeInsets.only(
+                                            left: 8,
+                                          ),
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 7,
                                             vertical: 2,
                                           ),
                                           decoration: BoxDecoration(
                                             color: Colors.white,
-                                            borderRadius:
-                                                BorderRadius.circular(999),
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
                                           ),
                                           child: Text(
                                             unreadCount > 99
                                                 ? '99+'
                                                 : '$unreadCount',
                                             style: TextStyle(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .primary,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
                                               fontSize: 11,
                                               fontWeight: FontWeight.w800,
                                             ),
@@ -386,8 +389,9 @@ class StaffShell extends ConsumerWidget {
                       trailing: showBadge
                           ? CircleAvatar(
                               radius: 12,
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.primary,
+                              backgroundColor: Theme.of(
+                                context,
+                              ).colorScheme.primary,
                               child: Text(
                                 unreadCount > 99 ? '99+' : '$unreadCount',
                                 style: const TextStyle(
