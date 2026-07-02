@@ -158,20 +158,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    // Back to home button
-                                    Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: IconButton.outlined(
-                                        onPressed: () => context.go('/'),
-                                        icon: const Icon(Icons.arrow_back),
-                                        tooltip: 'Back to Home',
-                                        constraints: const BoxConstraints(
-                                          minWidth: 40,
-                                          minHeight: 40,
+                                    // Back to home button (hidden on mobile)
+                                    if (isTablet) ...[
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: IconButton.outlined(
+                                          onPressed: () => context.go('/'),
+                                          icon: const Icon(Icons.arrow_back),
+                                          tooltip: 'Back to Home',
+                                          constraints: const BoxConstraints(
+                                            minWidth: 40,
+                                            minHeight: 40,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 8),
+                                      const SizedBox(height: 8),
+                                    ],
 
                                     // App Logo and Branding
                                     _buildHeader(colorScheme),
