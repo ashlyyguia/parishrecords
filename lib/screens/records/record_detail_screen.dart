@@ -360,7 +360,12 @@ class _RecordDetailBody extends ConsumerWidget {
       floatingActionButton: isStaffOrAdmin
           ? FloatingActionButton.extended(
               onPressed: () {
-                context.push('/records/${rec.id}/certificate', extra: rec.type);
+                context.push(
+                  adminContext
+                      ? '/admin/records/${rec.id}/certificate'
+                      : '/staff/records/${rec.id}/certificate',
+                  extra: rec.type,
+                );
               },
               icon: const Icon(Icons.card_membership),
               label: const Text('Certificate'),
@@ -405,7 +410,9 @@ class _RecordDetailBody extends ConsumerWidget {
     final godparents = _asMap(data['godparents']);
     final baptism = _asMap(data['baptism']);
     final metadata = _asMap(data['metadata']);
-    final parentsText = parents == null ? _parentsAsText(data['parents']) : null;
+    final parentsText = parents == null
+        ? _parentsAsText(data['parents'])
+        : null;
 
     String fmtDate(String? iso) {
       if (iso == null || iso.isEmpty) return '';
@@ -582,8 +589,9 @@ class _RecordDetailBody extends ConsumerWidget {
                   Chip(
                     label: const Text('Temporary'),
                     visualDensity: VisualDensity.compact,
-                    backgroundColor:
-                        Theme.of(context).colorScheme.tertiaryContainer,
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.tertiaryContainer,
                   ),
                 ],
               ],
@@ -595,10 +603,9 @@ class _RecordDetailBody extends ConsumerWidget {
                   row.$1,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.7),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.7),
                     fontSize: 12,
                   ),
                 ),
@@ -647,8 +654,9 @@ class _RecordDetailBody extends ConsumerWidget {
                   Chip(
                     label: const Text('Temporary'),
                     visualDensity: VisualDensity.compact,
-                    backgroundColor:
-                        Theme.of(context).colorScheme.tertiaryContainer,
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.tertiaryContainer,
                   ),
                 ],
               ],
@@ -663,10 +671,9 @@ class _RecordDetailBody extends ConsumerWidget {
               'Shared',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.7),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
                 fontSize: 12,
               ),
             ),
@@ -724,10 +731,9 @@ class _RecordDetailBody extends ConsumerWidget {
             label,
             style: TextStyle(
               fontWeight: FontWeight.w600,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.7),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.7),
               fontSize: 12,
             ),
           ),
