@@ -564,135 +564,146 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                     DataColumn(label: Text('Actions')),
                   ],
                   rows: items.map((m) {
-            final id = m['id']?.toString() ?? '';
-            final dateStr = m['date']?.toString() ?? '';
-            final date = DateTime.tryParse(dateStr) ?? DateTime.now();
-            final type = m['type']?.toString() ?? '';
+                    final id = m['id']?.toString() ?? '';
+                    final dateStr = m['date']?.toString() ?? '';
+                    final date = DateTime.tryParse(dateStr) ?? DateTime.now();
+                    final type = m['type']?.toString() ?? '';
 
-            Color badgeColor;
-            switch (type) {
-              case 'baptism':
-                badgeColor = Colors.blue;
-                break;
-              case 'marriage':
-                badgeColor = Colors.pink;
-                break;
-              case 'funeral':
-                badgeColor = Colors.grey;
-                break;
-              default:
-                badgeColor = Colors.orange;
-                break;
-            }
+                    Color badgeColor;
+                    switch (type) {
+                      case 'baptism':
+                        badgeColor = Colors.blue;
+                        break;
+                      case 'marriage':
+                        badgeColor = Colors.pink;
+                        break;
+                      case 'funeral':
+                        badgeColor = Colors.grey;
+                        break;
+                      default:
+                        badgeColor = Colors.orange;
+                        break;
+                    }
 
-            return DataRow(
-              cells: [
-                DataCell(Text(df.format(date))),
-                DataCell(
-                  Text(
-                    m['name']?.toString() ?? 'Untitled',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                DataCell(
-                  AdminDesignSystem.statusBadge(
-                    context,
-                    type.toUpperCase(),
-                    badgeColor,
-                  ),
-                ),
-                DataCell(Text(m['parish']?.toString() ?? '-')),
-                DataCell(
-                  PopupMenuButton<String>(
-                    onSelected: (action) async {
-                      final record = m['record'];
-                      if (action == 'view' && record is ParishRecord) {
-                        _viewRecord(record);
-                      } else if (action == 'edit' && record is ParishRecord) {
-                        _editRecord(record);
-                      } else if (action == 'certificate' && id.isNotEmpty) {
-                        context.push(
-                          '/admin/records/$id/certificate',
-                          extra: _strToType(type),
-                        );
-                      } else if (action == 'delete') {
-                        final ok = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Delete record?'),
-                            content: Text(
-                              'Are you sure you want to delete "${m['name']}"?',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Cancel'),
-                              ),
-                              FilledButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: colorScheme.error,
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(df.format(date))),
+                        DataCell(
+                          Text(
+                            m['name']?.toString() ?? 'Untitled',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        DataCell(
+                          AdminDesignSystem.statusBadge(
+                            context,
+                            type.toUpperCase(),
+                            badgeColor,
+                          ),
+                        ),
+                        DataCell(Text(m['parish']?.toString() ?? '-')),
+                        DataCell(
+                          PopupMenuButton<String>(
+                            onSelected: (action) async {
+                              final record = m['record'];
+                              if (action == 'view' && record is ParishRecord) {
+                                _viewRecord(record);
+                              } else if (action == 'edit' &&
+                                  record is ParishRecord) {
+                                _editRecord(record);
+                              } else if (action == 'certificate' &&
+                                  id.isNotEmpty) {
+                                context.push(
+                                  '/admin/records/$id/certificate',
+                                  extra: _strToType(type),
+                                );
+                              } else if (action == 'delete') {
+                                final ok = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Delete record?'),
+                                    content: Text(
+                                      'Are you sure you want to delete "${m['name']}"?',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, true),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: colorScheme.error,
+                                        ),
+                                        child: const Text('Delete'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (ok == true) {
+                                  final record = m['record'];
+                                  if (record is ParishRecord) {
+                                    await _deleteRecord(record);
+                                  }
+                                }
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'view',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.visibility_outlined, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('View Details'),
+                                  ],
                                 ),
-                                child: const Text('Delete'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit_outlined, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Edit'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'certificate',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.card_membership, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Certificate'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuDivider(),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.delete_outline,
+                                      size: 18,
+                                      color: Colors.red,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Delete',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
-                        );
-                        if (ok == true) {
-                          final record = m['record'];
-                          if (record is ParishRecord) {
-                            await _deleteRecord(record);
-                          }
-                        }
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'view',
-                        child: Row(
-                          children: [
-                            Icon(Icons.visibility_outlined, size: 18),
-                            SizedBox(width: 8),
-                            Text('View Details'),
-                          ],
                         ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit_outlined, size: 18),
-                            SizedBox(width: 8),
-                            Text('Edit'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'certificate',
-                        child: Row(
-                          children: [
-                            Icon(Icons.card_membership, size: 18),
-                            SizedBox(width: 8),
-                            Text('Certificate'),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuDivider(),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('Delete', style: TextStyle(color: Colors.red)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            );
+                      ],
+                    );
                   }).toList(),
                 ),
               ),
