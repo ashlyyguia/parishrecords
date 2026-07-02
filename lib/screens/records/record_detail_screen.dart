@@ -58,6 +58,14 @@ bool _isAdminRecordsContext(BuildContext context) {
   return GoRouterState.of(context).uri.path.startsWith('/admin/records');
 }
 
+bool _isTemporaryManualRecord(ParishRecord record, Map<String, dynamic>? data) {
+  if (data == null) return false;
+  final status = data['status'];
+  return status == 'temporary' ||
+      data['source'] == 'manual_baptism_register' ||
+      data['source'] == 'manual_marriage_register';
+}
+
 class _RecordDetailBody extends ConsumerWidget {
   const _RecordDetailBody({required this.rec});
 
@@ -82,10 +90,65 @@ class _RecordDetailBody extends ConsumerWidget {
     final additional = _extractAdditionalInfo(rec, decodedNotes);
     final hasCert = additional.certificateIssued;
 
+    final isTemporary =
+        decodedNotes != null && _isTemporaryManualRecord(rec, decodedNotes);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(rec.name, overflow: TextOverflow.ellipsis),
         actions: [
+          if (isTemporary && isStaffOrAdmin)
+            IconButton(
+              tooltip: 'Approve Record',
+              icon: const Icon(Icons.check_circle_outlined),
+              onPressed: () async {
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (c) => AlertDialog(
+                    title: const Text('Approve Record?'),
+                    content: Text(
+                      'This will finalize the temporary record for "${rec.name}" and make it official.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(c, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(c, true),
+                        child: const Text('Approve'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (ok == true) {
+                  try {
+                    await RecordsRepository()
+                        .approveTemporaryRecord(rec.id, type: rec.type);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Record approved and finalized.'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                      await Future.delayed(const Duration(milliseconds: 500));
+                      if (context.mounted) context.pop();
+                    }
+                  } catch (err) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to approve: $err'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                }
+              },
+            ),
           IconButton(
             tooltip: 'Edit',
             icon: const Icon(Icons.edit_outlined),

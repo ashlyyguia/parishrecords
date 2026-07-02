@@ -505,6 +505,54 @@ class RecordsRepository {
     await updateCertificateStatus(id, status, type: type);
   }
 
+  Future<void> approveTemporaryRecord(String id, {RecordType? type}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final data = <String, dynamic>{
+      'notes': FieldValue.delete(),
+      'updated_at': Timestamp.now(),
+    };
+
+    if (type != null) {
+      final targetRef = _collectionForType(type).doc(id);
+      try {
+        await targetRef.update(data);
+        if (user != null) {
+          await AuditService.log(
+            action: 'record_approve',
+            userId: user.uid,
+            details: 'Approved temporary ${type.name} record (ID: $id)',
+          );
+        }
+        return;
+      } catch (_) {
+        // Continue to find it in other collections
+      }
+    }
+
+    final collections = [
+      'baptism_records',
+      'marriage_records',
+      'confirmation_records',
+      'funeral_records',
+    ];
+    for (final col in collections) {
+      try {
+        await _firestore.collection(col).doc(id).update(data);
+        if (user != null) {
+          await AuditService.log(
+            action: 'record_approve',
+            userId: user.uid,
+            details: 'Approved temporary record (ID: $id)',
+          );
+        }
+        return;
+      } catch (_) {
+        continue;
+      }
+    }
+    throw Exception('Record not found for approval');
+  }
+
   Future<void> delete(String id, {RecordType? type}) async {
     final user = FirebaseAuth.instance.currentUser;
     final typeName = type?.name ?? 'unknown';
