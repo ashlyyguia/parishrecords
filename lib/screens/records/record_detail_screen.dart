@@ -124,9 +124,13 @@ class _RecordDetailBody extends ConsumerWidget {
 
                 if (ok == true) {
                   try {
-                    await RecordsRepository()
-                        .approveTemporaryRecord(rec.id, type: rec.type);
+                    await RecordsRepository().approveTemporaryRecord(
+                      rec.id,
+                      type: rec.type,
+                    );
                     if (context.mounted) {
+                      // Invalidate the cache to refresh the record data
+                      ref.invalidate(recordByIdProvider(rec.id));
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Record approved and finalized.'),

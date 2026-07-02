@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -294,10 +295,7 @@ class RecordsRepository {
       saved += chunk.length;
     }
 
-    developer.log(
-      'Bulk saved $saved records',
-      name: 'RecordsRepository',
-    );
+    developer.log('Bulk saved $saved records', name: 'RecordsRepository');
 
     try {
       await AuditService.log(
@@ -507,15 +505,29 @@ class RecordsRepository {
 
   Future<void> approveTemporaryRecord(String id, {RecordType? type}) async {
     final user = FirebaseAuth.instance.currentUser;
-    final data = <String, dynamic>{
-      'notes': FieldValue.delete(),
-      'updated_at': Timestamp.now(),
-    };
 
     if (type != null) {
       final targetRef = _collectionForType(type).doc(id);
+
       try {
-        await targetRef.update(data);
+        final doc = await targetRef.get();
+        if (!doc.exists) throw Exception('Record not found');
+
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        final notes = data['notes'] as String?;
+        final updates = <String, dynamic>{'updated_at': Timestamp.now()};
+
+        if (notes != null && notes.trim().startsWith('{')) {
+          try {
+            final decoded = jsonDecode(notes) as Map<String, dynamic>;
+            decoded.remove('status');
+            updates['notes'] = jsonEncode(decoded);
+          } catch (_) {
+            // If notes aren't JSON, keep them as is
+          }
+        }
+
+        await targetRef.update(updates);
         if (user != null) {
           await AuditService.log(
             action: 'record_approve',
@@ -537,7 +549,24 @@ class RecordsRepository {
     ];
     for (final col in collections) {
       try {
-        await _firestore.collection(col).doc(id).update(data);
+        final doc = await _firestore.collection(col).doc(id).get();
+        if (!doc.exists) continue;
+
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        final notes = data['notes'] as String?;
+        final updates = <String, dynamic>{'updated_at': Timestamp.now()};
+
+        if (notes != null && notes.trim().startsWith('{')) {
+          try {
+            final decoded = jsonDecode(notes) as Map<String, dynamic>;
+            decoded.remove('status');
+            updates['notes'] = jsonEncode(decoded);
+          } catch (_) {
+            // If notes aren't JSON, keep them as is
+          }
+        }
+
+        await _firestore.collection(col).doc(id).update(updates);
         if (user != null) {
           await AuditService.log(
             action: 'record_approve',
