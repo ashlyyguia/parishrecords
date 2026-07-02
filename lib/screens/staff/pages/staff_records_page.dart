@@ -156,7 +156,6 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                   icon: Icons.edit_note_outlined,
                   onPressed: () => ManualRegisterLauncher.open(context),
                   isPrimary: true,
-                  color: Colors.white,
                 ),
                 AdminDesignSystem.actionButton(
                   context,
@@ -164,7 +163,6 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                   icon: Icons.refresh,
                   onPressed: () => ref.read(recordsProvider.notifier).load(),
                   isPrimary: false,
-                  color: Colors.white,
                 ),
               ],
             ),

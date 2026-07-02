@@ -323,46 +323,40 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
               pagePadding,
               0,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AdminDesignSystem.pageHeader(
+            child: AdminDesignSystem.pageHeader(
+              context,
+              title: 'Records Management',
+              subtitle:
+                  'Manage baptism and marriage register records (${items.length} total).',
+              icon: Icons.folder_shared_outlined,
+              actions: [
+                AdminDesignSystem.actionButton(
                   context,
-                  title: 'Records Management',
-                  subtitle:
-                      'Manage baptism and marriage register records (${items.length} total).',
-                  icon: Icons.folder_shared_outlined,
-                  actions: [],
+                  label: 'Manual Register',
+                  icon: Icons.edit_note_outlined,
+                  onPressed: _openManualRegister,
+                  isPrimary: true,
                 ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: pagePadding),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilledButton.icon(
-                        onPressed: _openManualRegister,
-                        icon: const Icon(Icons.edit_note_outlined),
-                        label: const Text('Manual Register'),
-                      ),
-                      FilledButton.icon(
-                        onPressed: _importCsvDialog,
-                        icon: const Icon(Icons.file_upload_outlined),
-                        label: const Text('Import CSV'),
-                      ),
-                      FilledButton.icon(
-                        onPressed: () => context.go('/admin/ocr/upload'),
-                        icon: const Icon(Icons.document_scanner),
-                        label: const Text('OCR Scan'),
-                      ),
-                      FilledButton.icon(
-                        onPressed: _openNewRecord,
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('Add Record'),
-                      ),
-                    ],
-                  ),
+                AdminDesignSystem.actionButton(
+                  context,
+                  label: 'Import CSV',
+                  icon: Icons.file_upload_outlined,
+                  onPressed: _importCsvDialog,
+                  isPrimary: false,
+                ),
+                AdminDesignSystem.actionButton(
+                  context,
+                  label: 'OCR Scan',
+                  icon: Icons.document_scanner,
+                  onPressed: () => context.go('/admin/ocr/upload'),
+                  isPrimary: false,
+                ),
+                AdminDesignSystem.actionButton(
+                  context,
+                  label: 'Add Record',
+                  icon: Icons.add_rounded,
+                  onPressed: _openNewRecord,
+                  isPrimary: false,
                 ),
               ],
             ),
