@@ -97,7 +97,7 @@ class _RecordDetailBody extends ConsumerWidget {
       appBar: AppBar(
         title: Text(rec.name, overflow: TextOverflow.ellipsis),
         actions: [
-          if (isTemporary && isStaffOrAdmin)
+          if (isTemporary && canDelete)
             IconButton(
               tooltip: 'Approve Record',
               icon: const Icon(Icons.check_circle_outlined),
