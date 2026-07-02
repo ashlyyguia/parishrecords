@@ -144,16 +144,16 @@ class AdminDesignSystem {
               ],
             )
           : Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(child: titleBlock()),
                 if (actions != null && actions.isNotEmpty) ...[
                   const SizedBox(width: 12),
-                  Flexible(
-                    child: Wrap(
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       spacing: 8,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.end,
                       children: actions,
                     ),
                   ),
@@ -226,7 +226,7 @@ class AdminDesignSystem {
     bool isPrimary = true,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    final bgColor = color ?? colorScheme.primary;
+    final accentColor = color ?? colorScheme.primary;
     final isCompact = MediaQuery.sizeOf(context).width < 720;
 
     return ElevatedButton.icon(
@@ -234,8 +234,8 @@ class AdminDesignSystem {
       icon: Icon(icon, size: isCompact ? 16 : 18),
       label: Text(label),
       style: ElevatedButton.styleFrom(
-        backgroundColor: isPrimary ? bgColor : colorScheme.surface,
-        foregroundColor: isPrimary ? Colors.white : bgColor,
+        backgroundColor: isPrimary ? Colors.white : Colors.white.withOpacity(0.15),
+        foregroundColor: accentColor,
         elevation: isPrimary ? 2 : 0,
         padding: EdgeInsets.symmetric(
           horizontal: isCompact ? 12 : 20,
@@ -247,7 +247,7 @@ class AdminDesignSystem {
           borderRadius: BorderRadius.circular(12),
           side: isPrimary
               ? BorderSide.none
-              : BorderSide(color: bgColor.withOpacity(0.3)),
+              : BorderSide(color: Colors.white.withOpacity(0.3)),
         ),
       ),
     );
