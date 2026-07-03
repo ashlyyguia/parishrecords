@@ -484,6 +484,14 @@ class _MarriageFormScreenState extends ConsumerState<MarriageFormScreen> {
       },
     };
 
+    // Staff-scanned certificates stay temporary until an admin approves.
+    if (widget.existing == null &&
+        widget.ocrPrefill != null &&
+        !widget.fromAdmin) {
+      details['source'] = 'certificate_scan';
+      details['status'] = 'temporary';
+    }
+
     try {
       final notifier = ref.read(recordsProvider.notifier);
       if (widget.existing == null) {
