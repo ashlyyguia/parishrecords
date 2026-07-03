@@ -83,6 +83,14 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
       );
       frame.image.dispose();
 
+      // Show the certificate right away with the analyzing animation
+      // while text recognition runs.
+      if (!mounted) return;
+      setState(() {
+        _imageBytes = bytes;
+        _imageSize = imageSize;
+      });
+
       final result = await OcrService.instance.recognizeBytes(bytes);
 
       final blocks = <Rect>[];
@@ -267,25 +275,17 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
               ),
             ),
           ],
-          if (_busy) ...[
+          if (_busy && _imageBytes == null) ...[
             const SizedBox(height: 32),
             const Center(child: CircularProgressIndicator()),
-            const SizedBox(height: 12),
-            Center(
-              child: Text(
-                'Reading ${meta.label.toLowerCase()} certificate…',
-                style: TextStyle(
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
-              ),
-            ),
           ],
           if (_imageBytes != null && _imageSize != null) ...[
             const SizedBox(height: 20),
             _SectionLabel(
               icon: Icons.document_scanner_outlined,
-              text:
-                  'Detected regions — ${_lineRects.length} lines in ${_blockRects.length} blocks',
+              text: _busy
+                  ? 'Analyzing ${meta.label.toLowerCase()} certificate…'
+                  : 'Detected regions — ${_lineRects.length} lines in ${_blockRects.length} blocks',
             ),
             const SizedBox(height: 8),
             ClipRRect(
@@ -295,6 +295,7 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
                 imageSize: _imageSize!,
                 blockRects: _blockRects,
                 lineRects: _lineRects,
+                analyzing: _busy,
               ),
             ),
             if (_ocrText.isNotEmpty) ...[
@@ -362,17 +363,21 @@ class _SectionLabel extends StatelessWidget {
 
 /// The scanned image with ML Kit text-region boxes painted on top —
 /// green boxes for lines, blue for blocks (like the ML Kit demo output).
+/// While [analyzing], a scanning sweep animates over the certificate;
+/// when results arrive the boxes animate in progressively.
 class _OcrOverlayImage extends StatelessWidget {
   final Uint8List bytes;
   final Size imageSize;
   final List<Rect> blockRects;
   final List<Rect> lineRects;
+  final bool analyzing;
 
   const _OcrOverlayImage({
     required this.bytes,
     required this.imageSize,
     required this.blockRects,
     required this.lineRects,
+    required this.analyzing,
   });
 
   @override
@@ -389,13 +394,23 @@ class _OcrOverlayImage extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               Image.memory(bytes, fit: BoxFit.fill),
-              CustomPaint(
-                painter: _OcrBoxesPainter(
-                  imageSize: imageSize,
-                  blockRects: blockRects,
-                  lineRects: lineRects,
+              if (analyzing)
+                const _ScanSweepOverlay()
+              else
+                TweenAnimationBuilder<double>(
+                  key: ValueKey('boxes-${lineRects.length}'),
+                  tween: Tween(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 900),
+                  curve: Curves.easeOut,
+                  builder: (context, progress, _) => CustomPaint(
+                    painter: _OcrBoxesPainter(
+                      imageSize: imageSize,
+                      blockRects: blockRects,
+                      lineRects: lineRects,
+                      progress: progress,
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
         );
@@ -404,15 +419,89 @@ class _OcrOverlayImage extends StatelessWidget {
   }
 }
 
+/// Repeating green sweep that travels down the certificate while OCR runs.
+class _ScanSweepOverlay extends StatefulWidget {
+  const _ScanSweepOverlay();
+
+  @override
+  State<_ScanSweepOverlay> createState() => _ScanSweepOverlayState();
+}
+
+class _ScanSweepOverlayState extends State<_ScanSweepOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) => CustomPaint(
+        painter: _ScanSweepPainter(progress: _controller.value),
+      ),
+    );
+  }
+}
+
+class _ScanSweepPainter extends CustomPainter {
+  final double progress;
+
+  _ScanSweepPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final y = size.height * progress;
+    final bandHeight = size.height * 0.18;
+    final band = Rect.fromLTWH(0, y - bandHeight, size.width, bandHeight);
+
+    canvas.drawRect(
+      band,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.greenAccent.withValues(alpha: 0),
+            Colors.greenAccent.withValues(alpha: 0.30),
+          ],
+        ).createShader(band),
+    );
+
+    canvas.drawLine(
+      Offset(0, y),
+      Offset(size.width, y),
+      Paint()
+        ..color = Colors.greenAccent.shade400
+        ..strokeWidth = 2.5,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ScanSweepPainter oldDelegate) =>
+      oldDelegate.progress != progress;
+}
+
 class _OcrBoxesPainter extends CustomPainter {
   final Size imageSize;
   final List<Rect> blockRects;
   final List<Rect> lineRects;
 
+  /// 0→1: line boxes appear one after another, block boxes fade in.
+  final double progress;
+
   _OcrBoxesPainter({
     required this.imageSize,
     required this.blockRects,
     required this.lineRects,
+    this.progress = 1,
   });
 
   @override
@@ -423,7 +512,7 @@ class _OcrBoxesPainter extends CustomPainter {
     final blockPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
-      ..color = Colors.blueAccent;
+      ..color = Colors.blueAccent.withValues(alpha: progress);
     final linePaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
@@ -435,7 +524,10 @@ class _OcrBoxesPainter extends CustomPainter {
         blockPaint,
       );
     }
-    for (final r in lineRects) {
+
+    final visibleLines = (lineRects.length * progress).ceil();
+    for (var i = 0; i < visibleLines && i < lineRects.length; i++) {
+      final r = lineRects[i];
       canvas.drawRect(
         Rect.fromLTRB(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy),
         linePaint,
@@ -447,5 +539,6 @@ class _OcrBoxesPainter extends CustomPainter {
   bool shouldRepaint(_OcrBoxesPainter oldDelegate) =>
       oldDelegate.blockRects != blockRects ||
       oldDelegate.lineRects != lineRects ||
-      oldDelegate.imageSize != imageSize;
+      oldDelegate.imageSize != imageSize ||
+      oldDelegate.progress != progress;
 }
