@@ -39,6 +39,7 @@ class DeathFormScreen extends ConsumerStatefulWidget {
 class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
   final _formKey = GlobalKey<FormState>();
   String? _recordId;
+  bool _saving = false;
 
   // Registry (book/page/line)
   final _bookNoCtrl = TextEditingController();
@@ -395,6 +396,7 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     if (!(_formKey.currentState?.validate() ?? false)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please complete required fields')),
@@ -474,6 +476,7 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
       details['status'] = 'temporary';
     }
 
+    setState(() => _saving = true);
     try {
       final notifier = ref.read(recordsProvider.notifier);
       if (widget.existing == null) {
@@ -518,6 +521,8 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('Save failed: ${e.toString()}')));
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -529,9 +534,9 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
         title: const Text('Death / Burial Record Entry'),
         actions: [
           TextButton.icon(
-            onPressed: _save,
+            onPressed: _saving ? null : _save,
             icon: const Icon(Icons.save_outlined),
-            label: const Text('Save'),
+            label: Text(_saving ? 'Saving…' : 'Save'),
           ),
         ],
       ),
@@ -765,8 +770,14 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _save,
-                  child: const Text('Save'),
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
                 ),
               ),
             ],

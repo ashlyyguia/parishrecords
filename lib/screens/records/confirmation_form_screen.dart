@@ -41,6 +41,7 @@ class _ConfirmationFormScreenState
     extends ConsumerState<ConfirmationFormScreen> {
   final _formKey = GlobalKey<FormState>();
   String? _recordId;
+  bool _saving = false;
 
   // Registry (book/page/line)
   final _bookNoCtrl = TextEditingController();
@@ -579,6 +580,7 @@ class _ConfirmationFormScreenState
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     if (!(_formKey.currentState?.validate() ?? false)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please complete required fields')),
@@ -652,6 +654,7 @@ class _ConfirmationFormScreenState
       details['status'] = 'temporary';
     }
 
+    setState(() => _saving = true);
     try {
       final notifier = ref.read(recordsProvider.notifier);
       if (widget.existing == null) {
@@ -696,6 +699,8 @@ class _ConfirmationFormScreenState
           context,
         ).showSnackBar(SnackBar(content: Text('Save failed: ${e.toString()}')));
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -707,9 +712,9 @@ class _ConfirmationFormScreenState
         title: const Text('Confirmation Record Entry'),
         actions: [
           TextButton.icon(
-            onPressed: _save,
+            onPressed: _saving ? null : _save,
             icon: const Icon(Icons.save_outlined),
-            label: const Text('Save'),
+            label: Text(_saving ? 'Saving…' : 'Save'),
           ),
         ],
       ),
@@ -905,8 +910,14 @@ class _ConfirmationFormScreenState
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _save,
-                  child: const Text('Save'),
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
                 ),
               ),
             ],
