@@ -1,6 +1,7 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -32,7 +33,17 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
   List<Rect> _lineRects = [];
   String _ocrText = '';
   bool _busy = false;
+  bool _dragging = false;
   String? _error;
+
+  /// Drag & drop needs a windowing/web backend; native mobile uses camera.
+  static bool get _supportsDrop =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.linux ||
+      defaultTargetPlatform == TargetPlatform.macOS;
+
+  static const _imageExtensions = {'jpg', 'jpeg', 'png', 'webp', 'bmp'};
 
   static const _typeMeta = {
     RecordType.baptism: (
@@ -65,6 +76,33 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
         : await OcrImagePick.pickImages(allowMultiple: false);
     if (files.isEmpty || !mounted) return;
 
+    final bytes = await files.first.readAsBytes();
+    if (!mounted) return;
+    await _processBytes(bytes);
+  }
+
+  Future<void> _handleDrop(DropDoneDetails detail) async {
+    if (_busy) return;
+
+    final image = detail.files.cast<DropItem?>().firstWhere(
+      (f) => _imageExtensions.contains(f!.name.split('.').last.toLowerCase()),
+      orElse: () => null,
+    );
+    if (image == null) {
+      setState(() {
+        _error =
+            'That file type is not supported. Drop a JPG, PNG, or WEBP image of the certificate.';
+      });
+      return;
+    }
+
+    setState(() => _error = null);
+    final bytes = await image.readAsBytes();
+    if (!mounted) return;
+    await _processBytes(bytes);
+  }
+
+  Future<void> _processBytes(Uint8List bytes) async {
     setState(() {
       _busy = true;
       _imageBytes = null;
@@ -74,7 +112,6 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
     });
 
     try {
-      final bytes = await files.first.readAsBytes();
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
       final imageSize = Size(
@@ -229,37 +266,44 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
             ],
           ),
           const SizedBox(height: 20),
+          DropTarget(
+            enable: _supportsDrop && !_busy,
+            onDragEntered: (_) => setState(() => _dragging = true),
+            onDragExited: (_) => setState(() => _dragging = false),
+            onDragDone: (detail) {
+              setState(() => _dragging = false);
+              _handleDrop(detail);
+            },
+            child: _UploadDropZone(
+              enabled: !_busy,
+              dragging: _dragging,
+              showDropHint: _supportsDrop,
+              onBrowse: () => _pick(camera: false),
+              onCamera: ocrSupportsCamera ? () => _pick(camera: true) : null,
+            ),
+          ),
+          const SizedBox(height: 10),
           Row(
             children: [
-              if (ocrSupportsCamera) ...[
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _busy ? null : () => _pick(camera: true),
-                    icon: const Icon(Icons.camera_alt_outlined),
-                    label: const Text('Scan'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-              ],
+              Icon(
+                Icons.info_outline,
+                size: 14,
+                color: colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
+              const SizedBox(width: 6),
               Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _pick(camera: false),
-                  icon: const Icon(Icons.upload_file_outlined),
-                  label: const Text('Upload image'),
+                child: Text(
+                  ocrUsesMlKit
+                      ? 'Detected text regions are highlighted after scanning.'
+                      : 'Text-region highlighting needs the mobile app (ML Kit); '
+                          'text is still extracted here.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            ocrUsesMlKit
-                ? 'Detected text regions are highlighted after scanning.'
-                : 'Text-region highlighting needs the mobile app (ML Kit); '
-                    'text is still extracted here.',
-            style: TextStyle(
-              fontSize: 12,
-              color: colorScheme.onSurface.withValues(alpha: 0.6),
-            ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -331,6 +375,185 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
       ),
     );
   }
+}
+
+/// Dashed-border upload area: drag & drop on web/desktop, tap to browse
+/// everywhere, plus a camera action on mobile. Highlights while a file
+/// is dragged over it.
+class _UploadDropZone extends StatelessWidget {
+  final bool enabled;
+  final bool dragging;
+  final bool showDropHint;
+  final VoidCallback onBrowse;
+  final VoidCallback? onCamera;
+
+  const _UploadDropZone({
+    required this.enabled,
+    required this.dragging,
+    required this.showDropHint,
+    required this.onBrowse,
+    this.onCamera,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = colorScheme.primary;
+    final borderColor = dragging
+        ? accent
+        : colorScheme.outline.withValues(alpha: enabled ? 0.45 : 0.25);
+
+    return CustomPaint(
+      painter: _DashedBorderPainter(
+        color: borderColor,
+        radius: 16,
+        strokeWidth: dragging ? 2 : 1.4,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onBrowse : null,
+          borderRadius: BorderRadius.circular(16),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+            decoration: BoxDecoration(
+              color: dragging
+                  ? accent.withValues(alpha: 0.08)
+                  : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: dragging ? 0.18 : 0.10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    dragging
+                        ? Icons.file_download_outlined
+                        : Icons.cloud_upload_outlined,
+                    size: 32,
+                    color: accent,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  dragging
+                      ? 'Drop the certificate to scan it'
+                      : showDropHint
+                          ? 'Drag & drop the certificate image here'
+                          : 'Upload a certificate image',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  showDropHint
+                      ? 'or browse your files — JPG, PNG, or WEBP'
+                      : 'JPG, PNG, or WEBP',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    if (onCamera != null)
+                      FilledButton.icon(
+                        onPressed: enabled ? onCamera : null,
+                        icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                        label: const Text('Scan with camera'),
+                      ),
+                    if (onCamera != null)
+                      OutlinedButton.icon(
+                        onPressed: enabled ? onBrowse : null,
+                        icon: const Icon(Icons.photo_library_outlined,
+                            size: 18),
+                        label: const Text('Choose image'),
+                      )
+                    else
+                      FilledButton.icon(
+                        onPressed: enabled ? onBrowse : null,
+                        icon: const Icon(Icons.upload_file_outlined, size: 18),
+                        label: const Text('Browse files'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Rounded-rectangle dashed outline for the upload drop zone.
+class _DashedBorderPainter extends CustomPainter {
+  final Color color;
+  final double radius;
+  final double strokeWidth;
+
+  _DashedBorderPainter({
+    required this.color,
+    required this.radius,
+    required this.strokeWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const dashLength = 7.0;
+    const gapLength = 5.0;
+
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Offset.zero & size,
+          Radius.circular(radius),
+        ),
+      );
+
+    final dashed = Path();
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        dashed.addPath(
+          metric.extractPath(distance, distance + dashLength),
+          Offset.zero,
+        );
+        distance += dashLength + gapLength;
+      }
+    }
+
+    canvas.drawPath(
+      dashed,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.radius != radius ||
+      oldDelegate.strokeWidth != strokeWidth;
 }
 
 class _SectionLabel extends StatelessWidget {
