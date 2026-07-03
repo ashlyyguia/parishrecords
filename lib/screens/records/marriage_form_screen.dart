@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
+import '../../services/certificate_ocr_extractor.dart';
 import '../ocr/ocr_scan_screen.dart';
 
 class MarriageFormScreen extends ConsumerStatefulWidget {
@@ -14,12 +15,21 @@ class MarriageFormScreen extends ConsumerStatefulWidget {
   final bool fromStaff;
   final bool startWithOcr;
 
+  /// Verified fields from the certificate scanner (see CertificateOcrExtractor
+  /// keys), plus the locally stored scan image and raw OCR text.
+  final Map<String, String>? ocrPrefill;
+  final String? ocrImagePath;
+  final String? ocrRawText;
+
   const MarriageFormScreen({
     super.key,
     this.existing,
     this.fromAdmin = false,
     this.fromStaff = false,
     this.startWithOcr = false,
+    this.ocrPrefill,
+    this.ocrImagePath,
+    this.ocrRawText,
   });
 
   @override
@@ -201,11 +211,42 @@ class _MarriageFormScreenState extends ConsumerState<MarriageFormScreen> {
       _marriagePlaceCtrl.text = 'Holy Rosary Parish – Oroquieta City';
     }
 
+    if (widget.existing == null && widget.ocrPrefill != null) {
+      _applyOcrPrefill(widget.ocrPrefill!);
+    }
+
     if (widget.existing == null && widget.startWithOcr) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scanOcr();
       });
     }
+  }
+
+  void _applyOcrPrefill(Map<String, String> f) {
+    _groomNameCtrl.text = f['groomName'] ?? '';
+    _brideNameCtrl.text = f['brideName'] ?? '';
+    _marriageDate = CertificateOcrExtractor.parseCertDate(f['sacramentDate']);
+    if ((f['marriagePlace'] ?? '').isNotEmpty) {
+      _marriagePlaceCtrl.text = f['marriagePlace']!;
+    }
+    _officiantCtrl.text = f['minister'] ?? '';
+
+    final witnesses = (f['witnesses'] ?? '')
+        .split(RegExp(r'[,&]| and '))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (witnesses.isNotEmpty) _witness1Ctrl.text = witnesses[0];
+    if (witnesses.length > 1) _witness2Ctrl.text = witnesses[1];
+
+    _pageNoCtrl.text = f['page'] ?? '';
+    _bookNoCtrl.text = f['vol'] ?? '';
+    if ((f['series'] ?? '').isNotEmpty) {
+      _remarksCtrl.text = 'Register series: ${f['series']}';
+    }
+
+    _attachmentPath = widget.ocrImagePath;
+    _ocrRawText = widget.ocrRawText;
   }
 
   Future<void> _pickDate(

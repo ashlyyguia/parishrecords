@@ -130,6 +130,28 @@ Vol. : 8
     });
   });
 
+  group('parseCertDate', () {
+    test('parses "30 April 1958"', () {
+      expect(
+        CertificateOcrExtractor.parseCertDate('30 April 1958'),
+        DateTime(1958, 4, 30),
+      );
+    });
+
+    test('parses "January 8, 2026"', () {
+      expect(
+        CertificateOcrExtractor.parseCertDate('January 8, 2026'),
+        DateTime(2026, 1, 8),
+      );
+    });
+
+    test('returns null for unreadable month or empty', () {
+      expect(CertificateOcrExtractor.parseCertDate('30 ??? 1958'), isNull);
+      expect(CertificateOcrExtractor.parseCertDate(''), isNull);
+      expect(CertificateOcrExtractor.parseCertDate(null), isNull);
+    });
+  });
+
   group('certificateFieldsFor', () {
     test('every record type defines required fields', () {
       for (final type in RecordType.values) {

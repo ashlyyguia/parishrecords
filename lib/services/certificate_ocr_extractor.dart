@@ -487,6 +487,43 @@ class CertificateOcrExtractor {
     );
   }
 
+  /// Parses dates the extractor produces ("30 April 1958") and the
+  /// certificate footer style ("January 8, 2026"). Returns null when the
+  /// month is unreadable (e.g. "30 ??? 1958").
+  static DateTime? parseCertDate(String? raw) {
+    if (raw == null) return null;
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+
+    const months = {
+      'january': 1, 'february': 2, 'march': 3, 'april': 4,
+      'may': 5, 'june': 6, 'july': 7, 'august': 8,
+      'september': 9, 'october': 10, 'november': 11, 'december': 12,
+    };
+
+    // "30 April 1958"
+    var m = RegExp(
+      r'^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$',
+    ).firstMatch(s);
+    if (m != null) {
+      final month = months[m.group(2)!.toLowerCase()];
+      if (month == null) return null;
+      return DateTime(int.parse(m.group(3)!), month, int.parse(m.group(1)!));
+    }
+
+    // "January 8, 2026"
+    m = RegExp(
+      r'^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$',
+    ).firstMatch(s);
+    if (m != null) {
+      final month = months[m.group(1)!.toLowerCase()];
+      if (month == null) return null;
+      return DateTime(int.parse(m.group(3)!), month, int.parse(m.group(2)!));
+    }
+
+    return DateTime.tryParse(s);
+  }
+
   // ---- helpers ----
 
   static void _put(Map<String, String> values, String key, String? raw) {

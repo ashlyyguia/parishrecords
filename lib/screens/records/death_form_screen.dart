@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
+import '../../services/certificate_ocr_extractor.dart';
 import '../ocr/ocr_scan_screen.dart';
 
 class DeathFormScreen extends ConsumerStatefulWidget {
@@ -14,12 +15,21 @@ class DeathFormScreen extends ConsumerStatefulWidget {
   final bool fromStaff;
   final bool startWithOcr;
 
+  /// Verified fields from the certificate scanner (see CertificateOcrExtractor
+  /// keys), plus the locally stored scan image and raw OCR text.
+  final Map<String, String>? ocrPrefill;
+  final String? ocrImagePath;
+  final String? ocrRawText;
+
   const DeathFormScreen({
     super.key,
     this.existing,
     this.fromAdmin = false,
     this.fromStaff = false,
     this.startWithOcr = false,
+    this.ocrPrefill,
+    this.ocrImagePath,
+    this.ocrRawText,
   });
 
   @override
@@ -180,11 +190,32 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
       }
     }
 
+    if (widget.existing == null && widget.ocrPrefill != null) {
+      _applyOcrPrefill(widget.ocrPrefill!);
+    }
+
     if (widget.existing == null && widget.startWithOcr) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scanOcr();
       });
     }
+  }
+
+  void _applyOcrPrefill(Map<String, String> f) {
+    _nameCtrl.text = f['deceasedName'] ?? '';
+    _dod = CertificateOcrExtractor.parseCertDate(f['deathDate']);
+    _burialDate = CertificateOcrExtractor.parseCertDate(f['burialDate']);
+    _burialPlaceCtrl.text = f['burialPlace'] ?? '';
+    _officiantCtrl.text = f['minister'] ?? '';
+
+    _pageNoCtrl.text = f['page'] ?? '';
+    _bookNoCtrl.text = f['vol'] ?? '';
+    if ((f['series'] ?? '').isNotEmpty) {
+      _remarksCtrl.text = 'Register series: ${f['series']}';
+    }
+
+    _attachmentPath = widget.ocrImagePath;
+    _ocrRawText = widget.ocrRawText;
   }
 
   Future<void> _scanOcr() async {

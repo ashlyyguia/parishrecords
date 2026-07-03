@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/certificate_ocr_extractor.dart';
 import '../ocr/ocr_scan_screen.dart';
 
 class EnhancedBaptismFormScreen extends ConsumerStatefulWidget {
@@ -15,12 +16,21 @@ class EnhancedBaptismFormScreen extends ConsumerStatefulWidget {
   final bool fromStaff;
   final bool startWithOcr;
 
+  /// Verified fields from the certificate scanner (see CertificateOcrExtractor
+  /// keys), plus the locally stored scan image and raw OCR text.
+  final Map<String, String>? ocrPrefill;
+  final String? ocrImagePath;
+  final String? ocrRawText;
+
   const EnhancedBaptismFormScreen({
     super.key,
     this.existing,
     this.fromAdmin = false,
     this.fromStaff = false,
     this.startWithOcr = false,
+    this.ocrPrefill,
+    this.ocrImagePath,
+    this.ocrRawText,
   });
 
   @override
@@ -208,11 +218,43 @@ class _EnhancedBaptismFormScreenState
       _baptismPlaceCtrl.text = 'Holy Rosary Parish – Oroquieta City';
     }
 
+    if (widget.existing == null && widget.ocrPrefill != null) {
+      _applyOcrPrefill(widget.ocrPrefill!);
+    }
+
     if (widget.existing == null && widget.startWithOcr) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scanOcr();
       });
     }
+  }
+
+  void _applyOcrPrefill(Map<String, String> f) {
+    _nameCtrl.text = f['fullName'] ?? '';
+    _fatherCtrl.text = f['fatherName'] ?? '';
+    _motherCtrl.text = f['motherName'] ?? '';
+    _placeOfBirthCtrl.text = f['birthPlace'] ?? '';
+    _dob = CertificateOcrExtractor.parseCertDate(f['birthDate']);
+    _baptismDate = CertificateOcrExtractor.parseCertDate(f['sacramentDate']);
+    _ministerCtrl.text = f['minister'] ?? '';
+
+    // Certificate sponsors map onto the godparent slots.
+    final sponsors = (f['sponsors'] ?? '')
+        .split(RegExp(r'[,&]| and '))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (sponsors.isNotEmpty) _godfather1Ctrl.text = sponsors[0];
+    if (sponsors.length > 1) _godmother1Ctrl.text = sponsors[1];
+
+    _pageNoCtrl.text = f['page'] ?? '';
+    _bookNoCtrl.text = f['vol'] ?? '';
+    if ((f['series'] ?? '').isNotEmpty) {
+      _remarksCtrl.text = 'Register series: ${f['series']}';
+    }
+
+    _attachmentPath = widget.ocrImagePath;
+    _ocrRawText = widget.ocrRawText;
   }
 
   @override

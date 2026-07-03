@@ -8,6 +8,7 @@ import '../../models/record.dart';
 import '../../services/certificate_ocr_extractor.dart';
 import '../../services/ocr_image_pick.dart';
 import '../../services/ocr_service.dart';
+import '../../services/scan_image_store.dart';
 import 'certificate_verify_screen.dart';
 
 /// Scan or upload a sacramental certificate, run OCR, show the detected
@@ -138,19 +139,34 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
     );
     if (verified == null || !mounted) return;
 
-    // Hand the verified data back to whoever opened the scanner.
-    if (context.canPop()) {
-      context.pop({'type': _type.value, 'fields': verified});
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${_typeMeta[_type]!.label} record verified '
-            '(${verified.length} fields).',
-          ),
-        ),
+    // Keep the scanned certificate on this device (not Firebase Storage);
+    // the local path travels with the record into Firestore.
+    String? imagePath;
+    if (_imageBytes != null) {
+      imagePath = await ScanImageStore.save(
+        _imageBytes!,
+        recordType: _type.value,
       );
     }
+    if (!mounted) return;
+
+    // Continue into the full entry form, pre-filled with the verified
+    // fields — its Save button writes the record to Firestore.
+    final location = GoRouterState.of(context).uri.path;
+    final fromAdmin = location.startsWith('/admin');
+    final formPath = switch (_type) {
+      RecordType.baptism => '/records/new/baptism',
+      RecordType.marriage => '/records/new/marriage',
+      RecordType.confirmation => '/records/new/confirmation',
+      RecordType.funeral => '/records/new/death',
+    };
+    context.push(formPath, extra: {
+      'ocrPrefill': verified,
+      'ocrImagePath': imagePath,
+      'ocrRawText': _ocrText,
+      'fromStaff': !fromAdmin,
+      'fromAdmin': fromAdmin,
+    });
   }
 
   @override

@@ -295,96 +295,64 @@ GoRouter createRouter() {
       GoRoute(
         path: '/records/new/baptism',
         builder: (context, state) {
-          final extra = state.extra;
-          ParishRecord? existing;
-          bool fromStaff = false;
-          bool startWithOcr = false;
-
-          if (extra is ParishRecord) {
-            existing = extra;
-          } else if (extra is Map<String, dynamic>) {
-            existing = extra['record'] as ParishRecord?;
-            fromStaff = extra['fromStaff'] == true;
-          } else if (extra is String && extra == 'ocr') {
-            startWithOcr = true;
-          }
+          final args = _FormRouteArgs(state.extra);
 
           return EnhancedBaptismFormScreen(
-            existing: existing,
-            fromStaff: fromStaff,
-            startWithOcr: startWithOcr,
+            existing: args.existing,
+            fromStaff: args.fromStaff,
+            fromAdmin: args.fromAdmin,
+            startWithOcr: args.startWithOcr,
+            ocrPrefill: args.ocrPrefill,
+            ocrImagePath: args.ocrImagePath,
+            ocrRawText: args.ocrRawText,
           );
         },
       ),
       GoRoute(
         path: '/records/new/marriage',
         builder: (context, state) {
-          final extra = state.extra;
-          ParishRecord? existing;
-          bool fromStaff = false;
-          bool startWithOcr = false;
-
-          if (extra is ParishRecord) {
-            existing = extra;
-          } else if (extra is Map<String, dynamic>) {
-            existing = extra['record'] as ParishRecord?;
-            fromStaff = extra['fromStaff'] == true;
-          } else if (extra is String && extra == 'ocr') {
-            startWithOcr = true;
-          }
+          final args = _FormRouteArgs(state.extra);
 
           return MarriageFormScreen(
-            existing: existing,
-            fromStaff: fromStaff,
-            startWithOcr: startWithOcr,
+            existing: args.existing,
+            fromStaff: args.fromStaff,
+            fromAdmin: args.fromAdmin,
+            startWithOcr: args.startWithOcr,
+            ocrPrefill: args.ocrPrefill,
+            ocrImagePath: args.ocrImagePath,
+            ocrRawText: args.ocrRawText,
           );
         },
       ),
       GoRoute(
         path: '/records/new/confirmation',
         builder: (context, state) {
-          final extra = state.extra;
-          ParishRecord? existing;
-          bool fromStaff = false;
-          bool startWithOcr = false;
-
-          if (extra is ParishRecord) {
-            existing = extra;
-          } else if (extra is Map<String, dynamic>) {
-            existing = extra['record'] as ParishRecord?;
-            fromStaff = extra['fromStaff'] == true;
-          } else if (extra is String && extra == 'ocr') {
-            startWithOcr = true;
-          }
+          final args = _FormRouteArgs(state.extra);
 
           return ConfirmationFormScreen(
-            existing: existing,
-            fromStaff: fromStaff,
-            startWithOcr: startWithOcr,
+            existing: args.existing,
+            fromStaff: args.fromStaff,
+            fromAdmin: args.fromAdmin,
+            startWithOcr: args.startWithOcr,
+            ocrPrefill: args.ocrPrefill,
+            ocrImagePath: args.ocrImagePath,
+            ocrRawText: args.ocrRawText,
           );
         },
       ),
       GoRoute(
         path: '/records/new/death',
         builder: (context, state) {
-          final extra = state.extra;
-          ParishRecord? existing;
-          bool fromStaff = false;
-          bool startWithOcr = false;
-
-          if (extra is ParishRecord) {
-            existing = extra;
-          } else if (extra is Map<String, dynamic>) {
-            existing = extra['record'] as ParishRecord?;
-            fromStaff = extra['fromStaff'] == true;
-          } else if (extra is String && extra == 'ocr') {
-            startWithOcr = true;
-          }
+          final args = _FormRouteArgs(state.extra);
 
           return DeathFormScreen(
-            existing: existing,
-            fromStaff: fromStaff,
-            startWithOcr: startWithOcr,
+            existing: args.existing,
+            fromStaff: args.fromStaff,
+            fromAdmin: args.fromAdmin,
+            startWithOcr: args.startWithOcr,
+            ocrPrefill: args.ocrPrefill,
+            ocrImagePath: args.ocrImagePath,
+            ocrRawText: args.ocrRawText,
           );
         },
       ),
@@ -1107,6 +1075,37 @@ class _NotificationsRedirectScreen extends ConsumerWidget {
     });
 
     return const AppLoadingScreen(message: 'Opening notifications...');
+  }
+}
+
+/// Parses the route extra shared by the /records/new/* form routes.
+class _FormRouteArgs {
+  ParishRecord? existing;
+  bool fromStaff = false;
+  bool fromAdmin = false;
+  bool startWithOcr = false;
+  Map<String, String>? ocrPrefill;
+  String? ocrImagePath;
+  String? ocrRawText;
+
+  _FormRouteArgs(Object? extra) {
+    if (extra is ParishRecord) {
+      existing = extra;
+    } else if (extra is Map) {
+      existing = extra['record'] as ParishRecord?;
+      fromStaff = extra['fromStaff'] == true;
+      fromAdmin = extra['fromAdmin'] == true;
+      final prefill = extra['ocrPrefill'];
+      if (prefill is Map) {
+        ocrPrefill = prefill.map(
+          (k, v) => MapEntry(k.toString(), v.toString()),
+        );
+      }
+      ocrImagePath = extra['ocrImagePath'] as String?;
+      ocrRawText = extra['ocrRawText'] as String?;
+    } else if (extra is String && extra == 'ocr') {
+      startWithOcr = true;
+    }
   }
 }
 
