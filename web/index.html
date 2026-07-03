@@ -26,21 +26,27 @@
   <link rel="manifest" href="manifest.json">
 
   <!-- Tesseract.js for register OCR on web (Chrome/desktop browser) -->
-  <script src="https://unpkg.com/tesseract.js@v4.1.1/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
   <script>
     async function _extractText(imagePath, mapData) {
       var lang = (mapData && mapData.language) ? mapData.language : 'eng';
       var args = (mapData && mapData.args) ? mapData.args : {};
+      var wantHocr = !!args['tessjs_create_hocr'];
       var worker = await Tesseract.createWorker(lang, 1, {
-        workerPath: 'https://unpkg.com/tesseract.js@v4.1.1/dist/worker.min.js',
-        corePath: 'https://unpkg.com/tesseract.js-core@v4.0.4',
+        workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+        corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0',
       });
-      if (Object.keys(args).length > 0) {
-        await worker.setParameters(args);
+      // tessjs_* keys are bridge flags, not engine parameters.
+      var engineArgs = {};
+      for (var k in args) {
+        if (k.indexOf('tessjs_') !== 0) engineArgs[k] = args[k];
       }
-      var rtn = await worker.recognize(imagePath);
+      if (Object.keys(engineArgs).length > 0) {
+        await worker.setParameters(engineArgs);
+      }
+      var rtn = await worker.recognize(imagePath, {}, { text: true, hocr: wantHocr });
       await worker.terminate();
-      if (args['tessjs_create_hocr']) {
+      if (wantHocr) {
         return (rtn.data && rtn.data.hocr) ? rtn.data.hocr : '';
       }
       return (rtn.data && rtn.data.text) ? rtn.data.text : '';
