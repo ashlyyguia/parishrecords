@@ -14,11 +14,6 @@ class StaffShell extends ConsumerWidget {
     _NavItem('Records', Icons.folder_copy_outlined, '/staff/records'),
     _NavItem('Requests', Icons.assignment_outlined, '/staff/requests'),
     _NavItem(
-      'OCR Upload',
-      Icons.document_scanner_outlined,
-      '/staff/ocr/upload',
-    ),
-    _NavItem(
       'Notifications',
       Icons.notifications_outlined,
       '/staff/notifications',
@@ -27,9 +22,11 @@ class StaffShell extends ConsumerWidget {
   ];
 
   int _indexFromLocation(String location) {
-    if (location.startsWith('/staff/ocr/')) {
+    // OCR and certificate scanning are reached from Records Management.
+    if (location.startsWith('/staff/ocr/') ||
+        location.startsWith('/staff/certificate-scan')) {
       for (int i = 0; i < _items.length; i++) {
-        if (_items[i].route == '/staff/ocr/upload') return i;
+        if (_items[i].route == '/staff/records') return i;
       }
     }
     for (int i = _items.length - 1; i >= 0; i--) {
