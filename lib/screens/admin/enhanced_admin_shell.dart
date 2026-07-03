@@ -197,24 +197,26 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
         backgroundColor: colorScheme.surfaceContainerLowest,
         drawer: Drawer(
           width: 280,
-          child: sidebar,
+          child: SafeArea(child: sidebar),
         ),
-        body: content,
+        body: SafeArea(child: content),
       );
     }
 
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerLowest,
-      body: Row(
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            width: _sidebarExpanded ? 280 : 72,
-            child: sidebar,
-          ),
-          Expanded(child: content),
-        ],
+      body: SafeArea(
+        child: Row(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+              width: _sidebarExpanded ? 280 : 72,
+              child: sidebar,
+            ),
+            Expanded(child: content),
+          ],
+        ),
       ),
     );
   }

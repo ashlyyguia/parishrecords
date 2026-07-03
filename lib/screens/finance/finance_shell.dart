@@ -111,19 +111,21 @@ class FinanceShell extends ConsumerWidget {
 
     if (isWide) {
       return Scaffold(
-        body: Row(
-          children: [
-            SizedBox(
-              width: width >= 1280 ? 270 : 240,
-              child: _Sidebar(
-                selectedIndex: idx,
-                unread: unread,
-                onSelect: (i) => goSafe(_items[i].route),
+        body: SafeArea(
+          child: Row(
+            children: [
+              SizedBox(
+                width: width >= 1280 ? 270 : 240,
+                child: _Sidebar(
+                  selectedIndex: idx,
+                  unread: unread,
+                  onSelect: (i) => goSafe(_items[i].route),
+                ),
               ),
-            ),
-            const VerticalDivider(width: 1),
-            Expanded(child: wrapContent(child)),
-          ],
+              const VerticalDivider(width: 1),
+              Expanded(child: wrapContent(child)),
+            ],
+          ),
         ),
       );
     }

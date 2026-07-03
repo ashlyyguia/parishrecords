@@ -130,43 +130,47 @@ class _UserShellState extends ConsumerState<UserShell> {
       drawer: isWide
           ? null
           : Drawer(
-              child: _buildSidebar(
-                colorScheme,
-                selectedIndex,
-                location,
-                true,
-                isMobileDrawer: true,
+              child: SafeArea(
+                child: _buildSidebar(
+                  colorScheme,
+                  selectedIndex,
+                  location,
+                  true,
+                  isMobileDrawer: true,
+                ),
               ),
             ),
-      body: Row(
-        children: [
-          // Animated Sidebar for Desktop
-          if (isWide)
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-              width: _sidebarExpanded ? 280 : 72,
-              child: _buildSidebar(
-                colorScheme,
-                selectedIndex,
-                location,
-                isWide,
+      body: SafeArea(
+        child: Row(
+          children: [
+            // Animated Sidebar for Desktop
+            if (isWide)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                width: _sidebarExpanded ? 280 : 72,
+                child: _buildSidebar(
+                  colorScheme,
+                  selectedIndex,
+                  location,
+                  isWide,
+                ),
+              ),
+
+            // Main Content Area
+            Expanded(
+              child: Column(
+                children: [
+                  // Enhanced Top Bar
+                  _buildTopBar(colorScheme, currentItem, location, isWide),
+
+                  // Page Content
+                  Expanded(child: widget.child),
+                ],
               ),
             ),
-
-          // Main Content Area
-          Expanded(
-            child: Column(
-              children: [
-                // Enhanced Top Bar
-                _buildTopBar(colorScheme, currentItem, location, isWide),
-
-                // Page Content
-                Expanded(child: widget.child),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
