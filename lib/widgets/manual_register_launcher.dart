@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 class ManualRegisterLauncher {
   ManualRegisterLauncher._();
 
+  static const _scanChoice = '_scan_certificate';
+
   static List<_SacramentOption> _optionsFor(String recordsBasePath) => [
     _SacramentOption(
       type: 'baptism',
@@ -21,6 +23,22 @@ class ManualRegisterLauncher {
       icon: Icons.favorite_outline,
       color: const Color(0xFFEC4899),
       route: '$recordsBasePath/manual-marriage',
+    ),
+    _SacramentOption(
+      type: 'confirmation',
+      label: 'Confirmation Record',
+      subtitle: 'Full confirmation entry form',
+      icon: Icons.verified_outlined,
+      color: const Color(0xFF8B5CF6),
+      route: '$recordsBasePath/new/confirmation',
+    ),
+    _SacramentOption(
+      type: 'funeral',
+      label: 'Funeral Record',
+      subtitle: 'Full death / funeral entry form',
+      icon: Icons.church_outlined,
+      color: const Color(0xFF64748B),
+      route: '$recordsBasePath/new/death',
     ),
   ];
 
@@ -61,6 +79,23 @@ class ManualRegisterLauncher {
                   _SacramentTile(option: opt),
                   if (opt != options.last) const SizedBox(height: 8),
                 ],
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(ctx, _scanChoice),
+                  icon: const Icon(Icons.document_scanner_outlined),
+                  label: const Text('Scan / upload certificate instead'),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'OCR reads the certificate and pre-fills the required '
+                  'fields for any record type.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
@@ -69,6 +104,14 @@ class ManualRegisterLauncher {
     );
 
     if (selected == null || !context.mounted) return;
+
+    if (selected == _scanChoice) {
+      final scanPath = recordsBasePath.startsWith('/admin')
+          ? '/admin/certificate-scan'
+          : '/staff/certificate-scan';
+      context.push(scanPath);
+      return;
+    }
 
     final route = options
         .firstWhere((o) => o.type == selected, orElse: () => options.first)

@@ -532,7 +532,7 @@ class StaffDashboardPage extends ConsumerWidget {
       _ActionData(
         icon: Icons.edit_note_outlined,
         label: 'Manual Register',
-        description: 'Baptism or marriage register',
+        description: 'All record types, or scan a certificate',
         color: const Color(0xFF0D9488),
         onTap: () => ManualRegisterLauncher.open(context),
       ),
