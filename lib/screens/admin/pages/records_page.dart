@@ -356,9 +356,13 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                         icon: const Icon(Icons.document_scanner),
                         label: const Text('OCR Scan'),
                       ),
-                      OutlinedButton.icon(
+                      FilledButton.icon(
                         onPressed: () =>
                             context.push('/admin/certificate-scan'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                        ),
                         icon: const Icon(Icons.badge_outlined),
                         label: const Text('Scan Certificate'),
                       ),

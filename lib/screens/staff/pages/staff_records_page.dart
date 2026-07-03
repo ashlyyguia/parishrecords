@@ -157,12 +157,24 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                   onPressed: () => ManualRegisterLauncher.open(context),
                   isPrimary: true,
                 ),
-                AdminDesignSystem.actionButton(
-                  context,
-                  label: 'Scan Certificate',
-                  icon: Icons.document_scanner_outlined,
+                ElevatedButton.icon(
                   onPressed: () => context.push('/staff/certificate-scan'),
-                  isPrimary: false,
+                  icon: const Icon(Icons.document_scanner_outlined, size: 18),
+                  label: const Text('Scan Certificate'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    elevation: 2,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 ),
                 AdminDesignSystem.actionButton(
                   context,
