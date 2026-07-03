@@ -146,7 +146,8 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
         _blockRects = blocks;
         _lineRects = lines;
         _ocrText = result.text;
-        _busy = false;
+        // Keep the popup up while the detected boxes animate in.
+        _busy = result.text.trim().isNotEmpty;
       });
 
       if (result.text.trim().isEmpty) {
@@ -159,8 +160,9 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
 
       // Let the user see the detected regions briefly, then redirect
       // to the required-fields verification screen.
-      await Future.delayed(const Duration(milliseconds: 1200));
+      await Future.delayed(const Duration(milliseconds: 1400));
       if (!mounted) return;
+      setState(() => _busy = false);
       await _openVerify();
     } catch (e) {
       if (!mounted) return;
@@ -377,7 +379,11 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
             _ScanningPopup(
               bytes: _imageBytes!,
               imageSize: _imageSize!,
-              label: 'Analyzing ${meta.label.toLowerCase()} certificate…',
+              blockRects: _blockRects,
+              lineRects: _lineRects,
+              label: _lineRects.isEmpty
+                  ? 'Analyzing ${meta.label.toLowerCase()} certificate…'
+                  : 'Detected ${_lineRects.length} lines in ${_blockRects.length} blocks',
             ),
         ],
       ),
@@ -594,19 +600,26 @@ class _SectionLabel extends StatelessWidget {
 /// Fullscreen in-page overlay shown while OCR runs: the certificate is
 /// letterboxed to fit the visible page (never taller or wider than the
 /// viewport on any platform) with the scanning sweep animating over it.
+/// Once text regions are detected, green line boxes and blue block boxes
+/// (ML Kit demo style) animate in over the certificate.
 class _ScanningPopup extends StatelessWidget {
   final Uint8List bytes;
   final Size imageSize;
+  final List<Rect> blockRects;
+  final List<Rect> lineRects;
   final String label;
 
   const _ScanningPopup({
     required this.bytes,
     required this.imageSize,
+    required this.blockRects,
+    required this.lineRects,
     required this.label,
   });
 
   @override
   Widget build(BuildContext context) {
+    final hasBoxes = lineRects.isNotEmpty || blockRects.isNotEmpty;
     return Positioned.fill(
       child: Container(
         color: Colors.black.withValues(alpha: 0.6),
@@ -623,7 +636,23 @@ class _ScanningPopup extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       Image.memory(bytes, fit: BoxFit.fill),
-                      const _ScanSweepOverlay(),
+                      if (hasBoxes)
+                        TweenAnimationBuilder<double>(
+                          key: ValueKey('popup-boxes-${lineRects.length}'),
+                          tween: Tween(begin: 0, end: 1),
+                          duration: const Duration(milliseconds: 900),
+                          curve: Curves.easeOut,
+                          builder: (context, progress, _) => CustomPaint(
+                            painter: _OcrBoxesPainter(
+                              imageSize: imageSize,
+                              blockRects: blockRects,
+                              lineRects: lineRects,
+                              progress: progress,
+                            ),
+                          ),
+                        )
+                      else
+                        const _ScanSweepOverlay(),
                     ],
                   ),
                 ),
