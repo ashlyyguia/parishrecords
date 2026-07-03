@@ -389,19 +389,6 @@ GoRouter createRouter() {
         },
       ),
       GoRoute(
-        path: '/certificate-scan',
-        builder: (context, state) {
-          final extra = state.extra;
-          RecordType? initialType;
-          if (extra is RecordType) {
-            initialType = extra;
-          } else if (extra is String) {
-            initialType = RecordTypeExtension.fromString(extra);
-          }
-          return CertificateScanScreen(initialType: initialType);
-        },
-      ),
-      GoRoute(
         path: '/records/enhanced-baptism',
         builder: (context, state) {
           final extra = state.extra;
@@ -559,6 +546,11 @@ GoRouter createRouter() {
             builder: (context, state) => const StaffOcrUploadPage(),
           ),
           GoRoute(
+            path: '/staff/certificate-scan',
+            builder: (context, state) =>
+                CertificateScanScreen(initialType: _certScanType(state.extra)),
+          ),
+          GoRoute(
             path: '/staff/ocr/bulk-records',
             builder: (context, state) {
               final extra = state.extra;
@@ -633,6 +625,11 @@ GoRouter createRouter() {
           GoRoute(
             path: '/admin/ocr/upload',
             builder: (context, state) => const StaffOcrUploadPage(),
+          ),
+          GoRoute(
+            path: '/admin/certificate-scan',
+            builder: (context, state) =>
+                CertificateScanScreen(initialType: _certScanType(state.extra)),
           ),
           GoRoute(
             path: '/admin/ocr/preprocess',
@@ -1111,6 +1108,13 @@ class _NotificationsRedirectScreen extends ConsumerWidget {
 
     return const AppLoadingScreen(message: 'Opening notifications...');
   }
+}
+
+/// Parses the record type passed as route extra to the certificate scanner.
+RecordType? _certScanType(Object? extra) {
+  if (extra is RecordType) return extra;
+  if (extra is String) return RecordTypeExtension.fromString(extra);
+  return null;
 }
 
 class _StaffGate extends ConsumerStatefulWidget {
