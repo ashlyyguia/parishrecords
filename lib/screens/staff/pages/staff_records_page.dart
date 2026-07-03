@@ -159,6 +159,13 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                 ),
                 AdminDesignSystem.actionButton(
                   context,
+                  label: 'Scan Certificate',
+                  icon: Icons.document_scanner_outlined,
+                  onPressed: () => context.push('/staff/certificate-scan'),
+                  isPrimary: false,
+                ),
+                AdminDesignSystem.actionButton(
+                  context,
                   label: 'Refresh',
                   icon: Icons.refresh,
                   onPressed: () => ref.read(recordsProvider.notifier).load(),
