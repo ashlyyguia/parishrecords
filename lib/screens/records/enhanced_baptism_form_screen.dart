@@ -8,6 +8,7 @@ import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/certificate_ocr_extractor.dart';
+import '../../widgets/ocr_prefill_banner.dart';
 import '../ocr/ocr_scan_screen.dart';
 
 class EnhancedBaptismFormScreen extends ConsumerStatefulWidget {
@@ -601,6 +602,13 @@ class _EnhancedBaptismFormScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (widget.ocrPrefill != null) ...[
+                OcrPrefillBanner(
+                  willBeTemporary:
+                      widget.existing == null && !widget.fromAdmin,
+                ),
+                const SizedBox(height: 16),
+              ],
               // Registry Information (no visible Record ID)
               Card(
                 child: Padding(
@@ -619,9 +627,9 @@ class _EnhancedBaptismFormScreenState
                             child: TextFormField(
                               controller: _bookNoCtrl,
                               decoration: const InputDecoration(
-                                labelText: 'Book No',
+                                labelText: 'Book / Vol. No.',
+                                hintText: 'e.g. 20-B',
                               ),
-                              keyboardType: TextInputType.number,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -629,7 +637,8 @@ class _EnhancedBaptismFormScreenState
                             child: TextFormField(
                               controller: _pageNoCtrl,
                               decoration: const InputDecoration(
-                                labelText: 'Page No',
+                                labelText: 'Page No.',
+                                hintText: 'e.g. 179',
                               ),
                               keyboardType: TextInputType.number,
                             ),
@@ -639,7 +648,8 @@ class _EnhancedBaptismFormScreenState
                             child: TextFormField(
                               controller: _lineNoCtrl,
                               decoration: const InputDecoration(
-                                labelText: 'Line No',
+                                labelText: 'Line / Entry No.',
+                                hintText: 'Row in register',
                               ),
                               keyboardType: TextInputType.number,
                             ),
@@ -863,6 +873,7 @@ class _EnhancedBaptismFormScreenState
                         controller: _ministerCtrl,
                         decoration: const InputDecoration(
                           labelText: 'Minister',
+                          hintText: 'Rev. Fr. who performed the baptism',
                         ),
                       ),
                     ],

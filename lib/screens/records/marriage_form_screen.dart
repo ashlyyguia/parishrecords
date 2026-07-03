@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 import '../../services/certificate_ocr_extractor.dart';
+import '../../widgets/ocr_prefill_banner.dart';
 import '../ocr/ocr_scan_screen.dart';
 
 class MarriageFormScreen extends ConsumerStatefulWidget {
@@ -565,26 +566,42 @@ class _MarriageFormScreenState extends ConsumerState<MarriageFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (widget.ocrPrefill != null) ...[
+                OcrPrefillBanner(
+                  willBeTemporary:
+                      widget.existing == null && !widget.fromAdmin,
+                ),
+                const SizedBox(height: 16),
+              ],
               Row(
                 children: [
                   Expanded(
                     child: TextFormField(
                       controller: _bookNoCtrl,
-                      decoration: const InputDecoration(labelText: 'Book No'),
+                      decoration: const InputDecoration(
+                        labelText: 'Book / Vol. No.',
+                        hintText: 'e.g. 20-B',
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextFormField(
                       controller: _pageNoCtrl,
-                      decoration: const InputDecoration(labelText: 'Page No'),
+                      decoration: const InputDecoration(
+                        labelText: 'Page No.',
+                        hintText: 'e.g. 179',
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextFormField(
                       controller: _lineNoCtrl,
-                      decoration: const InputDecoration(labelText: 'Line No'),
+                      decoration: const InputDecoration(
+                        labelText: 'Line / Entry No.',
+                        hintText: 'Row in register',
+                      ),
                     ),
                   ),
                 ],

@@ -518,6 +518,16 @@ GoRouter createRouter() {
             builder: (context, state) =>
                 CertificateScanScreen(initialType: _certScanType(state.extra)),
           ),
+          for (final kind in const [
+            'baptism',
+            'marriage',
+            'confirmation',
+            'death',
+          ])
+            GoRoute(
+              path: '/staff/records/new/$kind',
+              builder: (context, state) => _recordFormFor(kind, state.extra),
+            ),
           GoRoute(
             path: '/staff/ocr/bulk-records',
             builder: (context, state) {
@@ -599,6 +609,16 @@ GoRouter createRouter() {
             builder: (context, state) =>
                 CertificateScanScreen(initialType: _certScanType(state.extra)),
           ),
+          for (final kind in const [
+            'baptism',
+            'marriage',
+            'confirmation',
+            'death',
+          ])
+            GoRoute(
+              path: '/admin/records/new/$kind',
+              builder: (context, state) => _recordFormFor(kind, state.extra),
+            ),
           GoRoute(
             path: '/admin/ocr/preprocess',
             builder: (context, state) => const StaffOcrPreprocessPage(),
@@ -1106,6 +1126,53 @@ class _FormRouteArgs {
     } else if (extra is String && extra == 'ocr') {
       startWithOcr = true;
     }
+  }
+}
+
+/// Builds the record entry form for a /records/new/{kind} path segment.
+Widget _recordFormFor(String kind, Object? extra) {
+  final args = _FormRouteArgs(extra);
+  switch (kind) {
+    case 'marriage':
+      return MarriageFormScreen(
+        existing: args.existing,
+        fromStaff: args.fromStaff,
+        fromAdmin: args.fromAdmin,
+        startWithOcr: args.startWithOcr,
+        ocrPrefill: args.ocrPrefill,
+        ocrImagePath: args.ocrImagePath,
+        ocrRawText: args.ocrRawText,
+      );
+    case 'confirmation':
+      return ConfirmationFormScreen(
+        existing: args.existing,
+        fromStaff: args.fromStaff,
+        fromAdmin: args.fromAdmin,
+        startWithOcr: args.startWithOcr,
+        ocrPrefill: args.ocrPrefill,
+        ocrImagePath: args.ocrImagePath,
+        ocrRawText: args.ocrRawText,
+      );
+    case 'death':
+      return DeathFormScreen(
+        existing: args.existing,
+        fromStaff: args.fromStaff,
+        fromAdmin: args.fromAdmin,
+        startWithOcr: args.startWithOcr,
+        ocrPrefill: args.ocrPrefill,
+        ocrImagePath: args.ocrImagePath,
+        ocrRawText: args.ocrRawText,
+      );
+    default:
+      return EnhancedBaptismFormScreen(
+        existing: args.existing,
+        fromStaff: args.fromStaff,
+        fromAdmin: args.fromAdmin,
+        startWithOcr: args.startWithOcr,
+        ocrPrefill: args.ocrPrefill,
+        ocrImagePath: args.ocrImagePath,
+        ocrRawText: args.ocrRawText,
+      );
   }
 }
 

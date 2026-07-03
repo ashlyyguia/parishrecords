@@ -154,11 +154,12 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
     // fields — its Save button writes the record to Firestore.
     final location = GoRouterState.of(context).uri.path;
     final fromAdmin = location.startsWith('/admin');
+    final shell = fromAdmin ? '/admin' : '/staff';
     final formPath = switch (_type) {
-      RecordType.baptism => '/records/new/baptism',
-      RecordType.marriage => '/records/new/marriage',
-      RecordType.confirmation => '/records/new/confirmation',
-      RecordType.funeral => '/records/new/death',
+      RecordType.baptism => '$shell/records/new/baptism',
+      RecordType.marriage => '$shell/records/new/marriage',
+      RecordType.confirmation => '$shell/records/new/confirmation',
+      RecordType.funeral => '$shell/records/new/death',
     };
     context.push(formPath, extra: {
       'ocrPrefill': verified,
