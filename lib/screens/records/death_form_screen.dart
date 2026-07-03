@@ -8,6 +8,7 @@ import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 import '../../services/certificate_ocr_extractor.dart';
 import '../../widgets/ocr_prefill_banner.dart';
+import '../../widgets/record_form_theme.dart';
 import '../ocr/ocr_scan_screen.dart';
 
 class DeathFormScreen extends ConsumerStatefulWidget {
@@ -541,263 +542,273 @@ class _DeathFormScreenState extends ConsumerState<DeathFormScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (widget.ocrPrefill != null) ...[
-                OcrPrefillBanner(
-                  willBeTemporary:
-                      widget.existing == null && !widget.fromAdmin,
-                ),
-                const SizedBox(height: 16),
-              ],
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _bookNoCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Book / Vol. No.',
-                        hintText: 'e.g. 20-B',
-                      ),
-                    ),
+      body: RecordFormTheme(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.ocrPrefill != null) ...[
+                  OcrPrefillBanner(
+                    willBeTemporary:
+                        widget.existing == null && !widget.fromAdmin,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _pageNoCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Page No.',
-                        hintText: 'e.g. 179',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _lineNoCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Line / Entry No.',
-                        hintText: 'Row in register',
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 16),
                 ],
-              ),
-              const SizedBox(height: 8),
-              const Text('Deceased Information'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Full name of deceased',
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: _gender,
-                items: const [
-                  DropdownMenuItem(value: 'Male', child: Text('Male')),
-                  DropdownMenuItem(value: 'Female', child: Text('Female')),
-                ],
-                onChanged: (v) => setState(() => _gender = v ?? 'Male'),
-                decoration: const InputDecoration(labelText: 'Gender'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _ageCtrl,
-                decoration: const InputDecoration(labelText: 'Age'),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Date of birth: ${_dob == null ? 'Unknown' : df.format(_dob!)}',
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => _pickDate(
-                      context,
-                      (d) => setState(() => _dob = d),
-                      initial: _dob ?? DateTime.now(),
-                    ),
-                    child: const Text('Pick date'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Date of death: ${_dod == null ? 'Not set' : df.format(_dod!)}',
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => _pickDate(
-                      context,
-                      (d) => setState(() => _dod = d),
-                      initial: _dod ?? DateTime.now(),
-                    ),
-                    child: const Text('Pick date'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _placeOfDeathCtrl,
-                decoration: const InputDecoration(labelText: 'Place of death'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _causeOfDeathCtrl,
-                decoration: const InputDecoration(labelText: 'Cause of death'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _civilStatusCtrl,
-                decoration: const InputDecoration(labelText: 'Civil status'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _addressCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Address / residence',
-                ),
-              ),
-
-              const SizedBox(height: 16),
-              const Text('Family Information'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _fatherCtrl,
-                decoration: const InputDecoration(
-                  labelText: "Father's name (optional)",
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _motherCtrl,
-                decoration: const InputDecoration(
-                  labelText: "Mother's name (optional)",
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _spouseCtrl,
-                decoration: const InputDecoration(
-                  labelText: "Spouse's name (if married)",
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _representativeNameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Family representative name',
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _representativeRelationCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Relationship to deceased',
-                ),
-              ),
-
-              const SizedBox(height: 16),
-              const Text('Burial Details'),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Date of burial: ${_burialDate == null ? 'Not set' : df.format(_burialDate!)}',
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => _pickDate(
-                      context,
-                      (d) => setState(() => _burialDate = d),
-                      initial: _burialDate ?? DateTime.now(),
-                    ),
-                    child: const Text('Pick date'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _burialPlaceCtrl,
-                decoration: const InputDecoration(labelText: 'Place of burial'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _officiantCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Officiating priest',
-                ),
-              ),
-
-              const SizedBox(height: 16),
-              // Additional Information (visible for staff and admin)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Additional Information',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _remarksCtrl,
-                        minLines: 2,
-                        maxLines: 4,
-                        decoration: const InputDecoration(labelText: 'Remarks'),
-                      ),
-                      const SizedBox(height: 8),
-                      CheckboxListTile(
-                        title: const Text('Certificate Issued?'),
-                        value: _certificateIssued,
-                        onChanged: (v) =>
-                            setState(() => _certificateIssued = v ?? false),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _staffNameCtrl,
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _bookNoCtrl,
                         decoration: const InputDecoration(
-                          labelText: 'Prepared By / Staff Name',
+                          labelText: 'Book / Vol. No.',
+                          hintText: 'e.g. 20-B',
                         ),
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _pageNoCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Page No.',
+                          hintText: 'e.g. 179',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _lineNoCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Line / Entry No.',
+                          hintText: 'Row in register',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('Deceased Information'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Full name of deceased',
+                  ),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: _gender,
+                  items: const [
+                    DropdownMenuItem(value: 'Male', child: Text('Male')),
+                    DropdownMenuItem(value: 'Female', child: Text('Female')),
+                  ],
+                  onChanged: (v) => setState(() => _gender = v ?? 'Male'),
+                  decoration: const InputDecoration(labelText: 'Gender'),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _ageCtrl,
+                  decoration: const InputDecoration(labelText: 'Age'),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Date of birth: ${_dob == null ? 'Unknown' : df.format(_dob!)}',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _pickDate(
+                        context,
+                        (d) => setState(() => _dob = d),
+                        initial: _dob ?? DateTime.now(),
+                      ),
+                      child: const Text('Pick date'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Date of death: ${_dod == null ? 'Not set' : df.format(_dod!)}',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _pickDate(
+                        context,
+                        (d) => setState(() => _dod = d),
+                        initial: _dod ?? DateTime.now(),
+                      ),
+                      child: const Text('Pick date'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _placeOfDeathCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Place of death',
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _causeOfDeathCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Cause of death',
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _civilStatusCtrl,
+                  decoration: const InputDecoration(labelText: 'Civil status'),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _addressCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Address / residence',
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                const Text('Family Information'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _fatherCtrl,
+                  decoration: const InputDecoration(
+                    labelText: "Father's name (optional)",
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _motherCtrl,
+                  decoration: const InputDecoration(
+                    labelText: "Mother's name (optional)",
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _spouseCtrl,
+                  decoration: const InputDecoration(
+                    labelText: "Spouse's name (if married)",
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _representativeNameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Family representative name',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _representativeRelationCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Relationship to deceased',
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                const Text('Burial Details'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Date of burial: ${_burialDate == null ? 'Not set' : df.format(_burialDate!)}',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _pickDate(
+                        context,
+                        (d) => setState(() => _burialDate = d),
+                        initial: _burialDate ?? DateTime.now(),
+                      ),
+                      child: const Text('Pick date'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _burialPlaceCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Place of burial',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _officiantCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Officiating priest',
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                // Additional Information (visible for staff and admin)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Additional Information',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _remarksCtrl,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: const InputDecoration(
+                            labelText: 'Remarks',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        CheckboxListTile(
+                          title: const Text('Certificate Issued?'),
+                          value: _certificateIssued,
+                          onChanged: (v) =>
+                              setState(() => _certificateIssued = v ?? false),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _staffNameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Prepared By / Staff Name',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    child: _saving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

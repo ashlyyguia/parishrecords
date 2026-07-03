@@ -9,6 +9,7 @@ import '../../providers/records_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/certificate_ocr_extractor.dart';
 import '../../widgets/ocr_prefill_banner.dart';
+import '../../widgets/record_form_theme.dart';
 import '../ocr/ocr_scan_screen.dart';
 
 class EnhancedBaptismFormScreen extends ConsumerStatefulWidget {
@@ -595,296 +596,22 @@ class _EnhancedBaptismFormScreenState
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (widget.ocrPrefill != null) ...[
-                OcrPrefillBanner(
-                  willBeTemporary:
-                      widget.existing == null && !widget.fromAdmin,
-                ),
-                const SizedBox(height: 16),
-              ],
-              // Registry Information (no visible Record ID)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Registry Information',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _bookNoCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Book / Vol. No.',
-                                hintText: 'e.g. 20-B',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _pageNoCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Page No.',
-                                hintText: 'e.g. 179',
-                              ),
-                              keyboardType: TextInputType.number,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _lineNoCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Line / Entry No.',
-                                hintText: 'Row in register',
-                              ),
-                              keyboardType: TextInputType.number,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+      body: RecordFormTheme(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.ocrPrefill != null) ...[
+                  OcrPrefillBanner(
+                    willBeTemporary:
+                        widget.existing == null && !widget.fromAdmin,
                   ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Child Information
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Child Information',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _nameCtrl,
-                        decoration: const InputDecoration(
-                          labelText: "Child's Full Name",
-                        ),
-                        validator: (v) =>
-                            (v == null || v.trim().isEmpty) ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Date of Birth: ${_dob == null ? 'Not set' : df.format(_dob!)}',
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () => _pickDate(
-                              context,
-                              (d) => setState(() => _dob = d),
-                              initial: _dob,
-                            ),
-                            child: const Text('Pick Date'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _placeOfBirthCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Place of Birth',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        initialValue: _gender,
-                        items: const [
-                          DropdownMenuItem(value: 'Male', child: Text('Male')),
-                          DropdownMenuItem(
-                            value: 'Female',
-                            child: Text('Female'),
-                          ),
-                        ],
-                        onChanged: (v) => setState(() => _gender = v ?? 'Male'),
-                        decoration: const InputDecoration(labelText: 'Gender'),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _addressCtrl,
-                        decoration: const InputDecoration(labelText: 'Address'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Parents Information
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Parents Information',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _fatherCtrl,
-                        decoration: const InputDecoration(
-                          labelText: "Father's Name",
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _motherCtrl,
-                        decoration: const InputDecoration(
-                          labelText: "Mother's Name",
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _parentsMarriageCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Parents Marriage Info (Place & Date)',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Godparents
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Godparents',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _godfather1Ctrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Godfather #1',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _godmother1Ctrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Godmother #1',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _godfather2Ctrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Godfather #2 (Optional)',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _godmother2Ctrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Godmother #2 (Optional)',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Baptism Details
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Baptism Details',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Date of Baptism: ${_baptismDate == null ? 'Not set' : df.format(_baptismDate!)}',
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () => _pickDate(
-                              context,
-                              (d) => setState(() => _baptismDate = d),
-                              initial: _baptismDate,
-                            ),
-                            child: const Text('Pick Date'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Time of Baptism: ${_baptismTimeCtrl.text.isEmpty ? 'Not set' : _baptismTimeCtrl.text}',
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () => _pickTime(context),
-                            child: const Text('Pick Time'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _baptismPlaceCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Place of Baptism',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _ministerCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Minister',
-                          hintText: 'Rev. Fr. who performed the baptism',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              if (!widget.fromAdmin) ...[
-                const SizedBox(height: 16),
-
-                // Metadata
+                  const SizedBox(height: 16),
+                ],
+                // Registry Information (no visible Record ID)
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -892,58 +619,343 @@ class _EnhancedBaptismFormScreenState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Additional Information',
+                          'Registry Information',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _remarksCtrl,
-                          minLines: 2,
-                          maxLines: 4,
-                          decoration: const InputDecoration(
-                            labelText: 'Remarks',
-                          ),
-                        ),
                         const SizedBox(height: 8),
-                        CheckboxListTile(
-                          title: const Text('Certificate Issued?'),
-                          value: _certificateIssued,
-                          onChanged: (v) =>
-                              setState(() => _certificateIssued = v ?? false),
-                        ),
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: _staffNameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Prepared By / Staff Name',
-                          ),
-                          validator: (v) => (v == null || v.trim().isEmpty)
-                              ? 'Required'
-                              : null,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _bookNoCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Book / Vol. No.',
+                                  hintText: 'e.g. 20-B',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _pageNoCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Page No.',
+                                  hintText: 'e.g. 179',
+                                ),
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _lineNoCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Line / Entry No.',
+                                  hintText: 'Row in register',
+                                ),
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
-              ],
 
-              const SizedBox(height: 24),
+                const SizedBox(height: 16),
 
-              // Action buttons
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save Record'),
+                // Child Information
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Child Information',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _nameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: "Child's Full Name",
+                          ),
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Required'
+                              : null,
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Date of Birth: ${_dob == null ? 'Not set' : df.format(_dob!)}',
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => _pickDate(
+                                context,
+                                (d) => setState(() => _dob = d),
+                                initial: _dob,
+                              ),
+                              child: const Text('Pick Date'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _placeOfBirthCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Place of Birth',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          initialValue: _gender,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Male',
+                              child: Text('Male'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Female',
+                              child: Text('Female'),
+                            ),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _gender = v ?? 'Male'),
+                          decoration: const InputDecoration(
+                            labelText: 'Gender',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _addressCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Address',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ],
+
+                const SizedBox(height: 16),
+
+                // Parents Information
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Parents Information',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _fatherCtrl,
+                          decoration: const InputDecoration(
+                            labelText: "Father's Name",
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _motherCtrl,
+                          decoration: const InputDecoration(
+                            labelText: "Mother's Name",
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _parentsMarriageCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Parents Marriage Info (Place & Date)',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Godparents
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Godparents',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _godfather1Ctrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Godfather #1',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _godmother1Ctrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Godmother #1',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _godfather2Ctrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Godfather #2 (Optional)',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _godmother2Ctrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Godmother #2 (Optional)',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Baptism Details
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Baptism Details',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Date of Baptism: ${_baptismDate == null ? 'Not set' : df.format(_baptismDate!)}',
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => _pickDate(
+                                context,
+                                (d) => setState(() => _baptismDate = d),
+                                initial: _baptismDate,
+                              ),
+                              child: const Text('Pick Date'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Time of Baptism: ${_baptismTimeCtrl.text.isEmpty ? 'Not set' : _baptismTimeCtrl.text}',
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => _pickTime(context),
+                              child: const Text('Pick Time'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _baptismPlaceCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Place of Baptism',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _ministerCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Minister',
+                            hintText: 'Rev. Fr. who performed the baptism',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                if (!widget.fromAdmin) ...[
+                  const SizedBox(height: 16),
+
+                  // Metadata
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Additional Information',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _remarksCtrl,
+                            minLines: 2,
+                            maxLines: 4,
+                            decoration: const InputDecoration(
+                              labelText: 'Remarks',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          CheckboxListTile(
+                            title: const Text('Certificate Issued?'),
+                            value: _certificateIssued,
+                            onChanged: (v) =>
+                                setState(() => _certificateIssued = v ?? false),
+                          ),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: _staffNameCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Prepared By / Staff Name',
+                            ),
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Required'
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 24),
+
+                // Action buttons
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    child: _saving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save Record'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

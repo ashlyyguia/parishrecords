@@ -8,6 +8,7 @@ import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 import '../../services/certificate_ocr_extractor.dart';
 import '../../widgets/ocr_prefill_banner.dart';
+import '../../widgets/record_form_theme.dart';
 import '../ocr/ocr_scan_screen.dart';
 
 class MarriageFormScreen extends ConsumerStatefulWidget {
@@ -559,254 +560,258 @@ class _MarriageFormScreenState extends ConsumerState<MarriageFormScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (widget.ocrPrefill != null) ...[
-                OcrPrefillBanner(
-                  willBeTemporary:
-                      widget.existing == null && !widget.fromAdmin,
-                ),
-                const SizedBox(height: 16),
-              ],
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _bookNoCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Book / Vol. No.',
-                        hintText: 'e.g. 20-B',
-                      ),
-                    ),
+      body: RecordFormTheme(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.ocrPrefill != null) ...[
+                  OcrPrefillBanner(
+                    willBeTemporary:
+                        widget.existing == null && !widget.fromAdmin,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _pageNoCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Page No.',
-                        hintText: 'e.g. 179',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _lineNoCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Line / Entry No.',
-                        hintText: 'Row in register',
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 16),
                 ],
-              ),
-              const SizedBox(height: 8),
-              const Text('Marriage Details'),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Date of marriage: ${_marriageDate == null ? 'Not set' : df.format(_marriageDate!)}',
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => _pickDate(
-                      context,
-                      (d) => setState(() => _marriageDate = d),
-                      initial: _marriageDate ?? DateTime.now(),
-                    ),
-                    child: const Text('Pick date'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Place of marriage',
-                ),
-                controller: _marriagePlaceCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Officiating priest',
-                ),
-                controller: _officiantCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Marriage license number',
-                ),
-                controller: _licenseCtrl,
-              ),
-
-              const SizedBox(height: 16),
-              const Text('Groom Information'),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: "Groom's full name",
-                ),
-                controller: _groomNameCtrl,
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Age or date of birth',
-                ),
-                controller: _groomDobOrAgeCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Civil status before marriage',
-                ),
-                controller: _groomCivilStatusCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Religion'),
-                controller: _groomReligionCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Address'),
-                controller: _groomAddressCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: "Father's full name",
-                ),
-                controller: _groomFatherCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: "Mother's full name",
-                ),
-                controller: _groomMotherCtrl,
-              ),
-
-              const SizedBox(height: 16),
-              const Text('Bride Information'),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: "Bride's full name",
-                ),
-                controller: _brideNameCtrl,
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Required' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Age or date of birth',
-                ),
-                controller: _brideDobOrAgeCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Civil status before marriage',
-                ),
-                controller: _brideCivilStatusCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Religion'),
-                controller: _brideReligionCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Address'),
-                controller: _brideAddressCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: "Father's full name",
-                ),
-                controller: _brideFatherCtrl,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: "Mother's full name",
-                ),
-                controller: _brideMotherCtrl,
-              ),
-
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Witness #2'),
-                controller: _witness2Ctrl,
-              ),
-
-              const SizedBox(height: 16),
-              // Additional Information (visible for staff and admin)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Additional Information',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _remarksCtrl,
-                        minLines: 2,
-                        maxLines: 4,
-                        decoration: const InputDecoration(labelText: 'Remarks'),
-                      ),
-                      const SizedBox(height: 8),
-                      CheckboxListTile(
-                        title: const Text('Certificate Issued?'),
-                        value: _certificateIssued,
-                        onChanged: (v) =>
-                            setState(() => _certificateIssued = v ?? false),
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _staffNameCtrl,
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _bookNoCtrl,
                         decoration: const InputDecoration(
-                          labelText: 'Prepared By / Staff Name',
+                          labelText: 'Book / Vol. No.',
+                          hintText: 'e.g. 20-B',
                         ),
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _pageNoCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Page No.',
+                          hintText: 'e.g. 179',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _lineNoCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Line / Entry No.',
+                          hintText: 'Row in register',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('Marriage Details'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Date of marriage: ${_marriageDate == null ? 'Not set' : df.format(_marriageDate!)}',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _pickDate(
+                        context,
+                        (d) => setState(() => _marriageDate = d),
+                        initial: _marriageDate ?? DateTime.now(),
+                      ),
+                      child: const Text('Pick date'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: 'Place of marriage',
+                  ),
+                  controller: _marriagePlaceCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: 'Officiating priest',
+                  ),
+                  controller: _officiantCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: 'Marriage license number',
+                  ),
+                  controller: _licenseCtrl,
+                ),
+
+                const SizedBox(height: 16),
+                const Text('Groom Information'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: "Groom's full name",
+                  ),
+                  controller: _groomNameCtrl,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: 'Age or date of birth',
+                  ),
+                  controller: _groomDobOrAgeCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: 'Civil status before marriage',
+                  ),
+                  controller: _groomCivilStatusCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(labelText: 'Religion'),
+                  controller: _groomReligionCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(labelText: 'Address'),
+                  controller: _groomAddressCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: "Father's full name",
+                  ),
+                  controller: _groomFatherCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: "Mother's full name",
+                  ),
+                  controller: _groomMotherCtrl,
+                ),
+
+                const SizedBox(height: 16),
+                const Text('Bride Information'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: "Bride's full name",
+                  ),
+                  controller: _brideNameCtrl,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: 'Age or date of birth',
+                  ),
+                  controller: _brideDobOrAgeCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: 'Civil status before marriage',
+                  ),
+                  controller: _brideCivilStatusCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(labelText: 'Religion'),
+                  controller: _brideReligionCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(labelText: 'Address'),
+                  controller: _brideAddressCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: "Father's full name",
+                  ),
+                  controller: _brideFatherCtrl,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: "Mother's full name",
+                  ),
+                  controller: _brideMotherCtrl,
+                ),
+
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(labelText: 'Witness #2'),
+                  controller: _witness2Ctrl,
+                ),
+
+                const SizedBox(height: 16),
+                // Additional Information (visible for staff and admin)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Additional Information',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _remarksCtrl,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: const InputDecoration(
+                            labelText: 'Remarks',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        CheckboxListTile(
+                          title: const Text('Certificate Issued?'),
+                          value: _certificateIssued,
+                          onChanged: (v) =>
+                              setState(() => _certificateIssued = v ?? false),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _staffNameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Prepared By / Staff Name',
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Save'),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    child: _saving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save'),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
