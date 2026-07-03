@@ -62,13 +62,6 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
       label: 'Operations',
       items: [
         _NavItem(
-          'OCR Queue',
-          Icons.document_scanner_outlined,
-          Icons.document_scanner_rounded,
-          '/admin/ocr',
-          Colors.cyan,
-        ),
-        _NavItem(
           'Requests',
           Icons.assignment_outlined,
           Icons.assignment_rounded,
