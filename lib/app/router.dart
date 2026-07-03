@@ -40,6 +40,7 @@ import '../screens/landing/donations_section.dart';
 import '../screens/landing/announcements_section.dart';
 import '../screens/landing/contact_section.dart';
 import '../screens/records/certificate_request_form_screen.dart';
+import '../screens/records/certificate_scan_screen.dart';
 import '../screens/records/certificate_requests_list_screen.dart';
 import '../screens/records/certificate_template_screen.dart';
 import '../screens/records/confirmation_form_screen.dart';
@@ -385,6 +386,19 @@ GoRouter createRouter() {
             fromStaff: fromStaff,
             startWithOcr: startWithOcr,
           );
+        },
+      ),
+      GoRoute(
+        path: '/certificate-scan',
+        builder: (context, state) {
+          final extra = state.extra;
+          RecordType? initialType;
+          if (extra is RecordType) {
+            initialType = extra;
+          } else if (extra is String) {
+            initialType = RecordTypeExtension.fromString(extra);
+          }
+          return CertificateScanScreen(initialType: initialType);
         },
       ),
       GoRoute(
