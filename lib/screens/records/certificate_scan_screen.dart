@@ -206,13 +206,16 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
       RecordType.confirmation => '$shell/records/new/confirmation',
       RecordType.funeral => '$shell/records/new/death',
     };
-    context.push(formPath, extra: {
-      'ocrPrefill': verified,
-      'ocrImagePath': imagePath,
-      'ocrRawText': _ocrText,
-      'fromStaff': !fromAdmin,
-      'fromAdmin': fromAdmin,
-    });
+    context.push(
+      formPath,
+      extra: {
+        'ocrPrefill': verified,
+        'ocrImagePath': imagePath,
+        'ocrRawText': _ocrText,
+        'fromStaff': !fromAdmin,
+        'fromAdmin': fromAdmin,
+      },
+    );
   }
 
   @override
@@ -222,155 +225,160 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Scan Certificate'),
-        centerTitle: true,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      appBar: AppBar(title: const Text('Scan Certificate'), centerTitle: true),
+      body: Stack(
         children: [
-          Text(
-            'Record type',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface.withValues(alpha: 0.7),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          ListView(
+            padding: const EdgeInsets.all(16),
             children: [
-              for (final entry in _typeMeta.entries)
-                ChoiceChip(
-                  avatar: Icon(
-                    entry.value.icon,
-                    size: 18,
-                    color: _type == entry.key
-                        ? Colors.white
-                        : entry.value.color,
-                  ),
-                  label: Text(entry.value.label),
-                  selected: _type == entry.key,
-                  selectedColor: entry.value.color,
-                  labelStyle: TextStyle(
-                    color: _type == entry.key
-                        ? Colors.white
-                        : colorScheme.onSurface,
-                  ),
-                  onSelected: _busy
-                      ? null
-                      : (_) => setState(() => _type = entry.key),
+              Text(
+                'Record type',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          DropTarget(
-            enable: _supportsDrop && !_busy,
-            onDragEntered: (_) => setState(() => _dragging = true),
-            onDragExited: (_) => setState(() => _dragging = false),
-            onDragDone: (detail) {
-              setState(() => _dragging = false);
-              _handleDrop(detail);
-            },
-            child: _UploadDropZone(
-              enabled: !_busy,
-              dragging: _dragging,
-              showDropHint: _supportsDrop,
-              onBrowse: () => _pick(camera: false),
-              onCamera: ocrSupportsCamera ? () => _pick(camera: true) : null,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Icon(
-                Icons.info_outline,
-                size: 14,
-                color: colorScheme.onSurface.withValues(alpha: 0.5),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  ocrUsesMlKit
-                      ? 'Detected text regions are highlighted after scanning.'
-                      : 'Text-region highlighting needs the mobile app (ML Kit); '
-                          'text is still extracted here.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _error!,
-                style: TextStyle(color: colorScheme.onErrorContainer),
-              ),
-            ),
-          ],
-          if (_busy && _imageBytes == null) ...[
-            const SizedBox(height: 32),
-            const Center(child: CircularProgressIndicator()),
-          ],
-          if (_imageBytes != null && _imageSize != null) ...[
-            const SizedBox(height: 20),
-            _SectionLabel(
-              icon: Icons.document_scanner_outlined,
-              text: _busy
-                  ? 'Analyzing ${meta.label.toLowerCase()} certificate…'
-                  : 'Detected regions — ${_lineRects.length} lines in ${_blockRects.length} blocks',
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _OcrOverlayImage(
-                bytes: _imageBytes!,
-                imageSize: _imageSize!,
-                blockRects: _blockRects,
-                lineRects: _lineRects,
-                analyzing: _busy,
-              ),
-            ),
-            if (_ocrText.isNotEmpty) ...[
-              const SizedBox(height: 20),
-              const _SectionLabel(
-                icon: Icons.notes_outlined,
-                text: 'Recognized text',
               ),
               const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest
-                      .withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _ocrText,
-                  style: const TextStyle(fontSize: 13, height: 1.5),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final entry in _typeMeta.entries)
+                    ChoiceChip(
+                      avatar: Icon(
+                        entry.value.icon,
+                        size: 18,
+                        color: _type == entry.key
+                            ? Colors.white
+                            : entry.value.color,
+                      ),
+                      label: Text(entry.value.label),
+                      selected: _type == entry.key,
+                      selectedColor: entry.value.color,
+                      labelStyle: TextStyle(
+                        color: _type == entry.key
+                            ? Colors.white
+                            : colorScheme.onSurface,
+                      ),
+                      onSelected: _busy
+                          ? null
+                          : (_) => setState(() => _type = entry.key),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              DropTarget(
+                enable: _supportsDrop && !_busy,
+                onDragEntered: (_) => setState(() => _dragging = true),
+                onDragExited: (_) => setState(() => _dragging = false),
+                onDragDone: (detail) {
+                  setState(() => _dragging = false);
+                  _handleDrop(detail);
+                },
+                child: _UploadDropZone(
+                  enabled: !_busy,
+                  dragging: _dragging,
+                  showDropHint: _supportsDrop,
+                  onBrowse: () => _pick(camera: false),
+                  onCamera: ocrSupportsCamera
+                      ? () => _pick(camera: true)
+                      : null,
                 ),
               ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _openVerify,
-                icon: const Icon(Icons.fact_check_outlined),
-                label: const Text('Verify required fields'),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: colorScheme.onSurface.withValues(alpha: 0.5),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      ocrUsesMlKit
+                          ? 'Detected text regions are highlighted after scanning.'
+                          : 'Text-region highlighting needs the mobile app (ML Kit); '
+                                'text is still extracted here.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: colorScheme.onErrorContainer),
+                  ),
+                ),
+              ],
+              if (_busy && _imageBytes == null) ...[
+                const SizedBox(height: 32),
+                const Center(child: CircularProgressIndicator()),
+              ],
+              if (_imageBytes != null && _imageSize != null && !_busy) ...[
+                const SizedBox(height: 20),
+                _SectionLabel(
+                  icon: Icons.document_scanner_outlined,
+                  text:
+                      'Detected regions — ${_lineRects.length} lines in ${_blockRects.length} blocks',
+                ),
+                const SizedBox(height: 8),
+                _OcrOverlayImage(
+                  bytes: _imageBytes!,
+                  imageSize: _imageSize!,
+                  blockRects: _blockRects,
+                  lineRects: _lineRects,
+                ),
+                if (_ocrText.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const _SectionLabel(
+                    icon: Icons.notes_outlined,
+                    text: 'Recognized text',
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.5,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _ocrText,
+                      style: const TextStyle(fontSize: 13, height: 1.5),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: _openVerify,
+                    icon: const Icon(Icons.fact_check_outlined),
+                    label: const Text('Verify required fields'),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+              ],
             ],
-          ],
+          ),
+          if (_busy && _imageBytes != null && _imageSize != null)
+            _ScanningPopup(
+              bytes: _imageBytes!,
+              imageSize: _imageSize!,
+              label: 'Analyzing ${meta.label.toLowerCase()} certificate…',
+            ),
         ],
       ),
     );
@@ -447,8 +455,8 @@ class _UploadDropZone extends StatelessWidget {
                   dragging
                       ? 'Drop the certificate to scan it'
                       : showDropHint
-                          ? 'Drag & drop the certificate image here'
-                          : 'Upload a certificate image',
+                      ? 'Drag & drop the certificate image here'
+                      : 'Upload a certificate image',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 15,
@@ -482,8 +490,10 @@ class _UploadDropZone extends StatelessWidget {
                     if (onCamera != null)
                       OutlinedButton.icon(
                         onPressed: enabled ? onBrowse : null,
-                        icon: const Icon(Icons.photo_library_outlined,
-                            size: 18),
+                        icon: const Icon(
+                          Icons.photo_library_outlined,
+                          size: 18,
+                        ),
                         label: const Text('Choose image'),
                       )
                     else
@@ -522,10 +532,7 @@ class _DashedBorderPainter extends CustomPainter {
 
     final path = Path()
       ..addRRect(
-        RRect.fromRectAndRadius(
-          Offset.zero & size,
-          Radius.circular(radius),
-        ),
+        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius)),
       );
 
     final dashed = Path();
@@ -584,57 +591,131 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
+/// Fullscreen in-page overlay shown while OCR runs: the certificate is
+/// letterboxed to fit the visible page (never taller or wider than the
+/// viewport on any platform) with the scanning sweep animating over it.
+class _ScanningPopup extends StatelessWidget {
+  final Uint8List bytes;
+  final Size imageSize;
+  final String label;
+
+  const _ScanningPopup({
+    required this.bytes,
+    required this.imageSize,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.6),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AspectRatio(
+                  aspectRatio: imageSize.width / imageSize.height,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.memory(bytes, fit: BoxFit.fill),
+                      const _ScanSweepOverlay(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// The scanned image with ML Kit text-region boxes painted on top —
 /// green boxes for lines, blue for blocks (like the ML Kit demo output).
-/// While [analyzing], a scanning sweep animates over the certificate;
-/// when results arrive the boxes animate in progressively.
+/// The boxes animate in progressively when results arrive. The image is
+/// scaled to fit both the available width and the viewport height.
 class _OcrOverlayImage extends StatelessWidget {
   final Uint8List bytes;
   final Size imageSize;
   final List<Rect> blockRects;
   final List<Rect> lineRects;
-  final bool analyzing;
 
   const _OcrOverlayImage({
     required this.bytes,
     required this.imageSize,
     required this.blockRects,
     required this.lineRects,
-    required this.analyzing,
   });
 
   @override
   Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.7;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final displayWidth = constraints.maxWidth;
-        final displayHeight =
-            displayWidth * imageSize.height / imageSize.width;
-        return SizedBox(
-          width: displayWidth,
-          height: displayHeight,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.memory(bytes, fit: BoxFit.fill),
-              if (analyzing)
-                const _ScanSweepOverlay()
-              else
-                TweenAnimationBuilder<double>(
-                  key: ValueKey('boxes-${lineRects.length}'),
-                  tween: Tween(begin: 0, end: 1),
-                  duration: const Duration(milliseconds: 900),
-                  curve: Curves.easeOut,
-                  builder: (context, progress, _) => CustomPaint(
-                    painter: _OcrBoxesPainter(
-                      imageSize: imageSize,
-                      blockRects: blockRects,
-                      lineRects: lineRects,
-                      progress: progress,
+        var displayWidth = constraints.maxWidth;
+        var displayHeight = displayWidth * imageSize.height / imageSize.width;
+        if (displayHeight > maxHeight) {
+          displayHeight = maxHeight;
+          displayWidth = displayHeight * imageSize.width / imageSize.height;
+        }
+        return Center(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: displayWidth,
+              height: displayHeight,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.memory(bytes, fit: BoxFit.fill),
+                  TweenAnimationBuilder<double>(
+                    key: ValueKey('boxes-${lineRects.length}'),
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 900),
+                    curve: Curves.easeOut,
+                    builder: (context, progress, _) => CustomPaint(
+                      painter: _OcrBoxesPainter(
+                        imageSize: imageSize,
+                        blockRects: blockRects,
+                        lineRects: lineRects,
+                        progress: progress,
+                      ),
                     ),
                   ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -667,9 +748,8 @@ class _ScanSweepOverlayState extends State<_ScanSweepOverlay>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _controller,
-      builder: (context, _) => CustomPaint(
-        painter: _ScanSweepPainter(progress: _controller.value),
-      ),
+      builder: (context, _) =>
+          CustomPaint(painter: _ScanSweepPainter(progress: _controller.value)),
     );
   }
 }
