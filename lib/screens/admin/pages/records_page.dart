@@ -351,11 +351,6 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                         icon: const Icon(Icons.file_upload_outlined),
                         label: const Text('Import CSV'),
                       ),
-                      OutlinedButton.icon(
-                        onPressed: () => context.go('/admin/ocr/upload'),
-                        icon: const Icon(Icons.document_scanner),
-                        label: const Text('OCR Scan'),
-                      ),
                       FilledButton.icon(
                         onPressed: () =>
                             context.push('/admin/certificate-scan'),
