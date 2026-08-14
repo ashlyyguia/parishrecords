@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../providers/requests_provider.dart';
 import '../../../services/requests_repository.dart';
 import '../../../services/audit_service.dart';
+import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/page_header.dart';
 
 class StaffRequestsInboxPage extends ConsumerStatefulWidget {
@@ -196,35 +197,9 @@ class _StaffRequestsInboxPageState
   }
 
   Widget _buildSearchBar(ColorScheme colorScheme, ThemeData theme) {
-    return TextField(
+    return AppSearchBar(
       controller: _searchCtrl,
-      decoration: InputDecoration(
-        hintText: 'Search by name, type, or status...',
-        prefixIcon: Icon(Icons.search, color: colorScheme.primary),
-        suffixIcon: _searchCtrl.text.isNotEmpty
-            ? IconButton(
-                icon: const Icon(Icons.clear),
-                onPressed: () {
-                  _searchCtrl.clear();
-                  setState(() {});
-                },
-              )
-            : null,
-        filled: true,
-        fillColor: colorScheme.surfaceContainerLowest,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
-        ),
-      ),
+      hintText: 'Search by name, type, or status...',
       onChanged: (_) => setState(() {}),
     );
   }

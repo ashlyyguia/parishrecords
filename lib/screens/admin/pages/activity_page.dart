@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../services/admin_repository.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/app_search_bar.dart';
 
 class AdminActivityPage extends StatefulWidget {
   const AdminActivityPage({super.key});
@@ -15,6 +16,13 @@ class _AdminActivityPageState extends State<AdminActivityPage> {
   final Set<String> _selected = {}; // keys formatted as '<collection>|<docId>'
   List<String> _visibleKeys = const [];
   bool _deleting = false;
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _deleteSelected() async {
     if (_selected.isEmpty || _deleting) return;
@@ -99,11 +107,9 @@ class _AdminActivityPageState extends State<AdminActivityPage> {
                   ),
                   SizedBox(
                     width: isNarrow ? constraints.maxWidth : 360,
-                    child: TextField(
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
-                        hintText: 'Search',
-                      ),
+                    child: AppSearchBar(
+                      controller: _searchCtrl,
+                      hintText: 'Search',
                       onChanged: (v) =>
                           setState(() => _search = v.trim().toLowerCase()),
                     ),

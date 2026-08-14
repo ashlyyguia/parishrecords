@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../services/notifications_repository.dart';
+import '../../../widgets/app_search_bar.dart';
 import '../admin_design_system.dart';
 
 class AdminNotificationsPage extends StatefulWidget {
@@ -322,19 +323,9 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                       children: [
                         SizedBox(
                           width: isNarrow ? constraints.maxWidth : 340,
-                          child: TextField(
+                          child: AppSearchBar(
                             controller: _searchCtrl,
-                            decoration: InputDecoration(
-                              prefixIcon: const Icon(Icons.search),
-                              hintText: 'Search notifications...',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: colorScheme.surfaceContainerHighest
-                                  .withOpacity(0.5),
-                            ),
+                            hintText: 'Search notifications...',
                             onChanged: (_) => setState(() {}),
                           ),
                         ),

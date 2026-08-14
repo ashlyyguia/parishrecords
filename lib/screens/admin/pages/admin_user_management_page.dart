@@ -11,6 +11,7 @@ import 'dart:convert';
 import '../../../utils/firestore_date.dart';
 import '../../../utils/record_date_filter.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/page_header.dart';
 import '../../../widgets/record_date_range_filters.dart';
 import '../../../services/users_repository.dart';
@@ -618,30 +619,11 @@ class _UsersFilterToolbar extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final stacked = constraints.maxWidth < 720;
-          final search = TextField(
+          final search = AppSearchBar(
             controller: searchCtrl,
+            hintText: 'Search by name or email…',
             onChanged: (_) => onSearchChanged(),
-            decoration: InputDecoration(
-              hintText: 'Search by name or email…',
-              prefixIcon: const Icon(Icons.search_rounded, size: 22),
-              suffixIcon: searchCtrl.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear_rounded),
-                      onPressed: () {
-                        searchCtrl.clear();
-                        onSearchChanged();
-                      },
-                    )
-                  : null,
-              isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
-            ),
+            onClear: onSearchChanged,
           );
           final dates = RecordDateRangeFilters(
             from: from,

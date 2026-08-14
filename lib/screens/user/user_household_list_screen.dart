@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../models/household.dart';
 import '../../providers/household_provider.dart';
+import '../../widgets/app_search_bar.dart';
 
 /// User Household List Screen - displays all registered households for the user
 class UserHouseholdListScreen extends ConsumerStatefulWidget {
@@ -63,28 +64,9 @@ class _UserHouseholdListScreenState
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: Column(
                     children: [
-                      TextField(
+                      AppSearchBar(
                         controller: _searchCtrl,
-                        decoration: InputDecoration(
-                          hintText: 'Search households...',
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _searchCtrl.text.isNotEmpty
-                              ? IconButton(
-                                  onPressed: () {
-                                    _searchCtrl.clear();
-                                    setState(() {});
-                                  },
-                                  icon: const Icon(Icons.clear),
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: colorScheme.surfaceContainerHighest
-                              .withValues(alpha: 0.5),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
+                        hintText: 'Search households...',
                         onChanged: (_) => setState(() {}),
                       ),
                       const SizedBox(height: 10),
@@ -94,25 +76,25 @@ class _UserHouseholdListScreenState
                           spacing: 8,
                           runSpacing: 6,
                           children: [
-                            _FilterChip(
+                            AppFilterChip(
                               label: _selectedBarangay == null
                                   ? 'Barangay: All'
                                   : 'Barangay: $_selectedBarangay',
-                              isActive: _selectedBarangay != null,
+                              selected: _selectedBarangay != null,
                               onTap: () => _showFiltersSheet(context),
                             ),
-                            _FilterChip(
+                            AppFilterChip(
                               label: _selectedStatus == null
                                   ? 'Status: All'
                                   : 'Status: $_selectedStatus',
-                              isActive: _selectedStatus != null,
+                              selected: _selectedStatus != null,
                               onTap: () => _showFiltersSheet(context),
                             ),
                             if (_selectedBarangay != null ||
                                 _selectedStatus != null)
-                              _FilterChip(
+                              AppFilterChip(
                                 label: 'Clear',
-                                isActive: true,
+                                selected: true,
                                 onTap: () => setState(() {
                                   _selectedBarangay = null;
                                   _selectedStatus = null;
@@ -459,46 +441,6 @@ class _UserHouseholdListScreenState
 }
 
 /// Filter Chip Widget
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _FilterChip({
-    required this.label,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: isActive
-          ? colorScheme.primaryContainer
-          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-              color: isActive
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Navigation Item Widget
 class _NavItem extends StatelessWidget {
   final IconData icon;

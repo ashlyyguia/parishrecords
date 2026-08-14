@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/user_providers.dart';
 import '../../services/requests_repository.dart';
 import '../../services/user_requests_repository.dart';
+import '../../widgets/app_search_bar.dart';
 import '../../widgets/user_certificate_request_launcher.dart';
 
 class UserRequestsListScreen extends ConsumerStatefulWidget {
@@ -66,56 +67,38 @@ class _UserRequestsListScreenState
             child: Column(
               children: [
                 // Search
-                TextField(
+                AppSearchBar(
                   controller: _searchCtrl,
-                  decoration: InputDecoration(
-                    hintText: 'Search by type or ID...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchCtrl.text.isNotEmpty
-                        ? IconButton(
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() {});
-                            },
-                            icon: const Icon(Icons.clear),
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.5,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
+                  hintText: 'Search by type or ID...',
                   onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 8),
                 // Status Filter Chips
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      _FilterChip(
+                      AppFilterChip(
                         label: 'All',
-                        isSelected: _statusFilter == null,
+                        selected: _statusFilter == null,
                         onTap: () => setState(() => _statusFilter = null),
                       ),
-                      _FilterChip(
+                      AppFilterChip(
                         label: 'Pending',
-                        isSelected: _statusFilter == 'pending',
+                        selected: _statusFilter == 'pending',
                         onTap: () => setState(() => _statusFilter = 'pending'),
                       ),
-                      _FilterChip(
+                      AppFilterChip(
                         label: 'Processing',
-                        isSelected: _statusFilter == 'processing',
+                        selected: _statusFilter == 'processing',
                         onTap: () =>
                             setState(() => _statusFilter = 'processing'),
                       ),
-                      _FilterChip(
+                      AppFilterChip(
                         label: 'Completed',
-                        isSelected: _statusFilter == 'completed',
+                        selected: _statusFilter == 'completed',
                         onTap: () =>
                             setState(() => _statusFilter = 'completed'),
                       ),
@@ -508,46 +491,3 @@ class _UserRequestsListScreenState
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _FilterChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Material(
-        color: isSelected
-            ? colorScheme.primaryContainer
-            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(20),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              label,
-              style: TextStyle(
-                color: isSelected
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

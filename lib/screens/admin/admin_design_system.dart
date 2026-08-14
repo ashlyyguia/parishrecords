@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/app_search_bar.dart';
 import '../../widgets/page_header.dart';
 
 /// Modern Admin Design System Components
@@ -76,7 +77,7 @@ class AdminDesignSystem {
     );
   }
 
-  // Modern Search Bar
+  // Modern Search Bar — delegates to the app-wide uniform [AppSearchBar].
   static Widget searchBar(
     BuildContext context, {
     required TextEditingController controller,
@@ -84,48 +85,11 @@ class AdminDesignSystem {
     required ValueChanged<String> onChanged,
     VoidCallback? onClear,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.shadow.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-        border: Border.all(color: colorScheme.outline.withOpacity(0.2)),
-      ),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.5)),
-          prefixIcon: Icon(Icons.search, color: colorScheme.primary),
-          suffixIcon: controller.text.isNotEmpty
-              ? IconButton(
-                  icon: Icon(
-                    Icons.clear,
-                    color: colorScheme.onSurface.withOpacity(0.5),
-                  ),
-                  onPressed: () {
-                    controller.clear();
-                    onChanged('');
-                    onClear?.call();
-                  },
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 16,
-          ),
-        ),
-        onChanged: onChanged,
-      ),
+    return AppSearchBar(
+      controller: controller,
+      hintText: hint,
+      onChanged: onChanged,
+      onClear: onClear,
     );
   }
 

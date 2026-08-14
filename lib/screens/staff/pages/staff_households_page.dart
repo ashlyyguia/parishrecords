@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../../models/household.dart';
 import '../../../providers/household_provider.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/page_header.dart';
 import '../../../widgets/record_date_range_filters.dart';
 
@@ -171,42 +172,14 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: TextField(
-                    controller: _searchCtrl,
-                    focusNode: _searchFocus,
-                    decoration: InputDecoration(
-                      hintText: isMobile
-                          ? 'Search households...'
-                          : 'Search by household name or address...',
-                      prefixIcon: Icon(
-                        Icons.search,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      suffixIcon: _searchCtrl.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _searchCtrl.clear();
-                                setState(() => _currentPage = 0);
-                              },
-                            )
-                          : null,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                    ),
-                    onChanged: (_) => setState(() => _currentPage = 0),
-                  ),
-                ),
+              AppSearchBar(
+                controller: _searchCtrl,
+                focusNode: _searchFocus,
+                hintText: isMobile
+                    ? 'Search households...'
+                    : 'Search by household name or address...',
+                onChanged: (_) => setState(() => _currentPage = 0),
+                onClear: () => setState(() => _currentPage = 0),
               ),
               const SizedBox(height: 12),
               Wrap(

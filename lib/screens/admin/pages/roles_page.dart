@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../widgets/app_search_bar.dart';
 import '../admin_design_system.dart';
 
 class AdminRolesPage extends StatefulWidget {
@@ -139,19 +140,9 @@ class _AdminRolesPageState extends State<AdminRolesPage> {
                         // Search Field
                         SizedBox(
                           width: isNarrow ? constraints.maxWidth : 340,
-                          child: TextField(
+                          child: AppSearchBar(
                             controller: _searchCtrl,
-                            decoration: InputDecoration(
-                              prefixIcon: const Icon(Icons.search),
-                              hintText: 'Search users...',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: colorScheme.surfaceContainerHighest
-                                  .withOpacity(0.5),
-                            ),
+                            hintText: 'Search users...',
                             onChanged: (_) => setState(() {}),
                           ),
                         ),

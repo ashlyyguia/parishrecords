@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../services/admin_repository.dart';
+import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/page_header.dart';
 
 class AdminSettingsPage extends StatefulWidget {
@@ -147,12 +148,9 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 12),
-                  TextField(
+                  AppSearchBar(
                     controller: _logSearch,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Search logs',
-                    ),
+                    hintText: 'Search logs',
                     onChanged: (_) => setState(() {}),
                   ),
                   const SizedBox(height: 12),
