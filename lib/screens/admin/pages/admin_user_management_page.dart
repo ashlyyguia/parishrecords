@@ -670,34 +670,25 @@ class _RoleFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final (id, label) in _AdminUserManagementPageState._roleFilters)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilterChip(
-                label: Text(label),
-                selected: selectedRole == id,
-                showCheckmark: true,
-                onSelected: (_) => onRoleSelected(id),
-                selectedColor: cs.primary.withValues(alpha: 0.18),
-                checkmarkColor: cs.primary,
-              ),
-            ),
-          FilterChip(
-            label: const Text('Show disabled'),
-            selected: showDisabled,
-            onSelected: onShowDisabledChanged,
-            avatar: Icon(
-              showDisabled ? Icons.visibility : Icons.visibility_off_outlined,
-              size: 18,
-            ),
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final (id, label) in _AdminUserManagementPageState._roleFilters)
+          AppFilterChip(
+            label: label,
+            selected: selectedRole == id,
+            onTap: () => onRoleSelected(id),
           ),
-        ],
-      ),
+        AppFilterChip(
+          label: 'Show disabled',
+          icon: showDisabled
+              ? Icons.visibility
+              : Icons.visibility_off_outlined,
+          selected: showDisabled,
+          onTap: () => onShowDisabledChanged(!showDisabled),
+        ),
+      ],
     );
   }
 }

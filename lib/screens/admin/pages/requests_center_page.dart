@@ -182,24 +182,15 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
                         ),
 
                         // Status Filter
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest
-                                  .withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildFilterTab('All', 'all'),
-                                _buildFilterTab('Pending', 'pending'),
-                                _buildFilterTab('Approved', 'approved'),
-                                _buildFilterTab('Rejected', 'rejected'),
-                              ],
-                            ),
-                          ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _statusChip('All', 'all'),
+                            _statusChip('Pending', 'pending'),
+                            _statusChip('Approved', 'approved'),
+                            _statusChip('Rejected', 'rejected'),
+                          ],
                         ),
 
                         // Refresh Button
@@ -348,29 +339,11 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
     );
   }
 
-  Widget _buildFilterTab(String label, String value) {
-    final isSelected = _filterStatus == value;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return InkWell(
+  Widget _statusChip(String label, String value) {
+    return AppFilterChip(
+      label: label,
+      selected: _filterStatus == value,
       onTap: () => setState(() => _filterStatus = value),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? colorScheme.primaryContainer : null,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            color: isSelected
-                ? colorScheme.onPrimaryContainer
-                : colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
     );
   }
 

@@ -6,6 +6,7 @@ import '../../../models/record.dart';
 import '../../../providers/records_provider.dart';
 import '../../../utils/manual_register_notes.dart';
 import '../../../utils/record_date_filter.dart';
+import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/manual_register_launcher.dart';
 import '../../../widgets/record_date_range_filters.dart';
 import '../../admin/admin_design_system.dart';
@@ -278,11 +279,11 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                             icon: const Icon(Icons.refresh),
                             tooltip: 'Refresh',
                           ),
-                          FilterChip(
-                            label: const Text('Temporary only'),
+                          AppFilterChip(
+                            label: 'Temporary only',
                             selected: _temporaryOnly,
-                            onSelected: (v) =>
-                                setState(() => _temporaryOnly = v),
+                            onTap: () =>
+                                setState(() => _temporaryOnly = !_temporaryOnly),
                           ),
                         ],
                       ),

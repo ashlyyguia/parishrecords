@@ -329,24 +329,18 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                             onChanged: (_) => setState(() {}),
                           ),
                         ),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest
-                                .withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildTab('All', 'all', Icons.inbox),
-                              _buildTab(
-                                'Unread',
-                                'unread',
-                                Icons.mark_email_unread,
-                              ),
-                              _buildTab('Archived', 'archived', Icons.archive),
-                            ],
-                          ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _buildTab('All', 'all', Icons.inbox),
+                            _buildTab(
+                              'Unread',
+                              'unread',
+                              Icons.mark_email_unread,
+                            ),
+                            _buildTab('Archived', 'archived', Icons.archive),
+                          ],
                         ),
                         const Spacer(),
                         FilledButton.icon(
@@ -545,41 +539,11 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
   }
 
   Widget _buildTab(String label, String value, IconData icon) {
-    final isSelected = _tab == value;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return InkWell(
+    return AppFilterChip(
+      label: label,
+      icon: icon,
+      selected: _tab == value,
       onTap: () => setState(() => _tab = value),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? colorScheme.primaryContainer : null,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: isSelected
-                  ? colorScheme.onPrimaryContainer
-                  : colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected
-                    ? colorScheme.onPrimaryContainer
-                    : colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 

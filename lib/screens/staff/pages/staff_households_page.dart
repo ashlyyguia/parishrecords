@@ -249,11 +249,11 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
                       error: (_, __) => const SizedBox.shrink(),
                     ),
                   ),
-                  FilterChip(
-                    label: const Text('Include archived'),
+                  AppFilterChip(
+                    label: 'Include archived',
                     selected: _includeArchived,
-                    onSelected: (v) => setState(() {
-                      _includeArchived = v;
+                    onTap: () => setState(() {
+                      _includeArchived = !_includeArchived;
                       _currentPage = 0;
                     }),
                   ),

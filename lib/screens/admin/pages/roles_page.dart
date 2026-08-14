@@ -148,22 +148,16 @@ class _AdminRolesPageState extends State<AdminRolesPage> {
                         ),
 
                         // Role Filter
-                        Container(
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest
-                                .withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildFilterTab('All', 'all'),
-                              _buildFilterTab('Admin', 'admin'),
-                              _buildFilterTab('Staff', 'staff'),
-                              _buildFilterTab('Finance', 'finance'),
-                              _buildFilterTab('User', 'parishioner'),
-                            ],
-                          ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _roleChip('All', 'all'),
+                            _roleChip('Admin', 'admin'),
+                            _roleChip('Staff', 'staff'),
+                            _roleChip('Finance', 'finance'),
+                            _roleChip('User', 'parishioner'),
+                          ],
                         ),
                       ],
                     );
@@ -296,29 +290,11 @@ class _AdminRolesPageState extends State<AdminRolesPage> {
     );
   }
 
-  Widget _buildFilterTab(String label, String value) {
-    final isSelected = _selectedRole == value;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return InkWell(
+  Widget _roleChip(String label, String value) {
+    return AppFilterChip(
+      label: label,
+      selected: _selectedRole == value,
       onTap: () => setState(() => _selectedRole = value),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? colorScheme.primaryContainer : null,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            color: isSelected
-                ? colorScheme.onPrimaryContainer
-                : colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
     );
   }
 

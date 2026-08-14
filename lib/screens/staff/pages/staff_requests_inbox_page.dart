@@ -169,27 +169,16 @@ class _StaffRequestsInboxPageState
       ('rejected', 'Rejected'),
     ];
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
         children: filters.map((filter) {
-          final isSelected = _selectedFilter == filter.$1;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilterChip(
-              selected: isSelected,
-              label: Text(filter.$2),
-              onSelected: (_) => setState(() => _selectedFilter = filter.$1),
-              selectedColor: colorScheme.primaryContainer,
-              checkmarkColor: colorScheme.primary,
-              labelStyle: TextStyle(
-                color: isSelected ? colorScheme.primary : colorScheme.onSurface,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
+          return AppFilterChip(
+            label: filter.$2,
+            selected: _selectedFilter == filter.$1,
+            onTap: () => setState(() => _selectedFilter = filter.$1),
           );
         }).toList(),
       ),

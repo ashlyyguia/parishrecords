@@ -8,6 +8,7 @@ import '../../../providers/admin_providers.dart';
 import '../../../models/record.dart';
 import '../../../utils/record_date_filter.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/page_header.dart';
 import '../../../widgets/record_date_range_filters.dart';
 
@@ -385,22 +386,12 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     String label,
     ColorScheme colorScheme,
   ) {
-    final isSelected = _selectedRecordTypeFilter == value;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        selected: isSelected,
-        label: Text(label),
-        onSelected: (_) {
-          setState(() {
-            _selectedRecordTypeFilter = value;
-          });
-        },
-        selectedColor: colorScheme.primary.withValues(alpha: 0.15),
-        labelStyle: TextStyle(
-          color: isSelected ? colorScheme.primary : colorScheme.onSurface,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-        ),
+      child: AppFilterChip(
+        label: label,
+        selected: _selectedRecordTypeFilter == value,
+        onTap: () => setState(() => _selectedRecordTypeFilter = value),
       ),
     );
   }
