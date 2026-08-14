@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
+import '../../../app/app_colors.dart';
 import '../../../providers/records_provider.dart';
 import '../../../providers/admin_providers.dart';
 import '../../../models/record.dart';
@@ -90,9 +91,10 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
       data: (rows) {
         if (rows.isEmpty) {
           return Card(
-            elevation: 2,
+            elevation: 0,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: AppColors.border),
             ),
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -131,9 +133,10 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
         }
 
         return Card(
-          elevation: 2,
+          elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: AppColors.border),
           ),
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -177,13 +180,19 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
         );
       },
       loading: () => Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColors.border),
+        ),
         child: const SizedBox(height: 80, child: AppLoading()),
       ),
       error: (e, _) => Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColors.border),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
@@ -632,9 +641,10 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
       itemBuilder: (context, index) {
         final metric = metrics[index];
         return Card(
-          elevation: 2,
+          elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: AppColors.border),
           ),
           child: Container(
             padding: const EdgeInsets.all(16),
@@ -718,8 +728,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     }
 
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -788,8 +801,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
       ..sort((a, b) => b.date.compareTo(a.date));
 
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -881,8 +897,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     }
 
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -1047,8 +1066,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     }
 
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -1220,8 +1242,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     final total = typeCounts.values.fold<int>(0, (sum, count) => sum + count);
 
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -1378,8 +1403,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     final total = statusCounts.values.reduce((a, b) => a + b);
 
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -1571,8 +1599,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     ColorScheme colorScheme,
   ) {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -1629,8 +1660,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     }
 
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -1777,8 +1811,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     ColorScheme colorScheme,
   ) {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -1809,8 +1846,11 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
     ColorScheme colorScheme,
   ) {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
