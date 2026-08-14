@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_colors.dart';
 import '../../models/announcement.dart';
 import '../../services/announcements_repository.dart';
+import '../../widgets/app_card.dart';
+import '../../widgets/app_empty_state.dart';
 import '../../widgets/safe_image.dart';
-import 'landing_common.dart';
+import 'landing_kit.dart';
 
 final _publicAnnouncementsProvider = StreamProvider<List<Announcement>>((ref) {
   return AnnouncementsRepository().watchPublicActive();
@@ -15,572 +18,332 @@ class AnnouncementsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final announcementsAsync = ref.watch(_publicAnnouncementsProvider);
+    final async = ref.watch(_publicAnnouncementsProvider);
+    final compact = LandingKit.isCompact(context);
 
-    return Builder(
-      builder: (context) {
-        final size = MediaQuery.of(context).size;
-        final isMobile = size.width < 600;
-        final horizontalPadding = isMobile ? 24.0 : 48.0;
-        final topPadding = isMobile ? 100.0 : 120.0;
-        final titleSize = isMobile ? 32.0 : 42.0;
-        final subtitleSize = isMobile ? 14.0 : 16.0;
-
-        return LandingCommon.diagonalBackground(
-          child: Container(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              topPadding,
-              horizontalPadding,
-              48,
-            ),
+    return LandingPage(
+      children: [
+        const LandingHero(
+          eyebrow: 'PARISH ANNOUNCEMENTS',
+          title: 'News & notices',
+          subtitle:
+              'Stay updated with the latest news, schedules, and important '
+              'notices from our parish community.',
+          glyph: Icons.campaign_rounded,
+        ),
+        SizedBox(height: compact ? 28 : 44),
+        async.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 80),
             child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1000),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Parish Announcements',
-                      style: LandingCommon.titleStyle(fontSize: titleSize),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Stay updated with the latest news, schedules, and important notices from our parish community.',
-                      style: LandingCommon.bodyStyle(fontSize: subtitleSize),
-                    ),
-                    const SizedBox(height: 32),
-                    Expanded(
-                      child: announcementsAsync.when(
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (e, st) => const Center(
-                          child: Text('Could not load announcements.'),
-                        ),
-                        data: (items) {
-                          if (items.isEmpty) {
-                            return Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.campaign_outlined,
-                                    size: 56,
-                                    color: LandingCommon.primary.withValues(
-                                      alpha: 0.4,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'No announcements at this time.',
-                                    style: LandingCommon.bodyStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-
-                          final sortedItems = List<Announcement>.from(items)
-                            ..sort((a, b) {
-                              if (a.pinned && !b.pinned) return -1;
-                              if (!a.pinned && b.pinned) return 1;
-                              return a.eventDateTime.compareTo(b.eventDateTime);
-                            });
-
-                          return ListView.separated(
-                            itemCount: sortedItems.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 16),
-                            itemBuilder: (context, i) => _AnnouncementCard(
-                              announcement: sortedItems[i],
-                              isHighlighted: sortedItems[i].pinned,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              child: CircularProgressIndicator(color: AppColors.primary),
             ),
           ),
-        );
-      },
+          error: (_, _) => const AppEmptyState(
+            icon: Icons.wifi_off_rounded,
+            title: 'Could not load announcements',
+            message: 'Please check your connection and try again.',
+          ),
+          data: (items) {
+            if (items.isEmpty) {
+              return const AppEmptyState(
+                icon: Icons.campaign_outlined,
+                title: 'No announcements yet',
+                message: 'Check back soon for parish news and updates.',
+              );
+            }
+            final sorted = List<Announcement>.from(items)
+              ..sort((a, b) {
+                if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+                return a.eventDateTime.compareTo(b.eventDateTime);
+              });
+            return Column(
+              children: [
+                for (final a in sorted) ...[
+                  _AnnouncementCard(announcement: a),
+                  const SizedBox(height: 16),
+                ],
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }
 
 class _AnnouncementCard extends StatelessWidget {
-  const _AnnouncementCard({
-    required this.announcement,
-    this.isHighlighted = false,
-  });
-
+  const _AnnouncementCard({required this.announcement});
   final Announcement announcement;
-  final bool isHighlighted;
 
   bool get _isMarriage => announcement.announcementType == 'marriage';
+  bool get _pinned => announcement.pinned;
 
   @override
   Widget build(BuildContext context) {
-    final dateStr = _formatDate(announcement.eventDateTime);
-    final isCompact = MediaQuery.of(context).size.width < 600;
+    final compact = LandingKit.isMobile(context);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isHighlighted
-            ? LandingCommon.primary.withValues(alpha: 0.05)
-            : Colors.white.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isHighlighted
-              ? LandingCommon.primary.withValues(alpha: 0.25)
-              : Colors.grey.withValues(alpha: 0.15),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.hardEdge,
+    return AppCard(
+      padding: EdgeInsets.zero,
+      borderColor: _pinned ? AppColors.tintStrong : null,
+      color: _pinned ? AppColors.tint : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Marriage Images ────────────────────────────────────────
           if (_isMarriage &&
-              (announcement.imageUrl != null || announcement.imageUrl2 != null))
-            _buildMarriageImages(isCompact),
-          // ── Body ─────────────────────────────────────────────────────
+              (announcement.imageUrl != null ||
+                  announcement.imageUrl2 != null))
+            _MarriageImages(announcement: announcement, compact: compact),
           Padding(
-            padding: EdgeInsets.all(isCompact ? 20 : 28),
-            child: isCompact
-                ? _buildCompactLayout(dateStr)
-                : _buildWideLayout(dateStr),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWideLayout(String dateStr) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Icon
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: isHighlighted
-                ? LandingCommon.primary.withValues(alpha: 0.1)
-                : LandingCommon.bg,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            _getIconForType(),
-            color: isHighlighted ? LandingCommon.primary : _getColorForType(),
-            size: 28,
-          ),
-        ),
-        const SizedBox(width: 20),
-        // Content
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Type badge
-                  if (announcement.announcementType != 'general') ...[
-                    _buildTypeBadge(),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: Text(
-                      announcement.title,
-                      style: LandingCommon.bodyStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
-                      ),
-                    ),
+            padding: EdgeInsets.all(compact ? 18 : 24),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _pinned ? Colors.white : AppColors.tint,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.tintStrong),
                   ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                announcement.description,
-                maxLines: 6,
-                overflow: TextOverflow.ellipsis,
-                style: LandingCommon.bodyStyle(
-                  fontSize: 16,
-                  color: Colors.grey.shade700,
+                  child: Icon(_icon(), color: _color(), size: 24),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  // Date chip
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: LandingCommon.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          size: 12,
-                          color: LandingCommon.primary,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          dateStr,
-                          style: LandingCommon.bodyStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: LandingCommon.primary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Location (if available)
-                  if (announcement.location.isNotEmpty)
-                    Expanded(
-                      child: Row(
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Icon(
-                            Icons.location_on_outlined,
-                            size: 14,
-                            color: Colors.grey.shade500,
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              announcement.location,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: LandingCommon.bodyStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade600,
-                              ),
+                          if (_pinned) ...[
+                            const _Badge(label: 'PINNED', color: AppColors.primary),
+                            const SizedBox(width: 8),
+                          ],
+                          if (announcement.announcementType != 'general')
+                            _Badge(
+                              label: announcement.announcementType.toUpperCase(),
+                              color: _color(),
                             ),
-                          ),
                         ],
                       ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCompactLayout(String dateStr) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Icon
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isHighlighted
-                    ? LandingCommon.primary.withValues(alpha: 0.1)
-                    : LandingCommon.bg,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                _getIconForType(),
-                color: isHighlighted
-                    ? LandingCommon.primary
-                    : _getColorForType(),
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Type badge
-                  if (!_isMarriage &&
-                      announcement.announcementType != 'general')
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: _buildTypeBadge(),
-                    ),
-                  Text(
-                    announcement.title,
-                    style: LandingCommon.bodyStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Padding(
-          padding: const EdgeInsets.only(left: 52),
-          child: Text(
-            announcement.description,
-            maxLines: 4,
-            overflow: TextOverflow.ellipsis,
-            style: LandingCommon.bodyStyle(
-              fontSize: 14,
-              color: Colors.grey.shade700,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Padding(
-          padding: const EdgeInsets.only(left: 52),
-          child: Row(
-            children: [
-              Icon(
-                Icons.calendar_today_outlined,
-                size: 12,
-                color: LandingCommon.primary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                dateStr,
-                style: LandingCommon.bodyStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: LandingCommon.primary,
-                ),
-              ),
-              if (announcement.location.isNotEmpty) ...[
-                const SizedBox(width: 12),
-                Icon(
-                  Icons.location_on_outlined,
-                  size: 12,
-                  color: Colors.grey.shade500,
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    announcement.location,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: LandingCommon.bodyStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
+                      if (_pinned || announcement.announcementType != 'general')
+                        const SizedBox(height: 10),
+                      Text(
+                        announcement.title,
+                        style: LandingKit.heading(compact ? 17 : 20),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        announcement.description,
+                        maxLines: 6,
+                        overflow: TextOverflow.ellipsis,
+                        style: LandingKit.body(compact ? 13.5 : 14.5, height: 1.55),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _MetaChip(
+                            icon: Icons.calendar_today_rounded,
+                            label: _formatDate(announcement.eventDateTime),
+                          ),
+                          if (announcement.location.isNotEmpty)
+                            _MetaChip(
+                              icon: Icons.location_on_rounded,
+                              label: announcement.location,
+                              muted: true,
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ],
+            ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTypeBadge() {
-    final color = _getColorForType();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        announcement.announcementType.toUpperCase(),
-        style: LandingCommon.bodyStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  IconData _getIconForType() {
-    if (announcement.pinned) return Icons.push_pin_outlined;
-    switch (announcement.announcementType) {
-      case 'marriage':
-        return Icons.favorite;
-      case 'baptism':
-        return Icons.water_drop_outlined;
-      case 'confirmation':
-        return Icons.handshake_outlined;
-      case 'death':
-        return Icons.church_outlined;
-      default:
-        return Icons.campaign_outlined;
-    }
-  }
-
-  Color _getColorForType() {
-    switch (announcement.announcementType) {
-      case 'marriage':
-        return Colors.pink.shade400;
-      case 'baptism':
-        return Colors.blue.shade400;
-      case 'confirmation':
-        return Colors.purple.shade400;
-      case 'death':
-        return Colors.grey.shade600;
-      default:
-        return LandingCommon.primary;
-    }
-  }
-
-  Widget _buildMarriageImages(bool isCompact) {
-    final height = isCompact ? 160.0 : 200.0;
-
-    return Container(
-      height: height,
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          // Groom photo
-          if (announcement.imageUrl != null)
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    SafeImage(
-                      imageUrl: announcement.imageUrl!,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.topCenter,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.grey.shade200,
-                        child: Icon(Icons.person, color: Colors.grey.shade400),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 6,
-                          horizontal: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              Colors.black.withValues(alpha: 0.6),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                        child: Text(
-                          announcement.person1Name ?? 'Groom',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (announcement.imageUrl != null && announcement.imageUrl2 != null)
-            const SizedBox(width: 8),
-          // Bride photo
-          if (announcement.imageUrl2 != null)
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    SafeImage(
-                      imageUrl: announcement.imageUrl2!,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.topCenter,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.grey.shade200,
-                        child: Icon(Icons.person, color: Colors.grey.shade400),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 6,
-                          horizontal: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              Colors.black.withValues(alpha: 0.6),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                        child: Text(
-                          announcement.person2Name ?? 'Bride',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
         ],
       ),
     );
   }
 
-  String _formatDate(DateTime dt) {
+  IconData _icon() {
+    if (_pinned) return Icons.push_pin_rounded;
+    switch (announcement.announcementType) {
+      case 'marriage':
+        return Icons.favorite_rounded;
+      case 'baptism':
+        return Icons.water_drop_rounded;
+      case 'confirmation':
+        return Icons.handshake_rounded;
+      case 'death':
+        return Icons.church_rounded;
+      default:
+        return Icons.campaign_rounded;
+    }
+  }
+
+  Color _color() {
+    switch (announcement.announcementType) {
+      case 'marriage':
+        return const Color(0xFFEC4899);
+      case 'baptism':
+        return AppColors.primary;
+      case 'confirmation':
+        return AppColors.primaryDark;
+      case 'death':
+        return AppColors.slate500;
+      default:
+        return AppColors.primary;
+    }
+  }
+
+  static String _formatDate(DateTime dt) {
     const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+  }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge({required this.label, required this.color});
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: LandingKit.body(10, color: color, weight: FontWeight.w700)
+            .copyWith(letterSpacing: 0.6),
+      ),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({
+    required this.icon,
+    required this.label,
+    this.muted = false,
+  });
+  final IconData icon;
+  final String label;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = muted ? AppColors.slate500 : AppColors.primaryDark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: muted ? AppColors.field : AppColors.tint,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: muted ? AppColors.border : AppColors.tintStrong,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 6),
+          Text(label, style: LandingKit.body(12, color: color, weight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+class _MarriageImages extends StatelessWidget {
+  const _MarriageImages({required this.announcement, required this.compact});
+  final Announcement announcement;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = compact ? 170.0 : 220.0;
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: SizedBox(
+        height: height,
+        child: Row(
+          children: [
+            if (announcement.imageUrl != null)
+              Expanded(
+                child: _Photo(
+                  url: announcement.imageUrl!,
+                  name: announcement.person1Name ?? 'Groom',
+                ),
+              ),
+            if (announcement.imageUrl != null &&
+                announcement.imageUrl2 != null)
+              const SizedBox(width: 10),
+            if (announcement.imageUrl2 != null)
+              Expanded(
+                child: _Photo(
+                  url: announcement.imageUrl2!,
+                  name: announcement.person2Name ?? 'Bride',
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Photo extends StatelessWidget {
+  const _Photo({required this.url, required this.name});
+  final String url;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          SafeImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            errorBuilder: (_, _, _) => Container(
+              color: AppColors.field,
+              child: const Icon(Icons.person, color: AppColors.slate400),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Color(0xCC0F172A), Colors.transparent],
+                ),
+              ),
+              child: Text(
+                name,
+                style: LandingKit.body(13, color: Colors.white, weight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
