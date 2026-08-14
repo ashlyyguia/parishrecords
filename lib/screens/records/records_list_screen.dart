@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
+import '../../app/app_colors.dart';
 import '../../utils/record_date_filter.dart';
 import '../../widgets/app_empty_state.dart';
 import '../../widgets/app_loading.dart';
@@ -537,15 +538,14 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Card(
-        elevation: 2,
-        shadowColor: colorScheme.shadow.withValues(alpha: 0.1),
+        elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.08)),
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColors.border),
         ),
         child: InkWell(
           onTap: () => context.push('/records/${record.id}'),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(

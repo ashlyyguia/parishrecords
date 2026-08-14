@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../app/app_colors.dart';
 import '../../../providers/staff_schedule_provider.dart';
 import '../../../widgets/app_loading.dart';
 import '../../../widgets/page_header.dart';
@@ -97,10 +98,10 @@ class StaffSchedulePage extends ConsumerWidget {
     final padding = isMobile ? 16.0 : 24.0;
 
     return Card(
-      elevation: 2,
-      shadowColor: colorScheme.shadow.withValues(alpha: 0.1),
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(isMobile ? 16 : 20),
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
       ),
       child: Padding(
         padding: EdgeInsets.all(padding),
@@ -251,11 +252,10 @@ class _EventCard extends StatelessWidget {
     final typeIcon = _getTypeIcon(type);
 
     return Card(
-      elevation: 1,
-      shadowColor: colorScheme.shadow.withValues(alpha: 0.05),
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.1)),
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
       ),
       child: ExpansionTile(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

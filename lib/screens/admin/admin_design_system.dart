@@ -2,27 +2,16 @@
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/app_card.dart';
 import '../../widgets/app_empty_state.dart';
 import '../../widgets/app_search_bar.dart';
 import '../../widgets/page_header.dart';
 
 /// Modern Admin Design System Components
 class AdminDesignSystem {
-  // Card Styles
+  // Card Styles — flat bordered to match the app-wide [AppCard].
   static BoxDecoration cardDecoration(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return BoxDecoration(
-      color: colorScheme.surface,
-      borderRadius: BorderRadius.circular(16),
-      boxShadow: [
-        BoxShadow(
-          color: colorScheme.shadow.withOpacity(0.08),
-          blurRadius: 20,
-          offset: const Offset(0, 4),
-        ),
-      ],
-      border: Border.all(color: colorScheme.outline.withOpacity(0.1), width: 1),
-    );
+    return AppCard.decoration();
   }
 
   static BoxDecoration gradientCardDecoration(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../app/app_colors.dart';
 import '../../../providers/ocr_jobs_provider.dart';
 import '../../../services/ocr_jobs_repository.dart';
 import '../../../models/register_marriage_entry.dart';
@@ -425,10 +426,10 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
     bool isMobile,
   ) {
     return Card(
-      elevation: 2,
-      shadowColor: colorScheme.shadow.withValues(alpha: 0.1),
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(isMobile ? 16 : 20),
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
       ),
       child: Padding(
         padding: EdgeInsets.all(isMobile ? 20 : 24),

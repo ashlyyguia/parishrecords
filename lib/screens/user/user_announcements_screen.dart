@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../app/app_colors.dart';
 import '../../models/announcement.dart';
 import '../../services/announcements_repository.dart';
 import '../../widgets/page_header.dart';
@@ -126,15 +127,13 @@ class _AnnouncementCard extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 640),
         child: Card(
-          elevation: 2,
+          elevation: 0,
           margin: const EdgeInsets.only(bottom: 14),
           clipBehavior: Clip.antiAlias,
           color: colorScheme.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-            ),
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: AppColors.border),
           ),
           child: InkWell(
             onTap: onTap,
