@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../app/app_colors.dart';
 import '../../../utils/donation_display.dart' as donation_display;
 
 /// Visual identity for each admin finance module.
@@ -42,9 +43,9 @@ class FinanceModuleStyle {
           title: 'Donations',
           subtitle: 'Cash and online donations (same records as Finance ledger)',
           icon: Icons.volunteer_activism_rounded,
-          gradient: [Color(0xFF0D9488), Color(0xFF14B8A6), Color(0xFF5EEAD4)],
-          accent: Color(0xFF0D9488),
-          accentSoft: Color(0xFFCCFBF1),
+          gradient: [AppColors.primary, AppColors.accent, AppColors.primaryLight],
+          accent: AppColors.primary,
+          accentSoft: AppColors.tint,
           onAccent: Colors.white,
           emptyTitle: 'No donations yet',
           emptyHint: 'Record a gift to see it listed here.',
@@ -55,9 +56,9 @@ class FinanceModuleStyle {
           title: 'Certificate Fees',
           subtitle: 'Sacramental document payments',
           icon: Icons.verified_outlined,
-          gradient: [Color(0xFF3730A3), Color(0xFF4F46E5), Color(0xFF818CF8)],
-          accent: Color(0xFF4F46E5),
-          accentSoft: Color(0xFFE0E7FF),
+          gradient: [AppColors.primaryDark, AppColors.primary, AppColors.primaryLight],
+          accent: AppColors.primaryDark,
+          accentSoft: AppColors.tintStrong,
           onAccent: Colors.white,
           emptyTitle: 'No certificate fees',
           emptyHint: 'Record a payment when a certificate is issued.',
@@ -868,7 +869,7 @@ Color donationCategoryColor(String cat) {
     case 'outreach':
       return const Color(0xFFDB2777);
     default:
-      return const Color(0xFF0D9488);
+      return AppColors.primary;
   }
 }
 

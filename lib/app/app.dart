@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'app_colors.dart';
 import 'router.dart';
 
 class MyApp extends ConsumerWidget {
@@ -15,43 +16,43 @@ class MyApp extends ConsumerWidget {
       visualDensity: VisualDensity.compact,
       colorScheme:
           ColorScheme.fromSeed(
-            seedColor: const Color(0xFF6C63FF),
+            seedColor: AppColors.primary,
             brightness: Brightness.light,
           ).copyWith(
-            primary: const Color(0xFF6C63FF),
-            secondary: const Color(0xFF7C8DB5),
-            surface: Colors.white,
-            onSurface: const Color(0xFF1F2430),
+            primary: AppColors.primary,
+            secondary: AppColors.secondary,
+            surface: AppColors.surface,
+            onSurface: AppColors.ink,
           ),
-      scaffoldBackgroundColor: const Color(0xFFF6F7FB),
-      cardColor: Colors.white,
+      scaffoldBackgroundColor: AppColors.scaffold,
+      cardColor: AppColors.surface,
       textTheme: GoogleFonts.poppinsTextTheme().copyWith(
         headlineLarge: GoogleFonts.merriweather(fontWeight: FontWeight.w700),
         headlineMedium: GoogleFonts.merriweather(fontWeight: FontWeight.w700),
         headlineSmall: GoogleFonts.merriweather(fontWeight: FontWeight.w700),
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1F2430),
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.ink,
         elevation: 0,
         centerTitle: false,
         titleTextStyle: GoogleFonts.poppins(
           fontSize: 16,
           fontWeight: FontWeight.w600,
-          color: const Color(0xFF1F2430),
+          color: AppColors.ink,
         ),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: Color(0xFFE6E8EF)),
+          side: const BorderSide(color: AppColors.border),
         ),
         margin: EdgeInsets.zero,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFFF2F4F8),
+        fillColor: AppColors.field,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide.none,
@@ -63,14 +64,14 @@ class MyApp extends ConsumerWidget {
       ),
       chipTheme: ChipThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        side: const BorderSide(color: Color(0xFFE6E8EF)),
+        side: const BorderSide(color: AppColors.border),
       ),
       listTileTheme: const ListTileThemeData(
         dense: true,
         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       ),
       dividerTheme: const DividerThemeData(
-        color: Color(0xFFE6E8EF),
+        color: AppColors.divider,
         thickness: 1,
       ),
     );

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_colors.dart';
 import '../../providers/auth_provider.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -73,7 +74,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
+      backgroundColor: AppColors.scaffold,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../app/app_colors.dart';
+
 class LandingNavBar extends StatelessWidget {
   const LandingNavBar({
     super.key,
@@ -14,7 +16,7 @@ class LandingNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onItemTap;
 
-  static const _purple = Color(0xFF5C57FF);
+  static const _purple = AppColors.primary;
   static const _bg = Color(0xFFD9D9D9);
 
   @override
@@ -101,7 +103,7 @@ class LandingNavItem {
 }
 
 class _BrandMark extends StatelessWidget {
-  static const _purple = Color(0xFF5C57FF);
+  static const _purple = AppColors.primary;
 
   @override
   Widget build(BuildContext context) {
@@ -275,7 +277,7 @@ class _LoginButton extends StatelessWidget {
 
   final VoidCallback onPressed;
 
-  static const _purple = Color(0xFF5C57FF);
+  static const _purple = AppColors.primary;
 
   @override
   Widget build(BuildContext context) {

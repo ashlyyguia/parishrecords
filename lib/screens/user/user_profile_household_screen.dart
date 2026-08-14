@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+import '../../app/app_colors.dart';
 import '../../providers/user_providers.dart';
 import '../../providers/household_provider.dart';
 import '../../providers/notification_provider.dart';
@@ -1048,7 +1049,7 @@ class _UserProfileHouseholdScreenState
 
 class _ProfileUi {
   static const _avatarColors = [
-    Color(0xFF6C63FF),
+    AppColors.primary,
     Color(0xFF26A69A),
     Color(0xFFFF7043),
     Color(0xFF7E57C2),
@@ -1089,7 +1090,7 @@ class _ProfileHeroHeader extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             cs.primary.withValues(alpha: 0.92),
-            const Color(0xFF8B83FF),
+            AppColors.primaryLight,
           ],
         ),
         borderRadius: BorderRadius.circular(20),

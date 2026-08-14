@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../app/app_colors.dart';
 import '../utils/network_connectivity.dart';
 
 /// Paints a light background behind the router and shows offline hint when needed.
@@ -14,7 +15,7 @@ class AppRootWrapper extends StatefulWidget {
 }
 
 class _AppRootWrapperState extends State<AppRootWrapper> {
-  static const _scaffoldBg = Color(0xFFF6F7FB);
+  static const _scaffoldBg = AppColors.scaffold;
   bool? _online;
   Timer? _pollTimer;
 

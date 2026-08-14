@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
+import '../../app/app_colors.dart';
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 
@@ -314,7 +315,7 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
                             const Icon(
                               Icons.upload_outlined,
                               size: 32,
-                              color: Color(0xFF7C8DB5),
+                              color: AppColors.secondary,
                             ),
                             const SizedBox(height: 8),
                             const Text(

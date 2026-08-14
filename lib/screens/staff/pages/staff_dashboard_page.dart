@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../app/app_colors.dart';
 import '../../../providers/requests_provider.dart';
 import '../../../providers/ocr_jobs_provider.dart';
 import '../../../widgets/app_loading.dart';
@@ -433,8 +434,8 @@ class StaffDashboardPage extends ConsumerWidget {
                 value: (requests.length + jobs.length).toString(),
                 subtitle: 'All time',
                 icon: Icons.folder_outlined,
-                color: const Color(0xFF8B5CF6),
-                bgColor: const Color(0xFFEDE9FE),
+                color: AppColors.primary,
+                bgColor: AppColors.tint,
               ),
             ];
 
@@ -533,7 +534,7 @@ class StaffDashboardPage extends ConsumerWidget {
         icon: Icons.edit_note_outlined,
         label: 'Manual Register',
         description: 'All record types, or scan a certificate',
-        color: const Color(0xFF0D9488),
+        color: AppColors.primaryDark,
         onTap: () => ManualRegisterLauncher.open(context),
       ),
       _ActionData(
@@ -547,7 +548,7 @@ class StaffDashboardPage extends ConsumerWidget {
         icon: Icons.document_scanner_outlined,
         label: 'Scan Register',
         description: 'Upload & OCR register pages',
-        color: const Color(0xFF8B5CF6),
+        color: AppColors.primary,
         onTap: () => context.go('/staff/ocr/upload'),
       ),
       _ActionData(
@@ -657,7 +658,7 @@ class StaffDashboardPage extends ConsumerWidget {
             children: [
               Icon(
                 Icons.folder_open_outlined,
-                color: const Color(0xFF8B5CF6),
+                color: AppColors.primary,
                 size: isMobile ? 20 : 22,
               ),
               const SizedBox(width: 10),
@@ -677,7 +678,7 @@ class StaffDashboardPage extends ConsumerWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                    color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -685,7 +686,7 @@ class StaffDashboardPage extends ConsumerWidget {
                     style: GoogleFonts.inter(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF8B5CF6),
+                      color: AppColors.primary,
                     ),
                   ),
                 ),
@@ -1469,12 +1470,12 @@ class _AvailableJobItem extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(isMobile ? 8 : 10),
             decoration: BoxDecoration(
-              color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+              color: AppColors.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(isMobile ? 8 : 10),
             ),
             child: Icon(
               Icons.document_scanner_outlined,
-              color: const Color(0xFF8B5CF6),
+              color: AppColors.primary,
               size: isMobile ? 16 : 18,
             ),
           ),
@@ -1519,7 +1520,7 @@ class _AvailableJobItem extends StatelessWidget {
               ),
             ),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
+              backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               padding: EdgeInsets.symmetric(
                 horizontal: isMobile ? 10 : 14,

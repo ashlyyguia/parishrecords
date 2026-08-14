@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app/app_colors.dart';
+
 /// Opens manual parish register entry after staff picks the sacrament type.
 class ManualRegisterLauncher {
   ManualRegisterLauncher._();
@@ -13,7 +15,7 @@ class ManualRegisterLauncher {
       label: 'Baptism Register',
       subtitle: 'Volume / series rows for baptisms',
       icon: Icons.water_drop_outlined,
-      color: const Color(0xFF3B82F6),
+      color: AppColors.primary,
       route: '$recordsBasePath/manual-baptism',
     ),
     _SacramentOption(
@@ -29,7 +31,7 @@ class ManualRegisterLauncher {
       label: 'Confirmation Record',
       subtitle: 'Full confirmation entry form',
       icon: Icons.verified_outlined,
-      color: const Color(0xFF8B5CF6),
+      color: AppColors.primaryDark,
       route: '$recordsBasePath/new/confirmation',
     ),
     _SacramentOption(

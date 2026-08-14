@@ -1,19 +1,24 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/app_colors.dart';
+
 /// Visual system for the Finance dashboard.
+///
+/// Brand hues are unified to the Sky Azure palette ([AppColors]); only the
+/// semantic amber/rose accents keep their own meaning.
 class FinanceDashboardDesign {
   FinanceDashboardDesign._();
 
   static const background = Color(0xFFF4F7FB);
   static const heroGradient = [
-    Color(0xFF0F766E),
-    Color(0xFF0D9488),
-    Color(0xFF14B8A6),
+    AppColors.primaryDark,
+    AppColors.primary,
+    AppColors.accent,
   ];
-  static const accent = Color(0xFF0D9488);
-  static const accentSoft = Color(0xFFCCFBF1);
-  static const indigo = Color(0xFF4F46E5);
-  static const indigoSoft = Color(0xFFE0E7FF);
+  static const accent = AppColors.primary;
+  static const accentSoft = AppColors.tint;
+  static const indigo = AppColors.primaryDark;
+  static const indigoSoft = AppColors.tintStrong;
   static const amber = Color(0xFFD97706);
   static const amberSoft = Color(0xFFFEF3C7);
   static const rose = Color(0xFFE11D48);

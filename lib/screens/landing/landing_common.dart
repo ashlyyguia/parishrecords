@@ -2,13 +2,15 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../app/app_colors.dart';
+
 class LandingCommon {
-  // Premium Modern Color Palette
-  static const primary = Color(0xFF4F46E5); // Rich Indigo
-  static const primaryLight = Color(0xFF818CF8);
+  // Premium Modern Color Palette — Sky Azure brand (see AppColors)
+  static const primary = AppColors.primary; // Sky azure
+  static const primaryLight = AppColors.primaryLight;
   static const bg = Color(0xFFF8FAFC); // Very soft slate
   static const surface = Colors.white;
-  static const purple = Color(0xFF5C57FF);
+  static const purple = AppColors.primaryDark; // deep azure accent
 
   // Responsive breakpoints
   static bool isMobile(BuildContext context) =>
@@ -234,7 +236,7 @@ class _FluidPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint1 = Paint()..color = color.withValues(alpha: 0.15);
-    final paint2 = Paint()..color = const Color(0xFFC7D2FE).withValues(alpha: 0.2);
+    final paint2 = Paint()..color = AppColors.tintStrong.withValues(alpha: 0.2);
 
     // Draw some organic blobs to be blurred by the BackdropFilter
     canvas.drawCircle(Offset(size.width * 0.1, size.height * 0.2), size.width * 0.3, paint1);
