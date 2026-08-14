@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../app/app_colors.dart';
 import '../../../providers/requests_provider.dart';
+import '../../../widgets/app_empty_state.dart';
 import '../../../providers/ocr_jobs_provider.dart';
 import '../../../widgets/app_loading.dart';
 import '../../../widgets/manual_register_launcher.dart';
@@ -959,34 +960,11 @@ class StaffDashboardPage extends ConsumerWidget {
     required String message,
     required String submessage,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, size: 40, color: const Color(0xFF94A3B8)),
-          const SizedBox(height: 12),
-          Text(
-            message,
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            submessage,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: const Color(0xFF94A3B8),
-            ),
-          ),
-        ],
-      ),
+    return AppEmptyState(
+      icon: icon,
+      title: message,
+      message: submessage,
+      compact: true,
     );
   }
 

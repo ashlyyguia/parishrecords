@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../models/household.dart';
 import '../../../providers/household_provider.dart';
+import '../../../widgets/app_empty_state.dart';
 
 /// User Member Details Screen - shows detailed information of a specific household member
 class UserMemberDetailScreen extends ConsumerStatefulWidget {
@@ -411,43 +412,12 @@ class _UserMemberDetailScreenState extends ConsumerState<UserMemberDetailScreen>
     required String actionLabel,
     required VoidCallback onAction,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 80,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: onAction,
-              icon: const Icon(Icons.add),
-              label: Text(actionLabel),
-            ),
-          ],
-        ),
-      ),
+    return AppEmptyState(
+      icon: icon,
+      title: title,
+      message: subtitle,
+      actionLabel: actionLabel,
+      onAction: onAction,
     );
   }
 
