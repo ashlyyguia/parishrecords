@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../firebase_options.dart';
+import '../../../widgets/page_header.dart';
 
 class AdminIntegrationsPage extends StatefulWidget {
   const AdminIntegrationsPage({super.key});
@@ -27,31 +28,11 @@ class _AdminIntegrationsPageState extends State<AdminIntegrationsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.vpn_key_outlined,
-                    size: 32,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Integrations & API Keys',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Manage payment providers, SMS, email, and external API tokens.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
+              const PageHeader(
+                icon: Icons.vpn_key_outlined,
+                title: 'Integrations & API Keys',
+                subtitle:
+                    'Manage payment providers, SMS, email, and external API tokens.',
               ),
               const SizedBox(height: 16),
               Expanded(

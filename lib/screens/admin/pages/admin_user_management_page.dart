@@ -11,6 +11,7 @@ import 'dart:convert';
 import '../../../utils/firestore_date.dart';
 import '../../../utils/record_date_filter.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/page_header.dart';
 import '../../../widgets/record_date_range_filters.dart';
 import '../../../services/users_repository.dart';
 import '../../../providers/auth_provider.dart';
@@ -65,34 +66,17 @@ class _AdminUserManagementPageState
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'User Management',
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                          Text(
-                            'Search, filter by role and registration date',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: cs.onSurface.withValues(alpha: 0.55),
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
+                child: PageHeader(
+                  icon: Icons.manage_accounts_rounded,
+                  title: 'User Management',
+                  subtitle: 'Search, filter by role and registration date',
+                  actions: [
                     if (isAdmin)
                       FilledButton.icon(
                         onPressed: () => _showAddUserDialog(),
                         icon: const Icon(Icons.add),
                         label: const Text('New User'),
                       ),
-                    const SizedBox(width: 8),
                     IconButton.filledTonal(
                       tooltip: 'Refresh',
                       onPressed: () => setState(() => _refreshKey++),

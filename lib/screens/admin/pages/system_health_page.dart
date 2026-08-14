@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../widgets/page_header.dart';
+
 class AdminSystemHealthPage extends StatelessWidget {
   const AdminSystemHealthPage({super.key});
 
@@ -21,31 +23,10 @@ class AdminSystemHealthPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.health_and_safety_outlined,
-                    size: 32,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'System Health & Backups',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Infra health, uptime, and backup management.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
+              const PageHeader(
+                icon: Icons.health_and_safety_outlined,
+                title: 'System Health & Backups',
+                subtitle: 'Infra health, uptime, and backup management.',
               ),
               const SizedBox(height: 16),
               Expanded(

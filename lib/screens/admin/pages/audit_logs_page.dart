@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../services/admin_repository.dart';
+import '../../../widgets/page_header.dart';
 
 class AdminAuditLogsPage extends StatefulWidget {
   const AdminAuditLogsPage({super.key});
@@ -46,23 +47,11 @@ class _AdminAuditLogsPageState extends State<AdminAuditLogsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.receipt_long_outlined,
-                    size: 32,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Audit Logs',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
+              PageHeader(
+                icon: Icons.receipt_long_outlined,
+                title: 'Audit Logs',
+                subtitle: 'System activity and change history.',
+                actions: [
                   OutlinedButton.icon(
                     onPressed: _reload,
                     icon: const Icon(Icons.refresh_rounded),

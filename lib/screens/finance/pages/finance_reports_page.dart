@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 import 'package:universal_html/html.dart' as html;
 
 import '../../../providers/finance_providers.dart';
+import '../../../widgets/page_header.dart';
 
 class FinanceReportsPage extends ConsumerStatefulWidget {
   const FinanceReportsPage({super.key});
@@ -143,17 +144,10 @@ class _FinanceReportsPageState extends ConsumerState<FinanceReportsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.summarize_outlined, color: colorScheme.primary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Financial Reports',
-                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
+              const PageHeader(
+                icon: Icons.summarize_outlined,
+                title: 'Financial Reports',
+                subtitle: 'Generate P&L statements and donor statements.',
               ),
               const SizedBox(height: 12),
               Card(

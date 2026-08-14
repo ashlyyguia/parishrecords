@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../services/admin_repository.dart';
+import '../../../widgets/page_header.dart';
 
 class AdminSettingsPage extends StatefulWidget {
   const AdminSettingsPage({super.key});
@@ -70,9 +71,10 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
       padding: const EdgeInsets.all(16.0),
       child: ListView(
         children: [
-          Text(
-            'Application Settings & Audit Logs',
-            style: Theme.of(context).textTheme.headlineSmall,
+          const PageHeader(
+            icon: Icons.settings_outlined,
+            title: 'Application Settings & Audit Logs',
+            subtitle: 'Configure system preferences and review activity.',
           ),
           const SizedBox(height: 16),
           Card(

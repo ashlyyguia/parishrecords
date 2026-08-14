@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/finance_providers.dart';
+import '../../../widgets/page_header.dart';
 
 class FinanceReconcilePage extends ConsumerStatefulWidget {
   const FinanceReconcilePage({super.key});
@@ -158,20 +159,10 @@ class _FinanceReconcilePageState extends ConsumerState<FinanceReconcilePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.rule_folder_outlined, color: colorScheme.primary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Reconciliation Workspace',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+              const PageHeader(
+                icon: Icons.rule_folder_outlined,
+                title: 'Reconciliation Workspace',
+                subtitle: 'Match bank statements against recorded transactions.',
               ),
               const SizedBox(height: 12),
               Wrap(

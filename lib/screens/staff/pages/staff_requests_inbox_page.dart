@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../providers/requests_provider.dart';
 import '../../../services/requests_repository.dart';
 import '../../../services/audit_service.dart';
+import '../../../widgets/page_header.dart';
 
 class StaffRequestsInboxPage extends ConsumerStatefulWidget {
   const StaffRequestsInboxPage({super.key});
@@ -135,114 +136,11 @@ class _StaffRequestsInboxPageState
   }
 
   Widget _buildHeader(ColorScheme colorScheme, ThemeData theme, bool isMobile) {
-    final padding = isMobile ? 16.0 : 24.0;
-    final iconSize = isMobile ? 24.0 : 28.0;
-    final titleSize = isMobile ? 20.0 : 24.0;
-
-    return Container(
-      padding: EdgeInsets.all(padding),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.primary.withValues(alpha: 0.15),
-            colorScheme.tertiary.withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
-      ),
-      child: isMobile
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.description_outlined,
-                        color: colorScheme.onPrimary,
-                        size: iconSize,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Certificate Requests',
-                        style: GoogleFonts.poppins(
-                          fontSize: titleSize,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.primary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Review and process certificate requests from parishioners',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildRefreshButton(colorScheme, isMobile),
-              ],
-            )
-          : Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: colorScheme.primary.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.description_outlined,
-                    color: colorScheme.onPrimary,
-                    size: iconSize,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Certificate Requests',
-                        style: GoogleFonts.poppins(
-                          fontSize: titleSize,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Review and process certificate requests from parishioners',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _buildRefreshButton(colorScheme, isMobile),
-              ],
-            ),
+    return PageHeader(
+      icon: Icons.description_outlined,
+      title: 'Certificate Requests',
+      subtitle: 'Review and process certificate requests from parishioners',
+      actions: [_buildRefreshButton(colorScheme, isMobile)],
     );
   }
 

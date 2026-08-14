@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../app/app_colors.dart';
 import '../../../utils/donation_display.dart' as donation_display;
+import '../../../widgets/page_header.dart';
 
 /// Visual identity for each admin finance module.
 enum FinanceModuleKind {
@@ -114,89 +115,12 @@ class FinanceHeroHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
+    return PageHeader(
+      icon: style.icon,
+      title: style.title,
+      subtitle: style.subtitle,
+      actions: actions,
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: style.gradient,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: style.accent.withValues(alpha: 0.35),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            right: -20,
-            top: -20,
-            child: Icon(
-              style.icon,
-              size: 140,
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.25),
-                        ),
-                      ),
-                      child: Icon(style.icon, color: style.onAccent, size: 28),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            style.title,
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              color: style.onAccent,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            style.subtitle,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: style.onAccent.withValues(alpha: 0.88),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                if (actions.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Wrap(spacing: 8, runSpacing: 8, children: actions),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -237,8 +161,8 @@ class FinanceToolbar extends StatelessWidget {
     }) {
       return Material(
         color: filled
-            ? Colors.white
-            : Colors.white.withValues(alpha: 0.18),
+            ? style.accent
+            : style.accent.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
@@ -247,13 +171,13 @@ class FinanceToolbar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: DefaultTextStyle(
               style: TextStyle(
-                color: filled ? style.accent : style.onAccent,
+                color: filled ? Colors.white : style.accent,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
               child: IconTheme(
                 data: IconThemeData(
-                  color: filled ? style.accent : style.onAccent,
+                  color: filled ? Colors.white : style.accent,
                   size: 18,
                 ),
                 child: child,
@@ -305,12 +229,12 @@ class FinanceToolbar extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (pdfBusy)
-                  SizedBox(
+                  const SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: style.accent,
+                      color: Colors.white,
                     ),
                   )
                 else

@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/page_header.dart';
+
 /// Modern Admin Design System Components
 class AdminDesignSystem {
   // Card Styles
@@ -58,7 +60,7 @@ class AdminDesignSystem {
     );
   }
 
-  // Header Style
+  // Header Style — delegates to the app-wide uniform [PageHeader].
   static Widget pageHeader(
     BuildContext context, {
     required String title,
@@ -66,100 +68,11 @@ class AdminDesignSystem {
     required IconData icon,
     List<Widget>? actions,
   }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isCompact = MediaQuery.sizeOf(context).width < 720;
-    final padding = isCompact ? 16.0 : 24.0;
-
-    Widget titleBlock() {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: EdgeInsets.all(isCompact ? 10 : 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: Colors.white, size: isCompact ? 24 : 28),
-          ),
-          SizedBox(width: isCompact ? 12 : 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: isCompact ? 20 : null,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.white.withOpacity(0.85),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(padding),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [colorScheme.primary, colorScheme.primaryContainer],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(isCompact ? 16 : 20),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.primary.withOpacity(0.25),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: isCompact
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                titleBlock(),
-                if (actions != null && actions.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: actions,
-                  ),
-                ],
-              ],
-            )
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(child: titleBlock()),
-                if (actions != null && actions.isNotEmpty) ...[
-                  const SizedBox(width: 12),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      spacing: 8,
-                      children: actions,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+    return PageHeader(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      actions: actions ?? const [],
     );
   }
 
@@ -216,7 +129,7 @@ class AdminDesignSystem {
     );
   }
 
-  // Modern Action Button
+  // Modern Action Button — styled to sit on the light [PageHeader].
   static Widget actionButton(
     BuildContext context, {
     required String label,
@@ -228,27 +141,41 @@ class AdminDesignSystem {
     final colorScheme = Theme.of(context).colorScheme;
     final accentColor = color ?? colorScheme.primary;
     final isCompact = MediaQuery.sizeOf(context).width < 720;
+    final padding = EdgeInsets.symmetric(
+      horizontal: isCompact ? 12 : 20,
+      vertical: isCompact ? 10 : 12,
+    );
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
 
-    return ElevatedButton.icon(
+    if (isPrimary) {
+      return FilledButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: isCompact ? 16 : 18),
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          backgroundColor: accentColor,
+          foregroundColor: Colors.white,
+          padding: padding,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
+          shape: shape,
+        ),
+      );
+    }
+
+    return OutlinedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: isCompact ? 16 : 18),
       label: Text(label),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isPrimary ? Colors.white : Colors.white.withOpacity(0.15),
+      style: OutlinedButton.styleFrom(
         foregroundColor: accentColor,
-        elevation: isPrimary ? 2 : 0,
-        padding: EdgeInsets.symmetric(
-          horizontal: isCompact ? 12 : 20,
-          vertical: isCompact ? 10 : 12,
-        ),
+        side: BorderSide(color: accentColor.withOpacity(0.5)),
+        padding: padding,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         visualDensity: VisualDensity.compact,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: isPrimary
-              ? BorderSide.none
-              : BorderSide(color: Colors.white.withOpacity(0.3)),
-        ),
+        shape: shape,
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../models/register_ocr_entry.dart';
 import '../../../providers/ocr_jobs_provider.dart';
 import '../../../services/register_ocr_parser.dart';
+import '../../../widgets/page_header.dart';
 import '../../../widgets/register_ocr_table.dart';
 
 class AdminOcrQueuePage extends ConsumerStatefulWidget {
@@ -28,31 +29,11 @@ class _AdminOcrQueuePageState extends ConsumerState<AdminOcrQueuePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.document_scanner_outlined,
-                    size: 32,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'OCR Queue & Jobs',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Each job shows parsed register records in a table for review.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
+              const PageHeader(
+                icon: Icons.document_scanner_outlined,
+                title: 'OCR Queue & Jobs',
+                subtitle:
+                    'Each job shows parsed register records in a table for review.',
               ),
               const SizedBox(height: 24),
               Expanded(child: _AllJobsList(ref: ref)),

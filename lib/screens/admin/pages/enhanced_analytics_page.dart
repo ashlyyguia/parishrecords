@@ -8,6 +8,7 @@ import '../../../providers/admin_providers.dart';
 import '../../../models/record.dart';
 import '../../../utils/record_date_filter.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/page_header.dart';
 import '../../../widgets/record_date_range_filters.dart';
 
 class EnhancedAnalyticsPage extends ConsumerStatefulWidget {
@@ -276,56 +277,15 @@ class _EnhancedAnalyticsPageState extends ConsumerState<EnhancedAnalyticsPage>
 
   Widget _buildHeader(ThemeData theme, ColorScheme colorScheme) {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.primary.withValues(alpha: 0.1),
-            colorScheme.secondary.withValues(alpha: 0.05),
-          ],
-        ),
-      ),
+      padding: const EdgeInsets.all(16),
+      color: colorScheme.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.analytics_outlined,
-                  color: colorScheme.primary,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Analytics Dashboard',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                    Text(
-                      'Comprehensive insights and statistics',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurface.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          const PageHeader(
+            icon: Icons.analytics_outlined,
+            title: 'Analytics Dashboard',
+            subtitle: 'Comprehensive insights and statistics',
           ),
           const SizedBox(height: 16),
           // Period Selector

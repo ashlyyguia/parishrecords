@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 
 import '../../../models/announcement.dart';
 import '../../../services/announcements_repository.dart';
+import '../../../widgets/page_header.dart';
 import '../../../widgets/safe_image.dart';
 
 class AdminAnnouncementsPage extends StatefulWidget {
@@ -30,11 +31,10 @@ class _AdminAnnouncementsPageState extends State<AdminAnnouncementsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Header ────────────────────────────────────────────────────────
-          Text(
-            'Announcements',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+          const PageHeader(
+            icon: Icons.campaign_outlined,
+            title: 'Announcements',
+            subtitle: 'Create and manage parish announcements and events.',
           ),
           const SizedBox(height: 16),
           Row(

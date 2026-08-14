@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../../providers/ocr_jobs_provider.dart';
 import '../../../services/ocr_jobs_repository.dart';
 import '../../../models/register_marriage_entry.dart';
@@ -13,6 +12,7 @@ import '../../../services/ocr_service.dart';
 import '../../../services/register_marriage_ocr_helper.dart';
 import '../../../services/register_ocr_parser.dart';
 import '../../../services/register_ocr_scan_helper.dart';
+import '../../../widgets/page_header.dart';
 import '../../../widgets/register_scan_launcher.dart';
 import 'staff_ocr_result_page.dart';
 
@@ -412,66 +412,10 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
   }
 
   Widget _buildHeader(ColorScheme colorScheme, ThemeData theme, bool isMobile) {
-    return Container(
-      padding: EdgeInsets.all(isMobile ? 20 : 24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.secondary.withValues(alpha: 0.15),
-            colorScheme.primary.withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(isMobile ? 16 : 20),
-        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(isMobile ? 10 : 12),
-            decoration: BoxDecoration(
-              color: colorScheme.secondary,
-              borderRadius: BorderRadius.circular(isMobile ? 12 : 16),
-              boxShadow: [
-                BoxShadow(
-                  color: colorScheme.secondary.withValues(alpha: 0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Icon(
-              Icons.document_scanner_outlined,
-              color: colorScheme.onSecondary,
-              size: isMobile ? 24 : 28,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Upload register photo',
-                  style: GoogleFonts.poppins(
-                    fontSize: isMobile ? 20 : 24,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  ocrUploadHint,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return PageHeader(
+      icon: Icons.document_scanner_outlined,
+      title: 'Upload register photo',
+      subtitle: ocrUploadHint,
     );
   }
 

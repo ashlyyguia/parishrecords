@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../providers/finance_providers.dart';
 import '../../../services/export_service.dart';
+import '../../../widgets/page_header.dart';
 
 class AdminReportsPage extends ConsumerWidget {
   const AdminReportsPage({super.key});
@@ -21,31 +22,10 @@ class AdminReportsPage extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.summarize_outlined,
-                    size: 32,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Reports Library',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Generate and export reports (PDF/CSV).',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
+              const PageHeader(
+                icon: Icons.summarize_outlined,
+                title: 'Reports Library',
+                subtitle: 'Generate and export reports (PDF/CSV).',
               ),
               const SizedBox(height: 16),
               Expanded(

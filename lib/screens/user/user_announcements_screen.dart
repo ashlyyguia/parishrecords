@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../models/announcement.dart';
 import '../../services/announcements_repository.dart';
+import '../../widgets/page_header.dart';
 import '../../widgets/safe_image.dart';
 
 final _userAnnouncementsProvider = StreamProvider<List<Announcement>>((ref) {
@@ -24,24 +25,11 @@ class UserAnnouncementsScreen extends ConsumerWidget {
         slivers: [
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-            sliver: SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Announcements',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Latest updates and notices from the parish.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+            sliver: const SliverToBoxAdapter(
+              child: PageHeader(
+                icon: Icons.campaign_outlined,
+                title: 'Announcements',
+                subtitle: 'Latest updates and notices from the parish.',
               ),
             ),
           ),

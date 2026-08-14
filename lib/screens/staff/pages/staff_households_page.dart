@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../../models/household.dart';
 import '../../../providers/household_provider.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/page_header.dart';
 import '../../../widgets/record_date_range_filters.dart';
 
 /// Enhanced Staff/Admin screen for managing households with modern UI
@@ -117,64 +118,17 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
   // ==================== PAGE HEADER ====================
   Widget _buildPageHeader(ColorScheme colorScheme, {required int totalItems}) {
     final isMobile = MediaQuery.sizeOf(context).width < _mobileBreakpoint;
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 24, 20, isMobile ? 16 : 24, 16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.primaryContainer.withValues(alpha: 0.45),
-            colorScheme.surface,
-          ],
-        ),
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(
-              Icons.home_work_rounded,
-              color: colorScheme.primary,
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Household Management',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  totalItems == 0
-                      ? 'Search, filter by barangay or registration date'
-                      : '$totalItems household${totalItems == 1 ? '' : 's'} in view',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withValues(alpha: 0.65),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+    return PageHeader(
+      icon: Icons.home_work_rounded,
+      title: 'Household Management',
+      subtitle: totalItems == 0
+          ? 'Search, filter by barangay or registration date'
+          : '$totalItems household${totalItems == 1 ? '' : 's'} in view',
+      margin: EdgeInsets.fromLTRB(
+        isMobile ? 16 : 24,
+        isMobile ? 16 : 24,
+        isMobile ? 16 : 24,
+        0,
       ),
     );
   }

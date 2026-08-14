@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../providers/staff_schedule_provider.dart';
 import '../../../widgets/app_loading.dart';
+import '../../../widgets/page_header.dart';
 
 class StaffSchedulePage extends ConsumerWidget {
   const StaffSchedulePage({super.key});
@@ -53,114 +54,12 @@ class StaffSchedulePage extends ConsumerWidget {
   ) {
     final now = DateTime.now();
     final dateFormat = DateFormat('EEEE, MMMM d, yyyy');
-    final padding = isMobile ? 16.0 : 24.0;
-    final iconSize = isMobile ? 24.0 : 28.0;
-    final titleSize = isMobile ? 20.0 : 24.0;
 
-    return Container(
-      padding: EdgeInsets.all(padding),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.tertiary.withValues(alpha: 0.15),
-            colorScheme.primary.withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(isMobile ? 16 : 20),
-        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
-      ),
-      child: isMobile
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: colorScheme.tertiary,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.event_outlined,
-                        color: colorScheme.onTertiary,
-                        size: iconSize,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        "Today's Schedule",
-                        style: GoogleFonts.poppins(
-                          fontSize: titleSize,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.primary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  dateFormat.format(now),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildCalendarButton(context, colorScheme, isMobile),
-              ],
-            )
-          : Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.tertiary,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: colorScheme.tertiary.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.event_outlined,
-                    color: colorScheme.onTertiary,
-                    size: iconSize,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Today's Schedule",
-                        style: GoogleFonts.poppins(
-                          fontSize: titleSize,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        dateFormat.format(now),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _buildCalendarButton(context, colorScheme, isMobile),
-              ],
-            ),
+    return PageHeader(
+      icon: Icons.event_outlined,
+      title: "Today's Schedule",
+      subtitle: dateFormat.format(now),
+      actions: [_buildCalendarButton(context, colorScheme, isMobile)],
     );
   }
 

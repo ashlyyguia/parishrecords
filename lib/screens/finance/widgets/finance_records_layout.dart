@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../admin/widgets/finance_module_design.dart';
+import '../../../widgets/page_header.dart';
 import '../../../widgets/record_date_range_filters.dart';
 
 /// Shared finance ledger shell: header, from/to filters, actions, body.
@@ -113,51 +114,11 @@ class _HeaderBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: style.gradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(style.icon, color: style.onAccent, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: style.onAccent,
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: style.onAccent.withValues(alpha: 0.9),
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return PageHeader(
+      icon: style.icon,
+      title: title,
+      subtitle: subtitle,
+      margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
     );
   }
 }
