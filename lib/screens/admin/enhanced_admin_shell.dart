@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_colors.dart';
 import '../../providers/auth_provider.dart';
 
 /// Enhanced Admin Shell with modern UX patterns
@@ -307,8 +308,8 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [colorScheme.primary, colorScheme.tertiary],
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primary, AppColors.accent],
                     ),
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -408,14 +409,14 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
                 ),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? item.color.withValues(alpha: 0.1)
+                      ? AppColors.primary.withValues(alpha: 0.1)
                       : isHovered
                       ? colorScheme.onSurface.withValues(alpha: 0.05)
                       : null,
                   borderRadius: BorderRadius.circular(12),
                   border: isSelected
                       ? Border.all(
-                          color: item.color.withValues(alpha: 0.3),
+                          color: AppColors.primary.withValues(alpha: 0.3),
                           width: 1,
                         )
                       : null,
@@ -431,7 +432,7 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
                       child: Icon(
                         isSelected ? item.selectedIcon : item.icon,
                         color: isSelected
-                            ? item.color
+                            ? AppColors.primary
                             : colorScheme.onSurfaceVariant,
                         size: 22,
                       ),
@@ -447,7 +448,7 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
                                 ? FontWeight.w600
                                 : FontWeight.w500,
                             color: isSelected
-                                ? item.color
+                                ? AppColors.primary
                                 : colorScheme.onSurfaceVariant,
                           ),
                         ),
@@ -457,7 +458,7 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
                           width: 4,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: item.color,
+                            color: AppColors.primary,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -673,8 +674,8 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
       icon: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [colorScheme.primary, colorScheme.tertiary],
+          gradient: const LinearGradient(
+            colors: [AppColors.primary, AppColors.accent],
           ),
           borderRadius: BorderRadius.circular(10),
         ),

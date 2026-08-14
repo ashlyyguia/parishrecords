@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_colors.dart';
 import '../../app/notification_routes.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/notification_provider.dart';
@@ -410,7 +411,7 @@ class _UserShellState extends ConsumerState<UserShell> {
                     margin: const EdgeInsets.only(bottom: 8),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? item.color.withValues(alpha: 0.15)
+                          ? AppColors.primary.withValues(alpha: 0.15)
                           : isHovered
                           ? colorScheme.surfaceContainerHighest.withValues(
                               alpha: 0.5,
@@ -441,7 +442,7 @@ class _UserShellState extends ConsumerState<UserShell> {
                               Icon(
                                 isSelected ? item.activeIcon : item.icon,
                                 color: isSelected
-                                    ? item.color
+                                    ? AppColors.primary
                                     : colorScheme.onSurfaceVariant,
                                 size: 24,
                               ),
@@ -452,7 +453,7 @@ class _UserShellState extends ConsumerState<UserShell> {
                                     item.label,
                                     style: TextStyle(
                                       color: isSelected
-                                          ? item.color
+                                          ? AppColors.primary
                                           : colorScheme.onSurface,
                                       fontWeight: isSelected
                                           ? FontWeight.w600
