@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers/user_providers.dart';
+import '../../widgets/app_empty_state.dart';
 import '../../widgets/user_certificate_request_launcher.dart';
 
 class UserSacramentsScreen extends ConsumerWidget {
@@ -156,38 +157,11 @@ class UserSacramentsScreen extends ConsumerWidget {
   }
 
   Widget _buildEmptyState(ThemeData theme, ColorScheme colorScheme) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 320),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.church_outlined,
-                size: 64,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No sacrament records',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Sacrament records appear here after you add a household member in My Profile and a matching parish record is linked.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
+    return const AppEmptyState(
+      icon: Icons.church_outlined,
+      title: 'No sacrament records',
+      message:
+          'Sacrament records appear here after you add a household member in My Profile and a matching parish record is linked.',
     );
   }
 

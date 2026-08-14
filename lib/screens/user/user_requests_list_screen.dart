@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/user_providers.dart';
 import '../../services/requests_repository.dart';
 import '../../services/user_requests_repository.dart';
+import '../../widgets/app_empty_state.dart';
 import '../../widgets/app_search_bar.dart';
 import '../../widgets/user_certificate_request_launcher.dart';
 
@@ -234,54 +235,17 @@ class _UserRequestsListScreenState
     ColorScheme colorScheme,
     bool hasSacraments,
   ) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 320),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.inbox_outlined,
-                size: 64,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No requests yet',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                hasSacraments
-                    ? 'Submit a new certificate request to get started.'
-                    : 'Link a family member\'s sacrament record in My Profile before you can request a certificate.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              if (hasSacraments)
-                FilledButton.icon(
-                  onPressed: () =>
-                      UserCertificateRequestLauncher.open(context, ref),
-                  icon: const Icon(Icons.add),
-                  label: const Text('New Request'),
-                )
-              else
-                FilledButton.icon(
-                  onPressed: () => context.go('/user/profile'),
-                  icon: const Icon(Icons.person_outline),
-                  label: const Text('Go to My Profile'),
-                ),
-            ],
-          ),
-        ),
-      ),
+    return AppEmptyState(
+      icon: Icons.inbox_outlined,
+      title: 'No requests yet',
+      message: hasSacraments
+          ? 'Submit a new certificate request to get started.'
+          : 'Link a family member\'s sacrament record in My Profile before you can request a certificate.',
+      actionLabel: hasSacraments ? 'New Request' : 'Go to My Profile',
+      actionIcon: hasSacraments ? Icons.add : Icons.person_outline,
+      onAction: hasSacraments
+          ? () => UserCertificateRequestLauncher.open(context, ref)
+          : () => context.go('/user/profile'),
     );
   }
 

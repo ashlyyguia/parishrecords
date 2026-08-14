@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../providers/requests_provider.dart';
 import '../../utils/record_date_filter.dart';
+import '../../widgets/app_empty_state.dart';
 import '../../widgets/app_loading.dart';
 import '../../widgets/record_date_range_filters.dart';
 
@@ -557,41 +558,10 @@ class _CertificateRequestsListScreenState
           physics: const AlwaysScrollableScrollPhysics(),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.request_page_outlined,
-                      size: 64,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'No certificate requests',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Tap the + button to create a new request.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: colorScheme.onSurface.withValues(alpha: 0.7),
-                    ),
-                  ),
-                ],
-              ),
+            child: const AppEmptyState(
+              icon: Icons.request_page_outlined,
+              title: 'No certificate requests',
+              message: 'Tap the + button to create a new request.',
             ),
           ),
         );

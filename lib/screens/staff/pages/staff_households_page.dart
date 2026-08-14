@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../models/household.dart';
 import '../../../providers/household_provider.dart';
+import '../../../widgets/app_empty_state.dart';
 import '../../../widgets/app_loading.dart';
 import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/page_header.dart';
@@ -579,48 +580,16 @@ class _StaffHouseholdsPageState extends ConsumerState<StaffHouseholdsPage> {
   }
 
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer.withValues(alpha: 0.5),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.home_work_outlined,
-                size: 64,
-                color: colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              _searchCtrl.text.isEmpty &&
-                      _selectedBarangay == null &&
-                      _from == null &&
-                      _to == null
-                  ? 'No households yet'
-                  : 'No matches found',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _searchCtrl.text.isEmpty && _selectedBarangay == null
-                  ? 'Start by adding your first household to the parish registry'
-                  : 'Try adjusting your search or filter criteria',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
+    final noFilters = _searchCtrl.text.isEmpty &&
+        _selectedBarangay == null &&
+        _from == null &&
+        _to == null;
+    return AppEmptyState(
+      icon: Icons.home_work_outlined,
+      title: noFilters ? 'No households yet' : 'No matches found',
+      message: _searchCtrl.text.isEmpty && _selectedBarangay == null
+          ? 'Start by adding your first household to the parish registry.'
+          : 'Try adjusting your search or filter criteria.',
     );
   }
 

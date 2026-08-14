@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../models/household.dart';
 import '../../providers/household_provider.dart';
+import '../../widgets/app_empty_state.dart';
 import '../../widgets/app_search_bar.dart';
 
 /// User Household List Screen - displays all registered households for the user
@@ -364,41 +365,12 @@ class _UserHouseholdListScreenState
   }
 
   Widget _buildEmptyState(ThemeData theme, ColorScheme colorScheme) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.home_outlined,
-              size: 80,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No households found',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Add your first household to get started',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () => context.push('/user/households/new'),
-              icon: const Icon(Icons.add),
-              label: const Text('Add Household'),
-            ),
-          ],
-        ),
-      ),
+    return AppEmptyState(
+      icon: Icons.home_outlined,
+      title: 'No households found',
+      message: 'Add your first household to get started.',
+      actionLabel: 'Add Household',
+      onAction: () => context.push('/user/households/new'),
     );
   }
 

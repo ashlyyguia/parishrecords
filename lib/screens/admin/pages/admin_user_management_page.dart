@@ -10,6 +10,7 @@ import 'dart:convert';
 
 import '../../../utils/firestore_date.dart';
 import '../../../utils/record_date_filter.dart';
+import '../../../widgets/app_empty_state.dart';
 import '../../../widgets/app_loading.dart';
 import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/page_header.dart';
@@ -233,23 +234,10 @@ class _AdminUserManagementPageState
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.people_outline, size: 56, color: Colors.grey.shade400),
-          const SizedBox(height: 12),
-          Text(
-            'No users found',
-            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Try adjusting search, role, or date filters',
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-          ),
-        ],
-      ),
+    return const AppEmptyState(
+      icon: Icons.people_outline,
+      title: 'No users found',
+      message: 'Try adjusting search, role, or date filters.',
     );
   }
 

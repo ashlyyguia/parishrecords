@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 import '../../utils/record_date_filter.dart';
+import '../../widgets/app_empty_state.dart';
 import '../../widgets/app_loading.dart';
 import '../../widgets/record_date_range_filters.dart';
 import 'ocr_record_type_screen.dart';
@@ -471,55 +472,12 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
   }
 
   Widget _buildEmptyState(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.folder_outlined,
-              size: 64,
-              color: colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'No Records Found',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Start by adding your first parish record',
-            style: TextStyle(
-              fontSize: 14,
-              color: colorScheme.onSurface.withValues(alpha: 0.7),
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _openNewRecord,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add Record'),
-            style: FilledButton.styleFrom(
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return AppEmptyState(
+      icon: Icons.folder_outlined,
+      title: 'No Records Found',
+      message: 'Start by adding your first parish record.',
+      actionLabel: 'Add Record',
+      onAction: _openNewRecord,
     );
   }
 

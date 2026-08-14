@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/app_empty_state.dart';
 import '../../widgets/app_search_bar.dart';
 import '../../widgets/page_header.dart';
 
@@ -320,7 +321,7 @@ class AdminDesignSystem {
     );
   }
 
-  // Empty State
+  // Empty State — delegates to the app-wide uniform [AppEmptyState].
   static Widget emptyState(
     BuildContext context, {
     required String message,
@@ -328,38 +329,11 @@ class AdminDesignSystem {
     String? actionLabel,
     VoidCallback? onAction,
   }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(48),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer.withOpacity(0.3),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 48, color: colorScheme.primary),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              message,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.7),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 24),
-              ElevatedButton(onPressed: onAction, child: Text(actionLabel)),
-            ],
-          ],
-        ),
-      ),
+    return AppEmptyState(
+      icon: icon,
+      message: message,
+      actionLabel: actionLabel,
+      onAction: onAction,
     );
   }
 }
