@@ -85,6 +85,7 @@ import '../screens/user/user_sacraments_screen.dart';
 import '../screens/user/user_mass_schedule_screen.dart';
 import '../widgets/app_loading_screen.dart';
 import 'notification_routes.dart';
+import '../dev/ocr_fixture_dump.dart';
 
 GoRouter createRouter() {
   final isMobile =
@@ -134,6 +135,11 @@ GoRouter createRouter() {
         path: '/splash',
         builder: (context, state) => const SplashScreen(),
       ),
+      if (kDebugMode)
+        GoRoute(
+          path: '/dev/ocr-dump',
+          builder: (context, state) => const OcrFixtureDumpPage(),
+        ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/register',
