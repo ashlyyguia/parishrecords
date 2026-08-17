@@ -19,7 +19,14 @@ class OcrImagePick {
       defaultTargetPlatform == TargetPlatform.macOS;
 
   /// Gallery / filesystem (always available where OCR runs).
-  static Future<List<XFile>> pickImages({bool allowMultiple = true}) async {
+  ///
+  /// [fullResolution] skips image_picker's downscaling so OCR gets the camera's
+  /// native pixels — important for dense handwritten registers. Off by default
+  /// to keep the normal upload flow's memory/size behavior unchanged.
+  static Future<List<XFile>> pickImages({
+    bool allowMultiple = true,
+    bool fullResolution = false,
+  }) async {
     if (_useFilePicker) {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
@@ -42,20 +49,23 @@ class OcrImagePick {
       return out;
     }
 
+    final maxDim = fullResolution ? null : 2000.0;
+    final quality = fullResolution ? 100 : 92;
+
     if (allowMultiple) {
       final picked = await _picker.pickMultiImage(
-        maxWidth: 2000,
-        maxHeight: 2000,
-        imageQuality: 92,
+        maxWidth: maxDim,
+        maxHeight: maxDim,
+        imageQuality: quality,
       );
       return picked;
     }
 
     final picked = await _picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 2000,
-      maxHeight: 2000,
-      imageQuality: 92,
+      maxWidth: maxDim,
+      maxHeight: maxDim,
+      imageQuality: quality,
     );
     return picked == null ? [] : [picked];
   }
@@ -65,11 +75,15 @@ class OcrImagePick {
     BuildContext context, {
     bool allowMultiple = true,
     bool includeCamera = true,
+    bool fullResolution = false,
   }) async {
     final canCamera = includeCamera && ocrSupportsCamera;
 
     if (!canCamera) {
-      return pickImages(allowMultiple: allowMultiple);
+      return pickImages(
+        allowMultiple: allowMultiple,
+        fullResolution: fullResolution,
+      );
     }
 
     final choice = await showModalBottomSheet<String>(
@@ -103,21 +117,24 @@ class OcrImagePick {
     if (choice == null) return [];
 
     if (choice == 'camera') {
-      final shot = await pickCameraPhoto();
+      final shot = await pickCameraPhoto(fullResolution: fullResolution);
       return shot == null ? [] : [shot];
     }
 
-    return pickImages(allowMultiple: allowMultiple);
+    return pickImages(
+      allowMultiple: allowMultiple,
+      fullResolution: fullResolution,
+    );
   }
 
   /// Device camera (Android/iOS native only).
-  static Future<XFile?> pickCameraPhoto() async {
+  static Future<XFile?> pickCameraPhoto({bool fullResolution = false}) async {
     if (!ocrSupportsCamera) return null;
     return _picker.pickImage(
       source: ImageSource.camera,
-      maxWidth: 2000,
-      maxHeight: 2000,
-      imageQuality: 92,
+      maxWidth: fullResolution ? null : 2000,
+      maxHeight: fullResolution ? null : 2000,
+      imageQuality: fullResolution ? 100 : 92,
     );
   }
 

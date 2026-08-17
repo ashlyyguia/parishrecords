@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../services/ocr_image_pick.dart';
 import '../services/ocr_service.dart';
+import '../services/register_ocr_image_preprocess.dart';
 import '../services/register_ocr_scan_helper.dart';
 
 String buildFixtureJson({
@@ -16,12 +17,13 @@ String buildFixtureJson({
   required String page,
   required List<OcrLineBox> cells,
   required String flatText,
+  String capturedWith = 'mlkit-latin',
 }) {
   final map = {
     'image': image,
     'recordType': recordType,
     'page': page,
-    'capturedWith': 'mlkit-latin',
+    'capturedWith': capturedWith,
     'flatText': flatText,
     'cells': cells.map((c) => c.toJson()).toList(),
   };
@@ -41,6 +43,9 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
   String _page = 'left';
   String? _json;
   bool _busy = false;
+  bool _fullRes = true;
+  bool _preprocess = true;
+  int? _cellCount;
 
   Future<void> _capture() async {
     setState(() => _busy = true);
@@ -49,14 +54,23 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
         context,
         allowMultiple: false,
         includeCamera: ocrSupportsCamera,
+        fullResolution: _fullRes,
       );
       if (files.isEmpty) {
         if (mounted) setState(() => _busy = false);
         return;
       }
       final xfile = files.first;
-      final result =
-          await OcrService.instance.recognizeText(File(xfile.path));
+
+      final original = await xfile.readAsBytes();
+      final bytes = _preprocess
+          ? await RegisterOcrImagePreprocess.enhanceWithOptions(
+              original,
+              sharpen: true,
+            )
+          : original;
+
+      final result = await OcrService.instance.recognizeBytes(bytes);
       final cells = RegisterOcrScanHelper.linesFromBlocks(result.blocks);
       final json = buildFixtureJson(
         image: xfile.name,
@@ -64,6 +78,7 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
         page: _page,
         cells: cells,
         flatText: result.text,
+        capturedWith: _preprocess ? 'mlkit-latin+enhance' : 'mlkit-latin',
       );
 
       if (!kIsWeb) {
@@ -72,8 +87,13 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
         await out.writeAsString(json);
       }
       await Clipboard.setData(ClipboardData(text: json));
-      debugPrint('OCR FIXTURE (${xfile.name}):\n$json');
-      if (mounted) setState(() => _json = json);
+      debugPrint('OCR FIXTURE (${xfile.name}): ${cells.length} cells\n$json');
+      if (mounted) {
+        setState(() {
+          _json = json;
+          _cellCount = cells.length;
+        });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -118,12 +138,35 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
                 ),
               ],
             ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Full resolution (no downscale)'),
+              value: _fullRes,
+              onChanged: _busy ? null : (v) => setState(() => _fullRes = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Preprocess before OCR'),
+              subtitle: const Text('grayscale + sharpen + contrast'),
+              value: _preprocess,
+              onChanged: _busy ? null : (v) => setState(() => _preprocess = v),
+            ),
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: _busy ? null : _capture,
               icon: const Icon(Icons.document_scanner_outlined),
               label: const Text('Pick image & dump fixture JSON'),
             ),
+            if (_cellCount != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Recognized cells: $_cellCount',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
             const SizedBox(height: 12),
             if (_json != null)
               Expanded(
