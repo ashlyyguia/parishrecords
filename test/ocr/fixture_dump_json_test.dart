@@ -19,6 +19,7 @@ void main() {
     expect(map['recordType'], 'baptism');
     expect(map['page'], 'left');
     expect(map['flatText'], 'hello');
+    expect(map['capturedWith'], 'mlkit-latin');
     expect((map['cells'] as List).first['text'], '1');
   });
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -49,7 +50,10 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
         allowMultiple: false,
         includeCamera: ocrSupportsCamera,
       );
-      if (files.isEmpty) return;
+      if (files.isEmpty) {
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
       final xfile = files.first;
       final result =
           await OcrService.instance.recognizeText(File(xfile.path));
@@ -62,9 +66,11 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
         flatText: result.text,
       );
 
-      final dir = await getApplicationDocumentsDirectory();
-      final out = File('${dir.path}/${xfile.name}.ocr.json');
-      await out.writeAsString(json);
+      if (!kIsWeb) {
+        final dir = await getApplicationDocumentsDirectory();
+        final out = File('${dir.path}/${xfile.name}.ocr.json');
+        await out.writeAsString(json);
+      }
       await Clipboard.setData(ClipboardData(text: json));
       debugPrint('OCR FIXTURE (${xfile.name}):\n$json');
       if (mounted) setState(() => _json = json);
