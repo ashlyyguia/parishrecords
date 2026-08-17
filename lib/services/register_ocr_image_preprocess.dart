@@ -41,6 +41,21 @@ class RegisterOcrImagePreprocess {
     );
   }
 
+  /// Downscale + JPEG-encode for cloud upload (keeps OCR.space under its 1MB
+  /// free-tier cap). Resize only — grayscale/contrast/sharpen measurably hurt
+  /// recognition, so they are intentionally omitted here.
+  static Future<Uint8List> downscaleForUpload(
+    Uint8List inputBytes, {
+    int maxDim = 2000,
+    int quality = 85,
+  }) async {
+    if (kIsWeb) return _downscaleJpeg(inputBytes, maxDim, quality);
+    return compute(
+      _downscaleArgs,
+      _DownscaleArgs(inputBytes, maxDim, quality),
+    );
+  }
+
   /// Rotate image 90° clockwise [quarterTurns] times (1 = 90°, 2 = 180°, …).
   static Future<Uint8List> rotateBytes(
     Uint8List inputBytes, {
@@ -115,6 +130,32 @@ class _RotateArgs {
 }
 
 Uint8List _rotateArgs(_RotateArgs args) => _rotate(args.bytes, args.turns);
+
+class _DownscaleArgs {
+  _DownscaleArgs(this.bytes, this.maxDim, this.quality);
+  final Uint8List bytes;
+  final int maxDim;
+  final int quality;
+}
+
+Uint8List _downscaleArgs(_DownscaleArgs a) =>
+    _downscaleJpeg(a.bytes, a.maxDim, a.quality);
+
+Uint8List _downscaleJpeg(Uint8List inputBytes, int maxDim, int quality) {
+  try {
+    final decoded = img.decodeImage(inputBytes);
+    if (decoded == null) return inputBytes;
+    var out = decoded;
+    if (decoded.width > maxDim || decoded.height > maxDim) {
+      out = decoded.width >= decoded.height
+          ? img.copyResize(decoded, width: maxDim)
+          : img.copyResize(decoded, height: maxDim);
+    }
+    return Uint8List.fromList(img.encodeJpg(out, quality: quality));
+  } catch (_) {
+    return inputBytes;
+  }
+}
 
 Uint8List _rotate(Uint8List inputBytes, int quarterTurns) {
   try {
