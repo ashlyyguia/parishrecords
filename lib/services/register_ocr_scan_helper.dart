@@ -29,6 +29,22 @@ class OcrLineBox {
 
   double get centerX => left + width / 2;
   double get centerY => top + height / 2;
+
+  Map<String, dynamic> toJson() => {
+        'text': text,
+        'top': top,
+        'left': left,
+        'width': width,
+        'height': height,
+      };
+
+  factory OcrLineBox.fromJson(Map<String, dynamic> json) => OcrLineBox(
+        text: json['text'] as String,
+        top: (json['top'] as num).toDouble(),
+        left: (json['left'] as num).toDouble(),
+        width: (json['width'] as num).toDouble(),
+        height: (json['height'] as num).toDouble(),
+      );
 }
 
 /// Result returned after staff reviews a scan.
@@ -266,8 +282,10 @@ class RegisterOcrScanHelper {
 
   static List<RegisterOcrEntry> parseEntriesFromBlocks(List<TextBlock> blocks) {
     if (blocks.isEmpty) return [];
+    return parseEntriesFromCells(linesFromBlocks(blocks));
+  }
 
-    final cells = linesFromBlocks(blocks);
+  static List<RegisterOcrEntry> parseEntriesFromCells(List<OcrLineBox> cells) {
     if (cells.isEmpty) return [];
 
     final imageWidth = cells
