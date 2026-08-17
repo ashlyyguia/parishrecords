@@ -87,14 +87,16 @@ class _QuickLinks extends StatelessWidget {
         ],
       );
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var i = 0; i < cards.length; i++) ...[
-          Expanded(child: cards[i]),
-          if (i != cards.length - 1) const SizedBox(width: 18),
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < cards.length; i++) ...[
+            Expanded(child: cards[i]),
+            if (i != cards.length - 1) const SizedBox(width: 18),
+          ],
         ],
-      ],
+      ),
     );
   }
 }

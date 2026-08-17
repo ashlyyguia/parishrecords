@@ -241,14 +241,16 @@ class _StaffGrid extends StatelessWidget {
         ],
       );
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var i = 0; i < _staff.length; i++) ...[
-          Expanded(child: _StaffCard(member: _staff[i])),
-          if (i != _staff.length - 1) const SizedBox(width: 18),
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < _staff.length; i++) ...[
+            Expanded(child: _StaffCard(member: _staff[i])),
+            if (i != _staff.length - 1) const SizedBox(width: 18),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
