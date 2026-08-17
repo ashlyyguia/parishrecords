@@ -1,0 +1,17 @@
+{
+  "image": "_synthetic",
+  "recordType": "baptism",
+  "page": "left",
+  "capturedWith": "synthetic",
+  "flatText": "1 Alberto Saligumba 07 January 2008\n2 Elliana Eltagon 08 February 2016",
+  "cells": [
+    { "text": "1", "top": 100, "left": 10, "width": 15, "height": 20 },
+    { "text": "Alberto", "top": 100, "left": 120, "width": 80, "height": 20 },
+    { "text": "Saligumba", "top": 100, "left": 120, "width": 90, "height": 20 },
+    { "text": "07 January 2008", "top": 100, "left": 320, "width": 140, "height": 20 },
+    { "text": "2", "top": 160, "left": 10, "width": 15, "height": 20 },
+    { "text": "Elliana", "top": 160, "left": 120, "width": 80, "height": 20 },
+    { "text": "Eltagon", "top": 160, "left": 120, "width": 90, "height": 20 },
+    { "text": "08 February 2016", "top": 160, "left": 320, "width": 150, "height": 20 }
+  ]
+}
