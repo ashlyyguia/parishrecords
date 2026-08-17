@@ -58,129 +58,173 @@ class _AdminUserManagementPageState
     final authState = ref.watch(authProvider);
     final isAdmin = authState.user?.role == 'admin';
 
+    final isCompact = MediaQuery.sizeOf(context).width < 600;
+
+    final topControls = <Widget>[
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        child: PageHeader(
+          icon: Icons.manage_accounts_rounded,
+          title: 'User Management',
+          subtitle: 'Search, filter by role and registration date',
+          actions: [
+            if (isAdmin)
+              FilledButton.icon(
+                onPressed: () => _showAddUserDialog(),
+                icon: const Icon(Icons.add),
+                label: const Text('New User'),
+              ),
+            IconButton.filledTonal(
+              tooltip: 'Refresh',
+              onPressed: () => setState(() => _refreshKey++),
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: _UsersFilterToolbar(
+          searchCtrl: _searchCtrl,
+          from: _from,
+          to: _to,
+          onSearchChanged: () => setState(() {}),
+          onFromChanged: (d) => setState(() => _from = d),
+          onToChanged: (d) => setState(() => _to = d),
+          onClearDates: () => setState(() {
+            _from = null;
+            _to = null;
+          }),
+        ),
+      ),
+      const SizedBox(height: 10),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: _RoleFilterBar(
+          selectedRole: _selectedRole,
+          showDisabled: _showDisabled,
+          onRoleSelected: (r) => setState(() => _selectedRole = r),
+          onShowDisabledChanged: (v) => setState(() => _showDisabled = v),
+        ),
+      ),
+      const SizedBox(height: 12),
+    ];
+
     return Scaffold(
       backgroundColor: cs.surface,
       body: Container(
         decoration: AdminDesignSystem.pageBackground(context),
         child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: PageHeader(
-                  icon: Icons.manage_accounts_rounded,
-                  title: 'User Management',
-                  subtitle: 'Search, filter by role and registration date',
-                  actions: [
-                    if (isAdmin)
-                      FilledButton.icon(
-                        onPressed: () => _showAddUserDialog(),
-                        icon: const Icon(Icons.add),
-                        label: const Text('New User'),
-                      ),
-                    IconButton.filledTonal(
-                      tooltip: 'Refresh',
-                      onPressed: () => setState(() => _refreshKey++),
-                      icon: const Icon(Icons.refresh_rounded),
+          // Compact (mobile) scrolls the whole page so the stacked filter/stat
+          // sections can't squeeze the table's viewport to zero. Wide keeps the
+          // pinned controls with an independently scrolling table.
+          child: isCompact
+              ? RefreshIndicator(
+                  onRefresh: () async => setState(() => _refreshKey++),
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ...topControls,
+                        _buildUsersArea(context, compact: true),
+                      ],
                     ),
+                  ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ...topControls,
+                    Expanded(child: _buildUsersArea(context, compact: false)),
                   ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _UsersFilterToolbar(
-                  searchCtrl: _searchCtrl,
-                  from: _from,
-                  to: _to,
-                  onSearchChanged: () => setState(() {}),
-                  onFromChanged: (d) => setState(() => _from = d),
-                  onToChanged: (d) => setState(() => _to = d),
-                  onClearDates: () => setState(() {
-                    _from = null;
-                    _to = null;
-                  }),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _RoleFilterBar(
-                  selectedRole: _selectedRole,
-                  showDisabled: _showDisabled,
-                  onRoleSelected: (r) => setState(() => _selectedRole = r),
-                  onShowDisabledChanged: (v) =>
-                      setState(() => _showDisabled = v),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: FutureBuilder<List<Map<String, dynamic>>>(
-                  key: ValueKey('$_refreshKey-$_selectedRole'),
-                  future: _loadUsers(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const AppLoading(message: 'Loading users...');
-                    }
-                    if (snapshot.hasError) {
-                      return Center(child: Text('Error: ${snapshot.error}'));
-                    }
-
-                    final users = _applyFilters(snapshot.data ?? []);
-
-                    return Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: _UsersStatsGrid(users: users),
-                        ),
-                        const SizedBox(height: 12),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Users (${users.length})',
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Expanded(
-                          child: users.isEmpty
-                              ? _buildEmptyState()
-                              : RefreshIndicator(
-                                  onRefresh: () async {
-                                    setState(() => _refreshKey++);
-                                  },
-                                  child: _UsersDataTable(
-                                    users: users,
-                                    onEdit: (id, data) =>
-                                        _showEditUserDialog(context, id, data),
-                                    onResetPassword: (email) =>
-                                        _resetPassword(context, email),
-                                    onToggleStatus: (id, disabled) =>
-                                        _toggleUserStatus(
-                                          context,
-                                          id,
-                                          disabled,
-                                        ),
-                                    onDelete: (id, data) =>
-                                        _confirmDeleteUser(context, id, data),
-                                  ),
-                                ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildUsersArea(BuildContext context, {required bool compact}) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      key: ValueKey('$_refreshKey-$_selectedRole'),
+      future: _loadUsers(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return compact
+              ? const SizedBox(
+                  height: 220,
+                  child: AppLoading(message: 'Loading users...'),
+                )
+              : const AppLoading(message: 'Loading users...');
+        }
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(child: Text('Error: ${snapshot.error}')),
+          );
+        }
+
+        final users = _applyFilters(snapshot.data ?? []);
+
+        final leading = <Widget>[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: _UsersStatsGrid(users: users),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Users (${users.length})',
+                style: Theme.of(context).textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ];
+
+        final table = _UsersDataTable(
+          users: users,
+          shrinkWrap: compact,
+          onEdit: (id, data) => _showEditUserDialog(context, id, data),
+          onResetPassword: (email) => _resetPassword(context, email),
+          onToggleStatus: (id, disabled) =>
+              _toggleUserStatus(context, id, disabled),
+          onDelete: (id, data) => _confirmDeleteUser(context, id, data),
+        );
+
+        if (compact) {
+          return Column(
+            children: [
+              ...leading,
+              if (users.isEmpty)
+                SizedBox(height: 300, child: _buildEmptyState())
+              else
+                table,
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            ...leading,
+            Expanded(
+              child: users.isEmpty
+                  ? _buildEmptyState()
+                  : RefreshIndicator(
+                      onRefresh: () async {
+                        setState(() => _refreshKey++);
+                      },
+                      child: table,
+                    ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -808,6 +852,7 @@ class _UsersDataTable extends StatelessWidget {
     required this.onResetPassword,
     required this.onToggleStatus,
     required this.onDelete,
+    this.shrinkWrap = false,
   });
 
   final List<Map<String, dynamic>> users;
@@ -815,6 +860,7 @@ class _UsersDataTable extends StatelessWidget {
   final void Function(String email) onResetPassword;
   final void Function(String id, bool disabled) onToggleStatus;
   final void Function(String id, Map<String, dynamic> data) onDelete;
+  final bool shrinkWrap;
 
   static Color _roleColor(String role) {
     switch (role) {
@@ -848,6 +894,8 @@ class _UsersDataTable extends StatelessWidget {
     final primary = cs.primary;
 
     return ListView(
+      shrinkWrap: shrinkWrap,
+      physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       children: [
         Container(
