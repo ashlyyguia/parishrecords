@@ -1,5 +1,6 @@
 // ignore_for_file: use_build_context_synchronously, unnecessary_to_list_in_spreads
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -200,12 +201,14 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
           width: 280,
           child: SafeArea(child: sidebar),
         ),
+        floatingActionButton: _debugOcrDumpFab(context),
         body: SafeArea(child: content),
       );
     }
 
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerLowest,
+      floatingActionButton: _debugOcrDumpFab(context),
       body: SafeArea(
         child: Row(
           children: [
@@ -841,6 +844,18 @@ class _AdminShellState extends ConsumerState<EnhancedAdminShell> {
       },
     );
   }
+}
+
+/// Debug-only shortcut to the OCR fixture capture tool (`/dev/ocr-dump`).
+/// Returns null in release builds so it never ships.
+Widget? _debugOcrDumpFab(BuildContext context) {
+  if (!kDebugMode) return null;
+  return FloatingActionButton.extended(
+    heroTag: 'debug-ocr-dump',
+    onPressed: () => context.push('/dev/ocr-dump'),
+    icon: const Icon(Icons.bug_report_outlined),
+    label: const Text('OCR fixture'),
+  );
 }
 
 class _NavGroup {
