@@ -312,66 +312,179 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     final isCompact = MediaQuery.sizeOf(context).width < 600;
     final pagePadding = isCompact ? 12.0 : 24.0;
 
-    return Container(
-      decoration: AdminDesignSystem.pageBackground(context),
+    final Widget headerSection = Padding(
+      padding: EdgeInsets.fromLTRB(pagePadding, pagePadding, pagePadding, 0),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          AdminDesignSystem.pageHeader(
+            context,
+            title: 'Records Management',
+            subtitle:
+                'Manage baptism and marriage register records (${items.length} total).',
+            icon: Icons.folder_shared_outlined,
+            actions: [],
+          ),
+          const SizedBox(height: 16),
           Padding(
-            padding: EdgeInsets.fromLTRB(
-              pagePadding,
-              pagePadding,
-              pagePadding,
-              0,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: EdgeInsets.symmetric(horizontal: pagePadding),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                AdminDesignSystem.pageHeader(
-                  context,
-                  title: 'Records Management',
-                  subtitle:
-                      'Manage baptism and marriage register records (${items.length} total).',
-                  icon: Icons.folder_shared_outlined,
-                  actions: [],
+                FilledButton.icon(
+                  onPressed: _openManualRegister,
+                  icon: const Icon(Icons.edit_note_outlined),
+                  label: const Text('Manual Register'),
                 ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: pagePadding),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilledButton.icon(
-                        onPressed: _openManualRegister,
-                        icon: const Icon(Icons.edit_note_outlined),
-                        label: const Text('Manual Register'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _importCsvDialog,
-                        icon: const Icon(Icons.file_upload_outlined),
-                        label: const Text('Import CSV'),
-                      ),
-                      FilledButton.icon(
-                        onPressed: () =>
-                            context.push('/admin/certificate-scan'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                        ),
-                        icon: const Icon(Icons.badge_outlined),
-                        label: const Text('Scan Certificate'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _openNewRecord,
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('Add Record'),
-                      ),
-                    ],
+                OutlinedButton.icon(
+                  onPressed: _importCsvDialog,
+                  icon: const Icon(Icons.file_upload_outlined),
+                  label: const Text('Import CSV'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => context.push('/admin/certificate-scan'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
                   ),
+                  icon: const Icon(Icons.badge_outlined),
+                  label: const Text('Scan Certificate'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _openNewRecord,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Add Record'),
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+
+    final Widget filtersSection = Padding(
+      padding: EdgeInsets.all(isCompact ? 12 : 20),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: isCompact ? double.infinity : 320,
+            child: AdminDesignSystem.searchBar(
+              context,
+              controller: _searchCtrl,
+              hint: 'Search records by name...',
+              onChanged: (_) => setState(() {}),
+              onClear: () {},
+            ),
+          ),
+          _buildDropdownFilter(
+            value: _type,
+            items: const [
+              DropdownMenuItem(value: 'all', child: Text('All Types')),
+              DropdownMenuItem(value: 'baptism', child: Text('Baptism')),
+              DropdownMenuItem(value: 'marriage', child: Text('Marriage')),
+            ],
+            onChanged: (v) => setState(() => _type = v ?? 'all'),
+          ),
+          _buildDropdownFilter(
+            value: _parish,
+            items: [
+              for (final p in parishOptions)
+                DropdownMenuItem(
+                  value: p,
+                  child: Text(p == 'all' ? 'All Parishes' : p),
+                ),
+            ],
+            onChanged: (v) => setState(() => _parish = v ?? 'all'),
+          ),
+          RecordDateRangeFilters(
+            from: _from,
+            to: _to,
+            fromLabel: 'From Date',
+            toLabel: 'To Date',
+            onFromChanged: (d) => setState(() => _from = d),
+            onToChanged: (d) => setState(() => _to = d),
+            onClear: () => setState(() {
+              _from = null;
+              _to = null;
+            }),
+          ),
+          IconButton(
+            onPressed: () => setState(() => _desc = !_desc),
+            icon: Icon(_desc ? Icons.arrow_downward : Icons.arrow_upward),
+            tooltip: 'Toggle Sort',
+          ),
+          IconButton(
+            onPressed: _loadFromBackend,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+          ),
+        ],
+      ),
+    );
+
+    final Widget emptyState = AdminDesignSystem.emptyState(
+      context,
+      message: _records.isEmpty
+          ? 'No records yet. Add baptism or marriage register entries.'
+          : 'No records found matching your filters.',
+      icon: _records.isEmpty ? Icons.folder_open_outlined : Icons.search_off,
+      actionLabel: _records.isEmpty ? 'Add Record' : 'Clear Search',
+      onAction: _records.isEmpty
+          ? _openNewRecord
+          : () {
+              _searchCtrl.clear();
+              setState(() {
+                _type = 'all';
+                _parish = 'all';
+                _from = null;
+                _to = null;
+              });
+            },
+    );
+
+    // Compact (mobile) screens scroll the whole page so tall filter bars can't
+    // squeeze the table's viewport to zero. Wide screens keep the pinned
+    // header with an independently scrolling table.
+    if (isCompact) {
+      return Container(
+        decoration: AdminDesignSystem.pageBackground(context),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.only(bottom: pagePadding),
+          child: Column(
+            children: [
+              headerSection,
+              Padding(
+                padding: EdgeInsets.all(pagePadding),
+                child: Container(
+                  decoration: AdminDesignSystem.cardDecoration(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      filtersSection,
+                      const Divider(height: 1),
+                      if (items.isEmpty)
+                        SizedBox(height: 320, child: emptyState)
+                      else
+                        _buildTable(items, colorScheme, shrinkWrap: true),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: AdminDesignSystem.pageBackground(context),
+      child: Column(
+        children: [
+          headerSection,
           Expanded(
             child: Padding(
               padding: EdgeInsets.all(pagePadding),
@@ -380,109 +493,11 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // FILTERS BAR
-                    Padding(
-                      padding: EdgeInsets.all(isCompact ? 12 : 20),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: isCompact ? double.infinity : 320,
-                            child: AdminDesignSystem.searchBar(
-                              context,
-                              controller: _searchCtrl,
-                              hint: 'Search records by name...',
-                              onChanged: (_) => setState(() {}),
-                              onClear: () {},
-                            ),
-                          ),
-                          _buildDropdownFilter(
-                            value: _type,
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'all',
-                                child: Text('All Types'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'baptism',
-                                child: Text('Baptism'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'marriage',
-                                child: Text('Marriage'),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _type = v ?? 'all'),
-                          ),
-                          _buildDropdownFilter(
-                            value: _parish,
-                            items: [
-                              for (final p in parishOptions)
-                                DropdownMenuItem(
-                                  value: p,
-                                  child: Text(p == 'all' ? 'All Parishes' : p),
-                                ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _parish = v ?? 'all'),
-                          ),
-                          RecordDateRangeFilters(
-                            from: _from,
-                            to: _to,
-                            fromLabel: 'From Date',
-                            toLabel: 'To Date',
-                            onFromChanged: (d) => setState(() => _from = d),
-                            onToChanged: (d) => setState(() => _to = d),
-                            onClear: () => setState(() {
-                              _from = null;
-                              _to = null;
-                            }),
-                          ),
-                          IconButton(
-                            onPressed: () => setState(() => _desc = !_desc),
-                            icon: Icon(
-                              _desc ? Icons.arrow_downward : Icons.arrow_upward,
-                            ),
-                            tooltip: 'Toggle Sort',
-                          ),
-                          IconButton(
-                            onPressed: _loadFromBackend,
-                            icon: const Icon(Icons.refresh),
-                            tooltip: 'Refresh',
-                          ),
-                        ],
-                      ),
-                    ),
+                    filtersSection,
                     const Divider(height: 1),
-                    // DATA TABLE
                     Expanded(
                       child: items.isEmpty
-                          ? AdminDesignSystem.emptyState(
-                              context,
-                              message: _records.isEmpty
-                                  ? 'No records yet. Add baptism or marriage register entries.'
-                                  : 'No records found matching your filters.',
-                              icon: _records.isEmpty
-                                  ? Icons.folder_open_outlined
-                                  : Icons.search_off,
-                              actionLabel: _records.isEmpty
-                                  ? 'Add Record'
-                                  : 'Clear Search',
-                              onAction: _records.isEmpty
-                                  ? _openNewRecord
-                                  : () {
-                                      _searchCtrl.clear();
-                                      setState(() {
-                                        _type = 'all';
-                                        _parish = 'all';
-                                        _from = null;
-                                        _to = null;
-                                      });
-                                    },
-                            )
+                          ? emptyState
                           : _buildTable(items, colorScheme),
                     ),
                   ],
@@ -525,13 +540,16 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
 
   Widget _buildTable(
     List<Map<String, dynamic>> items,
-    ColorScheme colorScheme,
-  ) {
+    ColorScheme colorScheme, {
+    bool shrinkWrap = false,
+  }) {
     final df = DateFormat.yMMMd();
     final theme = Theme.of(context);
     final primary = colorScheme.primary;
 
     return ListView(
+      shrinkWrap: shrinkWrap,
+      physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       children: [
         Container(
