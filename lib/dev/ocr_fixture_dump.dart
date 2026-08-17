@@ -45,10 +45,13 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
   bool _busy = false;
   bool _fullRes = true;
   bool _preprocess = true;
-  int? _cellCount;
+  String? _status;
 
   Future<void> _capture() async {
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _status = null;
+    });
     try {
       final files = await OcrImagePick.pickRegisterPages(
         context,
@@ -61,23 +64,38 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
         return;
       }
       final xfile = files.first;
-
       final original = await xfile.readAsBytes();
-      final bytes = _preprocess
-          ? await RegisterOcrImagePreprocess.enhanceWithOptions(
-              original,
-              sharpen: true,
-            )
-          : original;
 
-      final result = await OcrService.instance.recognizeBytes(bytes);
-      final cells = RegisterOcrScanHelper.linesFromBlocks(result.blocks);
+      // Diagnostic: OCR the raw picked bytes so we can compare raw vs enhanced.
+      final rawResult = await OcrService.instance.recognizeBytes(original);
+      final rawCells =
+          RegisterOcrScanHelper.linesFromBlocks(rawResult.blocks);
+
+      var chosenCells = rawCells;
+      var chosenText = rawResult.text;
+      var enhancedInfo = '';
+
+      if (_preprocess) {
+        final enhanced = await RegisterOcrImagePreprocess.enhanceWithOptions(
+          original,
+          sharpen: true,
+        );
+        final enhResult = await OcrService.instance.recognizeBytes(enhanced);
+        final enhCells =
+            RegisterOcrScanHelper.linesFromBlocks(enhResult.blocks);
+        chosenCells = enhCells;
+        chosenText = enhResult.text;
+        enhancedInfo =
+            '; enhanced ${(enhanced.length / 1024).round()}KB → '
+            '${enhCells.length} cells';
+      }
+
       final json = buildFixtureJson(
         image: xfile.name,
         recordType: _recordType,
         page: _page,
-        cells: cells,
-        flatText: result.text,
+        cells: chosenCells,
+        flatText: chosenText,
         capturedWith: _preprocess ? 'mlkit-latin+enhance' : 'mlkit-latin',
       );
 
@@ -87,13 +105,19 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
         await out.writeAsString(json);
       }
       await Clipboard.setData(ClipboardData(text: json));
-      debugPrint('OCR FIXTURE (${xfile.name}): ${cells.length} cells\n$json');
+
+      final status = 'picked ${(original.length / 1024).round()}KB → '
+          'raw ${rawCells.length} cells$enhancedInfo';
+      debugPrint('OCR FIXTURE (${xfile.name}): $status');
       if (mounted) {
         setState(() {
           _json = json;
-          _cellCount = cells.length;
+          _status = status;
         });
       }
+    } catch (e, st) {
+      debugPrint('OCR dump error: $e\n$st');
+      if (mounted) setState(() => _status = 'ERROR: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -159,12 +183,16 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
               icon: const Icon(Icons.document_scanner_outlined),
               label: const Text('Pick image & dump fixture JSON'),
             ),
-            if (_cellCount != null)
+            if (_status != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Recognized cells: $_cellCount',
-                  style: Theme.of(context).textTheme.titleSmall,
+                  _status!,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: _status!.startsWith('ERROR')
+                            ? Theme.of(context).colorScheme.error
+                            : null,
+                      ),
                 ),
               ),
             const SizedBox(height: 12),
