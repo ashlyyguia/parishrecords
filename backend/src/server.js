@@ -18,6 +18,7 @@ const appointmentsRoutes = require('./routes/appointments');
 const profileRoutes = require('./routes/profile');
 const donationsRoutes = require('./routes/donations_firestore');
 const sacramentsRoutes = require('./routes/sacraments_firestore');
+const ocrRoutes = require('./routes/ocr_firestore');
 const { verifyFirebaseToken } = require('./middleware/auth');
 
 const app = express();
@@ -99,6 +100,7 @@ app.use('/api/requests', requestsRoutes);
 app.use('/api/appointments', appointmentsRoutes);
 app.use('/api/donations', donationsRoutes);
 app.use('/api/sacraments', sacramentsRoutes);
+app.use('/api/ocr', ocrRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
