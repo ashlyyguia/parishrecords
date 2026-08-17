@@ -391,6 +391,13 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
+      floatingActionButton: kDebugMode
+          ? FloatingActionButton.extended(
+              onPressed: () => context.push('/dev/ocr-dump'),
+              icon: const Icon(Icons.bug_report_outlined),
+              label: const Text('Dump OCR fixture'),
+            )
+          : null,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.all(horizontalPadding),
