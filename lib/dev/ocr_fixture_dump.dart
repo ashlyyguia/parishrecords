@@ -43,8 +43,11 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
   String _page = 'left';
   String? _json;
   bool _busy = false;
-  bool _fullRes = true;
-  bool _preprocess = true;
+  // Best on-device config from measured evidence: ~2000px (picker default) and
+  // no preprocessing gave the most ML Kit cells; full-res and aggressive
+  // enhance both reduced recognition. Toggles remain for experimentation.
+  bool _fullRes = false;
+  bool _preprocess = false;
   String? _status;
 
   Future<void> _capture() async {
@@ -76,9 +79,13 @@ class _OcrFixtureDumpPageState extends State<OcrFixtureDumpPage> {
       var enhancedInfo = '';
 
       if (_preprocess) {
+        // Gentle: grayscale + mild contrast only. The default (1.35 contrast +
+        // brightness + gamma + sharpen) blew faint register ink out to white.
         final enhanced = await RegisterOcrImagePreprocess.enhanceWithOptions(
           original,
-          sharpen: true,
+          contrast: 1.12,
+          brightness: 0.0,
+          sharpen: false,
         );
         final enhResult = await OcrService.instance.recognizeBytes(enhanced);
         final enhCells =
