@@ -3,6 +3,7 @@
   "recordType": "baptism",
   "page": "left",
   "capturedWith": "synthetic",
+  "note": "Synthetic fixture, not real OCR geometry. The two name-part cells per row (e.g. Alberto/Saligumba) intentionally share left=120 so their centerX values cluster into ONE 'name' column via mergeGap, forcing the parser to join them into a single full name. Real OCR would place them at distinct x. The loader ignores this key.",
   "flatText": "1 Alberto Saligumba 07 January 2008\n2 Elliana Eltagon 08 February 2016",
   "cells": [
     { "text": "1", "top": 100, "left": 10, "width": 15, "height": 20 },
