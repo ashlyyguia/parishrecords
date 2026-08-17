@@ -309,7 +309,7 @@ class _ScanProgressDialogState extends State<_ScanProgressDialog> {
                   : 'Reading register photo…');
         });
 
-        final scan = await RegisterOcrScanHelper.scanXFile(
+        final scan = await RegisterOcrScanHelper.scanXFileWithCloud(
           widget.files[i],
           recordType: widget.recordType,
         );

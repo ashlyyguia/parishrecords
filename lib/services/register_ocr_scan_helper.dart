@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/register_marriage_entry.dart';
 import '../models/register_ocr_entry.dart';
+import 'cloud_ocr_service.dart';
 import 'register_marriage_ocr_helper.dart';
 import 'ocr_service.dart';
 import 'register_ocr_image_preprocess.dart';
@@ -1019,6 +1020,79 @@ class RegisterOcrScanHelper {
       recordType: recordType,
       cachePath: file.path,
     );
+  }
+
+  /// Builds a review-ready result from cloud OCR cells + text (no ML Kit).
+  static StaffOcrScanResult scanResultFromCloud(
+    List<OcrLineBox> cells,
+    String text, {
+    String recordType = 'baptism',
+  }) {
+    if (recordType.toLowerCase() == 'marriage') {
+      final marriage = RegisterOcrParser.parseMarriageRegister(text).entries;
+      return finalizeScanResult(
+        StaffOcrScanResult(
+          text: text,
+          entries: const [],
+          marriageEntries: marriage,
+          lineCount: _lineCount(text),
+          cellCount: cells.length,
+        ),
+        recordType: recordType,
+      );
+    }
+
+    final tableText = cells.isNotEmpty ? reconstructTableText(cells) : text;
+    final sources = <List<RegisterOcrEntry>>[
+      parseEntriesFromCells(cells),
+      if (tableText.trim().isNotEmpty)
+        RegisterOcrParser.parseFast(tableText).entries,
+      if (text.trim().isNotEmpty)
+        RegisterOcrParser.parse(text, recordType: recordType).entries,
+    ];
+    final ocrText = text.trim().isNotEmpty ? text : tableText;
+    final entries = resolveTableRows(
+      ocrText: ocrText,
+      parsed: _bestEntriesFromSources(sources),
+      recordType: recordType,
+    );
+    return finalizeScanResult(
+      StaffOcrScanResult(
+        text: ocrText,
+        entries: entries,
+        lineCount: _lineCount(ocrText),
+        cellCount: cells.length,
+      ),
+      recordType: recordType,
+    );
+  }
+
+  /// Cloud-first scan of one file, falling back to on-device on any failure.
+  static Future<StaffOcrScanResult> scanXFileWithCloud(
+    XFile file, {
+    String recordType = 'baptism',
+    CloudOcrService? cloudService,
+  }) async {
+    final cloud = cloudService ?? CloudOcrService();
+    try {
+      final rawBytes = await file.readAsBytes();
+      final jpeg =
+          await RegisterOcrImagePreprocess.downscaleForUpload(rawBytes);
+      final cloudResult =
+          await cloud.scanRegister(jpeg, recordType: recordType);
+      if (cloudResult != null &&
+          (cloudResult.cells.isNotEmpty ||
+              cloudResult.text.trim().isNotEmpty)) {
+        return scanResultFromCloud(
+          cloudResult.cells,
+          cloudResult.text,
+          recordType: recordType,
+        );
+      }
+    } catch (_) {
+      // fall through to on-device
+    }
+    return scanXFile(file, recordType: recordType);
   }
 
   /// Runs OCR on one image path and returns table-ready rows.
