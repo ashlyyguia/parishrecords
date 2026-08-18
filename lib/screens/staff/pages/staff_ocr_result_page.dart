@@ -403,6 +403,71 @@ class _StaffOcrResultPageState extends ConsumerState<StaffOcrResultPage> {
     });
   }
 
+  Future<void> _openFillDown() async {
+    final dateCtrl = TextEditingController();
+    final ministerCtrl = TextEditingController();
+    final selectedCount = _entries.where((e) => e.selected).length;
+
+    final applied = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Set date / minister'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Applies to $selectedCount selected row(s).'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: dateCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Baptism date',
+                hintText: 'e.g. 16 May 2016',
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: ministerCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Minister (optional)',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: selectedCount == 0
+                ? null
+                : () {
+                    final n = RegisterOcrScanHelper.applyRegisterFillDown(
+                      _entries,
+                      date: dateCtrl.text,
+                      minister: ministerCtrl.text,
+                    );
+                    Navigator.pop(ctx, n);
+                  },
+            child: Text('Apply to $selectedCount selected'),
+          ),
+        ],
+      ),
+    );
+
+    dateCtrl.dispose();
+    ministerCtrl.dispose();
+
+    if (applied != null && mounted) {
+      // Bump the generation so the table re-seeds its cell controllers from
+      // the updated entries.
+      setState(() => _tableGeneration++);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Applied to $applied row(s).')),
+      );
+    }
+  }
+
   void _openBulkSave() {
     context.push(
       '/staff/ocr/bulk-records',
@@ -583,6 +648,12 @@ class _StaffOcrResultPageState extends ConsumerState<StaffOcrResultPage> {
                                   : 'Scan other page'),
                         ),
                       ),
+                      if (!_isMarriage)
+                        TextButton.icon(
+                          onPressed: _isProcessing ? null : _openFillDown,
+                          icon: const Icon(Icons.event_note_outlined, size: 18),
+                          label: const Text('Set date / minister'),
+                        ),
                       const Spacer(),
                       Text(
                         _isProcessing
