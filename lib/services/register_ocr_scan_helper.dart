@@ -308,6 +308,118 @@ class RegisterOcrScanHelper {
     return byAnchor;
   }
 
+  /// Reconstructs baptism register rows from a regular row pitch (engine-
+  /// agnostic), instead of the sparse/misread "No." column. Returns [] when the
+  /// layout doesn't look like a griddable baptism page (caller falls back).
+  static List<RegisterOcrEntry> reconstructBaptismGrid(List<OcrLineBox> cells) {
+    if (cells.length < 8) return const [];
+
+    final rows0 = _clusterIntoRows(cells);
+    if (rows0.length < 3) return const [];
+
+    final imageWidth = cells
+        .map((c) => c.left + c.width)
+        .fold<double>(0, (a, b) => a > b ? a : b);
+    final mergeGap = (imageWidth * 0.025).clamp(18.0, 55.0);
+    final columnCenters = _detectColumnCenters(rows0, mergeGap: mergeGap);
+    if (columnCenters.length < 3) return const [];
+
+    // No.-column numeric cells → pitch + phase.
+    final secondCenter =
+        columnCenters.length > 1 ? columnCenters[1] : columnCenters.first + 120;
+    final leftBand =
+        columnCenters.first + (secondCenter - columnCenters.first) * 0.5;
+    final anchors = <({int no, double top})>[];
+    for (final c in cells) {
+      if (c.centerX > leftBand) continue;
+      final m = RegExp(r'^(\d{1,2})$').firstMatch(c.text.trim());
+      if (m != null) anchors.add((no: int.parse(m.group(1)!), top: c.centerY));
+    }
+    anchors.sort((a, b) => a.top.compareTo(b.top));
+
+    final centerYs = cells.map((c) => c.centerY).toList()..sort();
+    final firstTop = centerYs.first;
+    final lastTop = centerYs.last;
+
+    var pitch = _estimatePitch(anchors);
+    if (pitch <= 0) {
+      pitch = (lastTop - firstTop) / (rows0.length - 1);
+    }
+    if (pitch <= 4) return const [];
+
+    double phase;
+    if (anchors.isNotEmpty) {
+      final phases = anchors.map((a) => a.top - (a.no - 1) * pitch).toList()
+        ..sort();
+      phase = phases[phases.length ~/ 2];
+    } else {
+      phase = firstTop;
+    }
+
+    final n = ((lastTop - phase) / pitch).round() + 1;
+    if (n < 2 || n > 60) return const [];
+
+    final rowCenters = [for (var i = 0; i < n; i++) phase + i * pitch];
+    final tol = pitch * 0.6;
+
+    final grid = List.generate(
+      n,
+      (_) => List.generate(columnCenters.length, (_) => <OcrLineBox>[]),
+    );
+    for (final c in cells) {
+      var ri = -1;
+      var best = double.infinity;
+      for (var i = 0; i < n; i++) {
+        final d = (c.centerY - rowCenters[i]).abs();
+        if (d < best) {
+          best = d;
+          ri = i;
+        }
+      }
+      if (ri < 0 || best > tol) continue; // headers / stray rows dropped
+      final ci = _nearestColumnIndex(c.centerX, columnCenters);
+      if (ci < 0 || ci >= columnCenters.length) continue;
+      grid[ri][ci].add(c);
+    }
+
+    final entries = <RegisterOcrEntry>[];
+    var lineNo = 1;
+    for (var r = 0; r < n; r++) {
+      final cols = <String>[];
+      for (var col = 0; col < columnCenters.length; col++) {
+        final inCol = grid[r][col]
+          ..sort((a, b) {
+            final y = a.top.compareTo(b.top);
+            return y != 0 ? y : a.left.compareTo(b.left);
+          });
+        cols.add(inCol.map((c) => c.text).join(' ').trim());
+      }
+      final entry = RegisterOcrParser.entryFromColumnTexts(
+        cols,
+        rawLine: cols.join('\t'),
+        id: _uuid.v4(),
+      );
+      if (entry != null && entry.name.trim().length >= 2) {
+        entry.lineNo = '${lineNo++}';
+        entries.add(entry);
+      }
+    }
+    return entries;
+  }
+
+  static double _estimatePitch(List<({int no, double top})> anchors) {
+    if (anchors.length < 2) return 0;
+    final pitches = <double>[];
+    for (var i = 1; i < anchors.length; i++) {
+      final dn = anchors[i].no - anchors[i - 1].no;
+      final dt = anchors[i].top - anchors[i - 1].top;
+      if (dn > 0 && dt > 0) pitches.add(dt / dn);
+    }
+    if (pitches.isEmpty) return 0;
+    pitches.sort();
+    return pitches[pitches.length ~/ 2];
+  }
+
   /// Groups all cells between left-column row numbers (1, 2, 3…).
   static List<RegisterOcrEntry> _parseEntriesFromRowAnchors(List<OcrLineBox> cells) {
     if (cells.length < 3) return [];
