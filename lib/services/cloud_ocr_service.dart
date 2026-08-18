@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
@@ -43,12 +43,17 @@ class CloudOcrService {
     Uint8List jpeg, {
     required String recordType,
   }) async {
+    final url = '${BackendConfig.apiBaseUrl}/ocr/scan';
     try {
       final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
-      if (idToken == null) return null;
+      if (idToken == null) {
+        debugPrint('[CloudOCR] no Firebase idToken (not signed in) -> fallback');
+        return null;
+      }
+      debugPrint('[CloudOCR] POST $url  (${(jpeg.length / 1024).round()}KB, $recordType)');
       final res = await _client
           .post(
-            Uri.parse('${BackendConfig.apiBaseUrl}/ocr/scan'),
+            Uri.parse(url),
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $idToken',
@@ -59,11 +64,17 @@ class CloudOcrService {
             }),
           )
           .timeout(_timeout);
-      if (res.statusCode != 200) return null;
+      if (res.statusCode != 200) {
+        debugPrint('[CloudOCR] HTTP ${res.statusCode}: ${res.body}');
+        return null;
+      }
       final decoded = jsonDecode(res.body);
       if (decoded is! Map<String, dynamic>) return null;
-      return CloudOcrResult.fromResponseJson(decoded);
-    } catch (_) {
+      final result = CloudOcrResult.fromResponseJson(decoded);
+      debugPrint('[CloudOCR] OK: ${result?.cells.length ?? 0} cells');
+      return result;
+    } catch (e) {
+      debugPrint('[CloudOCR] FAILED: $e  (url=$url)');
       return null;
     }
   }
