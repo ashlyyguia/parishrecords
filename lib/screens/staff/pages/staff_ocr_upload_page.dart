@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -394,13 +393,6 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      floatingActionButton: kDebugMode
-          ? FloatingActionButton.extended(
-              onPressed: () => context.push('/dev/ocr-dump'),
-              icon: const Icon(Icons.bug_report_outlined),
-              label: const Text('Dump OCR fixture'),
-            )
-          : null,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.all(horizontalPadding),
