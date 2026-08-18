@@ -1,5 +1,6 @@
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../models/register_marriage_entry.dart';
@@ -7,12 +8,13 @@ import '../../../models/register_ocr_entry.dart';
 import '../../../services/ocr_image_pick.dart';
 import '../../../services/register_marriage_ocr_helper.dart';
 import '../../../services/register_ocr_parser.dart';
+import '../../../services/register_ocr_record_save.dart';
 import '../../../services/register_ocr_scan_helper.dart';
 import '../../../widgets/register_marriage_table.dart';
 import '../../../widgets/register_ocr_table.dart';
 
 /// Shown after OCR scan — editable register table only (no raw text step).
-class StaffOcrResultPage extends StatefulWidget {
+class StaffOcrResultPage extends ConsumerStatefulWidget {
   const StaffOcrResultPage({
     super.key,
     this.initialText = '',
@@ -46,10 +48,11 @@ class StaffOcrResultPage extends StatefulWidget {
       imagePath != null && imagePath!.isNotEmpty;
 
   @override
-  State<StaffOcrResultPage> createState() => _StaffOcrResultPageState();
+  ConsumerState<StaffOcrResultPage> createState() => _StaffOcrResultPageState();
 }
 
-class _StaffOcrResultPageState extends State<StaffOcrResultPage> {
+class _StaffOcrResultPageState extends ConsumerState<StaffOcrResultPage> {
+  bool _saving = false;
   String _scanText = '';
   List<RegisterOcrEntry> _entries = [];
   List<RegisterMarriageEntry> _marriageEntries = [];
@@ -413,6 +416,80 @@ class _StaffOcrResultPageState extends State<StaffOcrResultPage> {
     );
   }
 
+  /// Commits the selected rows straight to Firestore from this preview (like
+  /// the single certificate scan) — no second screen. Marriage rows use the
+  /// dedicated review screen since they aren't handled by the baptism saver.
+  Future<void> _saveDirect() async {
+    if (_isMarriage) {
+      _openBulkSave();
+      return;
+    }
+    final toSave = _entries.where((e) => e.selected && e.isValid).toList();
+    if (toSave.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Select at least one row with a name and baptism date before saving.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save official records?'),
+        content: Text(
+          'This will create ${toSave.length} ${widget.recordType} record(s) '
+          'in Firestore. You can edit full details later from Records.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Save ${toSave.length}'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _saving = true);
+    try {
+      final count = await saveRegisterOcrEntries(
+        ref: ref,
+        entries: toSave,
+        recordType: widget.recordType,
+        volNumber: widget.volNumber,
+        seriesNumber: widget.seriesNumber,
+        source: 'register_ocr_result',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$count official record(s) created.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context); // back to the upload screen
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Save failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   void _cancelScan() {
     if (_isProcessing) {
       Navigator.pop(context);
@@ -447,7 +524,7 @@ class _StaffOcrResultPageState extends State<StaffOcrResultPage> {
           actions: [
             if (widget.showSaveAction && validCount > 0 && !_isProcessing)
               TextButton.icon(
-                onPressed: _openBulkSave,
+                onPressed: _saving ? null : _saveDirect,
                 icon: const Icon(Icons.save_outlined),
                 label: Text('Save ($validCount)'),
               ),
