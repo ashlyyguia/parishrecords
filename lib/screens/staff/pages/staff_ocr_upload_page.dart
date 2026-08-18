@@ -721,6 +721,7 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
           child: DropdownButtonHideUnderline(
             child: DropdownButtonFormField<String>(
               initialValue: _type,
+              isExpanded: true,
               decoration: InputDecoration(
                 prefixIcon: Icon(Icons.category, color: colorScheme.primary),
                 border: InputBorder.none,
@@ -730,10 +731,11 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
                 return DropdownMenuItem(
                   value: type.$1,
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(type.$3, color: type.$4, size: 20),
                       const SizedBox(width: 12),
-                      Text(type.$2),
+                      Flexible(child: Text(type.$2, overflow: TextOverflow.ellipsis)),
                     ],
                   ),
                 );
