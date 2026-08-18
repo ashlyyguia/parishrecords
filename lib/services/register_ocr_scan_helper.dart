@@ -960,6 +960,33 @@ class RegisterOcrScanHelper {
     return '$a\n\n$b';
   }
 
+  /// Fills the batch-constant baptism [date] and/or [minister] onto every
+  /// selected row. Sets both `baptismDateText` and the parsed `date` so the
+  /// rows become valid/savable. Returns the number of rows changed.
+  static int applyRegisterFillDown(
+    List<RegisterOcrEntry> entries, {
+    String? date,
+    String? minister,
+  }) {
+    final dateText = date?.trim() ?? '';
+    final ministerText = minister?.trim() ?? '';
+    if (dateText.isEmpty && ministerText.isEmpty) return 0;
+
+    var changed = 0;
+    for (final e in entries) {
+      if (!e.selected) continue;
+      if (dateText.isNotEmpty) {
+        e.baptismDateText = dateText;
+        e.date = RegisterOcrParser.parseDate(dateText);
+      }
+      if (ministerText.isNotEmpty) {
+        e.minister = ministerText;
+      }
+      changed++;
+    }
+    return changed;
+  }
+
   /// Merges a new register photo into existing rows.
   ///
   /// Parish books are usually a two-page spread: left page has child name,
