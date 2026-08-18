@@ -12,14 +12,16 @@ List<OcrLineBox> _syntheticCells() {
     ['Erica', 'Dejeno'],
   ];
   final places = ['07 January 2008', '08 February 2016', '22 May 2015'];
+  // Given name in the left of the Name column, surname indented right on a
+  // second line — the real baptism-left layout the reconstructor keys on.
   for (var r = 0; r < 3; r++) {
     final top = 100.0 + r * 50;
-    cells.add(OcrLineBox(text: '${r + 1}', top: top, left: 10, width: 15, height: 18));
-    cells.add(OcrLineBox(text: names[r][0], top: top, left: 140, width: 90, height: 18));
-    cells.add(OcrLineBox(text: names[r][1], top: top + 20, left: 140, width: 110, height: 18));
-    cells.add(OcrLineBox(text: places[r], top: top, left: 380, width: 150, height: 18));
-    cells.add(OcrLineBox(text: 'Arnel / Edelina', top: top, left: 680, width: 200, height: 18));
-    cells.add(OcrLineBox(text: 'Villaflor', top: top, left: 930, width: 120, height: 18));
+    cells.add(OcrLineBox(text: '${r + 1}', top: top, left: 90, width: 15, height: 18));
+    cells.add(OcrLineBox(text: names[r][0], top: top, left: 150, width: 70, height: 18));
+    cells.add(OcrLineBox(text: names[r][1], top: top + 18, left: 260, width: 100, height: 18));
+    cells.add(OcrLineBox(text: places[r], top: top, left: 420, width: 150, height: 18));
+    cells.add(OcrLineBox(text: 'Arnel / Edelina', top: top, left: 700, width: 180, height: 18));
+    cells.add(OcrLineBox(text: 'Villaflor', top: top, left: 920, width: 120, height: 18));
   }
   return cells;
 }

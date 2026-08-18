@@ -289,6 +289,9 @@ class RegisterOcrScanHelper {
   static List<RegisterOcrEntry> parseEntriesFromCells(List<OcrLineBox> cells) {
     if (cells.isEmpty) return [];
 
+    final grid = reconstructBaptismGrid(cells);
+    if (grid.length >= 3) return grid;
+
     final imageWidth = cells
         .map((c) => c.left + c.width)
         .fold<double>(0, (a, b) => a > b ? a : b);
@@ -317,56 +320,102 @@ class RegisterOcrScanHelper {
     final rows0 = _clusterIntoRows(cells);
     if (rows0.length < 3) return const [];
 
-    final imageWidth = cells
+    final left0 = cells.map((c) => c.left).reduce((a, b) => a < b ? a : b);
+    final right1 = cells
         .map((c) => c.left + c.width)
         .fold<double>(0, (a, b) => a > b ? a : b);
-    final mergeGap = (imageWidth * 0.025).clamp(18.0, 55.0);
-    final columnCenters = _detectColumnCenters(rows0, mergeGap: mergeGap);
-    if (columnCenters.length < 3) return const [];
+    final tableW = right1 - left0;
+    if (tableW <= 0) return const [];
 
-    // No.-column numeric cells → pitch + phase.
-    final secondCenter =
-        columnCenters.length > 1 ? columnCenters[1] : columnCenters.first + 120;
-    final leftBand =
-        columnCenters.first + (secondCenter - columnCenters.first) * 0.5;
-    final anchors = <({int no, double top})>[];
-    for (final c in cells) {
-      if (c.centerX > leftBand) continue;
-      final m = RegExp(r'^(\d{1,2})$').firstMatch(c.text.trim());
-      if (m != null) anchors.add((no: int.parse(m.group(1)!), top: c.centerY));
-    }
-    anchors.sort((a, b) => a.top.compareTo(b.top));
-
-    final centerYs = cells.map((c) => c.centerY).toList()..sort();
-    final firstTop = centerYs.first;
-    final lastTop = centerYs.last;
-
-    var pitch = _estimatePitch(anchors);
-    if (pitch <= 0) {
-      pitch = (lastTop - firstTop) / (rows0.length - 1);
-    }
-    if (pitch <= 4) return const [];
-
-    double phase;
-    if (anchors.isNotEmpty) {
-      final phases = anchors.map((a) => a.top - (a.no - 1) * pitch).toList()
-        ..sort();
-      phase = phases[phases.length ~/ 2];
-    } else {
-      phase = firstTop;
+    // Fixed column boundaries as fractions of table width, from the printed
+    // baptism-left header positions (No | Name | Place&Birth | Parents |
+    // Residents). Register columns have no whitespace gaps to auto-detect, so
+    // the fixed printed grid is the reliable signal.
+    const fracs = [0.0, 0.075, 0.274, 0.567, 0.816, 1.0];
+    const columnCount = 5;
+    final bounds = [for (final f in fracs) left0 + tableW * f];
+    int columnOf(double cx) {
+      for (var i = 0; i < columnCount; i++) {
+        if (cx < bounds[i + 1]) return i;
+      }
+      return columnCount - 1;
     }
 
-    final n = ((lastTop - phase) / pitch).round() + 1;
+    // Printed column-title cells must not be treated as data (they otherwise
+    // land in row 1 and shift the numbering).
+    const headerWords = {
+      'no', 'name', 'of', 'child', 'place', 'date', 'birth', 'parents',
+      'residents', 'maiden', 'mother', 'baptismal', 'check', 'space', 'and',
+    };
+    bool isHeader(String t) {
+      final w = t.replaceAll(RegExp(r'[^a-zA-Z]'), '').toLowerCase();
+      return w.isNotEmpty && headerWords.contains(w);
+    }
+
+    final dataCells = cells.where((c) => !isHeader(c.text)).toList();
+
+    // Row pitch from the No.-column numbers (one per row) — the smallest
+    // consistent gap between them.
+    final numeric = <double>[];
+    for (final c in dataCells) {
+      if (c.centerX >= bounds[1]) continue;
+      if (RegExp(r'^\d{1,2}$').hasMatch(c.text.trim())) numeric.add(c.centerY);
+    }
+    numeric.sort();
+    var pitch = 50.0;
+    final gaps = <double>[];
+    for (var i = 1; i < numeric.length; i++) {
+      final g = numeric[i] - numeric[i - 1];
+      if (g > 10) gaps.add(g);
+    }
+    if (gaps.isNotEmpty) {
+      gaps.sort();
+      pitch = gaps.first;
+    }
+    if (pitch < 10) pitch = 50;
+
+    // Detect rows by walking the Name column top-to-bottom: a new row starts at
+    // a given-name cell (left ~40% of the Name column) that sits clearly below
+    // the current row's start. Given name + indented surname (the two name
+    // lines) stay together — more robust than a fixed pitch when rows are
+    // spaced about as tightly as the two lines within a row.
+    final nameW = bounds[2] - bounds[1];
+    final givenMax = bounds[1] + nameW * 0.42;
+    final nameCells = dataCells
+        .where((c) => c.centerX >= bounds[1] && c.centerX < bounds[2])
+        .toList()
+      ..sort((a, b) => a.centerY.compareTo(b.centerY));
+    if (nameCells.length < 3) return const [];
+
+    final minGap = pitch * 0.55;
+    final rowCenters = <double>[];
+    var rowStart = nameCells.first.centerY;
+    var rowSum = nameCells.first.centerY;
+    var rowN = 1;
+    for (var i = 1; i < nameCells.length; i++) {
+      final c = nameCells[i];
+      final isGiven = c.centerX < givenMax;
+      if (isGiven && c.centerY - rowStart > minGap) {
+        rowCenters.add(rowSum / rowN);
+        rowStart = c.centerY;
+        rowSum = c.centerY;
+        rowN = 1;
+      } else {
+        rowSum += c.centerY;
+        rowN++;
+      }
+    }
+    rowCenters.add(rowSum / rowN);
+
+    final n = rowCenters.length;
     if (n < 2 || n > 60) return const [];
-
-    final rowCenters = [for (var i = 0; i < n; i++) phase + i * pitch];
-    final tol = pitch * 0.6;
+    final tol = pitch * 0.7;
 
     final grid = List.generate(
       n,
-      (_) => List.generate(columnCenters.length, (_) => <OcrLineBox>[]),
+      (_) => List.generate(columnCount, (_) => <OcrLineBox>[]),
     );
-    for (final c in cells) {
+    for (final c in dataCells) {
       var ri = -1;
       var best = double.infinity;
       for (var i = 0; i < n; i++) {
@@ -377,16 +426,13 @@ class RegisterOcrScanHelper {
         }
       }
       if (ri < 0 || best > tol) continue; // headers / stray rows dropped
-      final ci = _nearestColumnIndex(c.centerX, columnCenters);
-      if (ci < 0 || ci >= columnCenters.length) continue;
-      grid[ri][ci].add(c);
+      grid[ri][columnOf(c.centerX)].add(c);
     }
 
     final entries = <RegisterOcrEntry>[];
-    var lineNo = 1;
     for (var r = 0; r < n; r++) {
       final cols = <String>[];
-      for (var col = 0; col < columnCenters.length; col++) {
+      for (var col = 0; col < columnCount; col++) {
         final inCol = grid[r][col]
           ..sort((a, b) {
             final y = a.top.compareTo(b.top);
@@ -394,30 +440,21 @@ class RegisterOcrScanHelper {
           });
         cols.add(inCol.map((c) => c.text).join(' ').trim());
       }
+      // Rows are numbered sequentially (r+1); force the No. column to a clean
+      // numeric so entryFromColumnTexts aligns fields to [Name, Place, Parents,
+      // Residents] instead of mistaking No-column noise for the child name.
+      cols[0] = '0';
       final entry = RegisterOcrParser.entryFromColumnTexts(
         cols,
         rawLine: cols.join('\t'),
         id: _uuid.v4(),
       );
       if (entry != null && entry.name.trim().length >= 2) {
-        entry.lineNo = '${lineNo++}';
+        entry.lineNo = '${r + 1}';
         entries.add(entry);
       }
     }
     return entries;
-  }
-
-  static double _estimatePitch(List<({int no, double top})> anchors) {
-    if (anchors.length < 2) return 0;
-    final pitches = <double>[];
-    for (var i = 1; i < anchors.length; i++) {
-      final dn = anchors[i].no - anchors[i - 1].no;
-      final dt = anchors[i].top - anchors[i - 1].top;
-      if (dn > 0 && dt > 0) pitches.add(dt / dn);
-    }
-    if (pitches.isEmpty) return 0;
-    pitches.sort();
-    return pitches[pitches.length ~/ 2];
   }
 
   /// Groups all cells between left-column row numbers (1, 2, 3…).
@@ -1155,6 +1192,23 @@ class RegisterOcrScanHelper {
     }
 
     final tableText = cells.isNotEmpty ? reconstructTableText(cells) : text;
+    final ocrText = text.trim().isNotEmpty ? text : tableText;
+
+    // Prefer the geometry grid when it reconstructs plausible rows — the
+    // multi-source text merge below over-splits dense cloud output.
+    final gridEntries = reconstructBaptismGrid(cells);
+    if (gridEntries.length >= 3) {
+      return finalizeScanResult(
+        StaffOcrScanResult(
+          text: ocrText,
+          entries: gridEntries,
+          lineCount: _lineCount(ocrText),
+          cellCount: cells.length,
+        ),
+        recordType: recordType,
+      );
+    }
+
     final sources = <List<RegisterOcrEntry>>[
       parseEntriesFromCells(cells),
       if (tableText.trim().isNotEmpty)
@@ -1162,7 +1216,6 @@ class RegisterOcrScanHelper {
       if (text.trim().isNotEmpty)
         RegisterOcrParser.parse(text, recordType: recordType).entries,
     ];
-    final ocrText = text.trim().isNotEmpty ? text : tableText;
     final entries = resolveTableRows(
       ocrText: ocrText,
       parsed: _bestEntriesFromSources(sources),
