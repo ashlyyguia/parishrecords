@@ -566,7 +566,6 @@ class _StaffOcrResultPageState extends ConsumerState<StaffOcrResultPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final isBaptism = !_isMarriage;
     final validCount = _isMarriage
         ? _marriageEntries.where((e) => e.selected && e.isReadyToSave).length
@@ -628,44 +627,37 @@ class _StaffOcrResultPageState extends ConsumerState<StaffOcrResultPage> {
                 ),
                 Padding(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: Row(
-                    children: [
-                      TextButton.icon(
-                        onPressed: _isProcessing ? null : _addRow,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add row'),
-                      ),
-                      TextButton.icon(
-                        onPressed: _isProcessing ? null : _scanAnotherPage,
-                        icon: const Icon(Icons.document_scanner_outlined,
-                            size: 18),
-                        label: Text(
-                          _pageCount > 1
-                              ? 'Scan other side ($_pageCount)'
-                              : (_isMarriage
-                                  ? 'Scan other page'
-                                  : 'Scan other page'),
-                        ),
-                      ),
-                      if (!_isMarriage)
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  // Scrolls horizontally so the action buttons never overflow
+                  // on narrow phones. Row status is shown in the summary bar.
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
                         TextButton.icon(
-                          onPressed: _isProcessing ? null : _openFillDown,
-                          icon: const Icon(Icons.event_note_outlined, size: 18),
-                          label: const Text('Set date / minister'),
+                          onPressed: _isProcessing ? null : _addRow,
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add row'),
                         ),
-                      const Spacer(),
-                      Text(
-                        _isProcessing
-                            ? 'Reading photo…'
-                            : (rowCount > 1
-                                ? '$rowCount record(s) — edit below'
-                                : 'Edit cells below'),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        TextButton.icon(
+                          onPressed: _isProcessing ? null : _scanAnotherPage,
+                          icon: const Icon(Icons.document_scanner_outlined,
+                              size: 18),
+                          label: Text(
+                            _pageCount > 1
+                                ? 'Scan other side ($_pageCount)'
+                                : 'Scan other page',
+                          ),
                         ),
-                      ),
-                    ],
+                        if (!_isMarriage)
+                          TextButton.icon(
+                            onPressed: _isProcessing ? null : _openFillDown,
+                            icon: const Icon(Icons.event_note_outlined,
+                                size: 18),
+                            label: const Text('Set date / minister'),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
                 Expanded(
