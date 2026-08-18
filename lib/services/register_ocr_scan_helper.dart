@@ -704,6 +704,7 @@ class RegisterOcrScanHelper {
         marriageEntries: RegisterMarriageOcrHelper.ensureUniqueEntryIds(rows),
         lineCount: scan.lineCount,
         cellCount: rows.length,
+        engine: scan.engine,
       );
     }
 
@@ -721,6 +722,7 @@ class RegisterOcrScanHelper {
       entries: entries,
       lineCount: scan.lineCount,
       cellCount: entries.isNotEmpty ? entries.length : scan.cellCount,
+      engine: scan.engine,
     );
   }
 
