@@ -343,6 +343,15 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                   label: const Text('Import CSV'),
                 ),
                 FilledButton.icon(
+                  onPressed: () => context.push('/admin/ocr/upload'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.cyan.shade700,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: const Icon(Icons.document_scanner_outlined),
+                  label: const Text('Add Record (OCR)'),
+                ),
+                FilledButton.icon(
                   onPressed: () => context.push('/admin/certificate-scan'),
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.blue,
