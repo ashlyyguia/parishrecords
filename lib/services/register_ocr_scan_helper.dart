@@ -56,6 +56,7 @@ class StaffOcrScanResult {
     this.marriageEntries = const [],
     this.lineCount = 0,
     this.cellCount = 0,
+    this.engine = '',
   });
 
   /// Full OCR text (nothing removed).
@@ -65,7 +66,19 @@ class StaffOcrScanResult {
   final int lineCount;
   final int cellCount;
 
+  /// Which OCR engine produced this result: 'cloud', 'onDevice', or ''.
+  final String engine;
+
   bool get isMarriage => marriageEntries.isNotEmpty;
+
+  StaffOcrScanResult copyWith({String? engine}) => StaffOcrScanResult(
+        text: text,
+        entries: entries,
+        marriageEntries: marriageEntries,
+        lineCount: lineCount,
+        cellCount: cellCount,
+        engine: engine ?? this.engine,
+      );
 }
 
 /// Builds accurate register rows from ML Kit block geometry.
@@ -1279,12 +1292,13 @@ class RegisterOcrScanHelper {
           cloudResult.cells,
           cloudResult.text,
           recordType: recordType,
-        );
+        ).copyWith(engine: 'cloud');
       }
     } catch (_) {
       // fall through to on-device
     }
-    return scanXFile(file, recordType: recordType);
+    final onDevice = await scanXFile(file, recordType: recordType);
+    return onDevice.copyWith(engine: 'onDevice');
   }
 
   /// Runs OCR on one image path and returns table-ready rows.

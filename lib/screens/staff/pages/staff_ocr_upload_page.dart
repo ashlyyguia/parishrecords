@@ -38,6 +38,7 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
   int _lastLineCount = 0;
   int _lastCellCount = 0;
   int _scannedPageCount = 0;
+  String _lastEngine = '';
 
   @override
   void didChangeDependencies() {
@@ -89,6 +90,7 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
           initialPageCount: _scannedPageCount > 0 ? _scannedPageCount : 1,
           scannedLineCount: _lastLineCount,
           scannedCellCount: _lastCellCount,
+          initialEngine: _lastEngine,
           recordType: _type,
           volNumber: _volCtrl.text.trim(),
           seriesNumber: _seriesCtrl.text.trim(),
@@ -133,6 +135,7 @@ class _StaffOcrUploadPageState extends ConsumerState<StaffOcrUploadPage> {
       _lastCellCount = _isMarriage
           ? _lastMarriageEntries.length
           : _lastParsedEntries.length;
+      if (result.engine.isNotEmpty) _lastEngine = result.engine;
     });
   }
 

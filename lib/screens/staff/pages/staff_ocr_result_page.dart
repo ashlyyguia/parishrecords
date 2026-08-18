@@ -28,6 +28,7 @@ class StaffOcrResultPage extends ConsumerStatefulWidget {
     this.scannedLineCount = 0,
     this.scannedCellCount = 0,
     this.initialPageCount = 0,
+    this.initialEngine = '',
   });
 
   /// When set, OCR runs on this page and shows a loading state first.
@@ -43,6 +44,9 @@ class StaffOcrResultPage extends ConsumerStatefulWidget {
   final String volNumber;
   final String seriesNumber;
   final bool showSaveAction;
+
+  /// Which engine produced the initial rows: 'cloud', 'onDevice', or ''.
+  final String initialEngine;
 
   bool get processFromImage =>
       imagePath != null && imagePath!.isNotEmpty;
@@ -63,6 +67,7 @@ class _StaffOcrResultPageState extends ConsumerState<StaffOcrResultPage> {
   bool _isProcessing = false;
   String? _error;
   int _tableGeneration = 0;
+  String _engine = '';
 
   bool get _isMarriage => widget.recordType.toLowerCase() == 'marriage';
 
@@ -70,6 +75,7 @@ class _StaffOcrResultPageState extends ConsumerState<StaffOcrResultPage> {
   void initState() {
     super.initState();
     _scanText = widget.initialText;
+    _engine = widget.initialEngine;
     _scannedLines = widget.scannedLineCount;
     _scannedCells = widget.scannedCellCount;
 
@@ -159,7 +165,7 @@ class _StaffOcrResultPageState extends ConsumerState<StaffOcrResultPage> {
       if (!mounted) return;
       await Future<void>.delayed(Duration.zero);
 
-      final scan = await RegisterOcrScanHelper.scanXFile(
+      final scan = await RegisterOcrScanHelper.scanXFileWithCloud(
         xFile ?? XFile(path),
         recordType: widget.recordType,
       );
@@ -219,6 +225,7 @@ class _StaffOcrResultPageState extends ConsumerState<StaffOcrResultPage> {
         }
         _scannedLines += scan.lineCount;
         _scannedCells += scan.cellCount;
+        if (scan.engine.isNotEmpty) _engine = scan.engine;
         _skippedLines = 0;
         _isProcessing = false;
         _tableGeneration++;
@@ -624,6 +631,7 @@ class _StaffOcrResultPageState extends ConsumerState<StaffOcrResultPage> {
                   isScanning: _isProcessing,
                   pageCount: _pageCount,
                   isMarriage: _isMarriage,
+                  engine: _engine,
                 ),
                 Padding(
                   padding:
@@ -772,6 +780,7 @@ class _SummaryBar extends StatelessWidget {
     this.isScanning = false,
     this.pageCount = 0,
     this.isMarriage = false,
+    this.engine = '',
   });
 
   final int entryCount;
@@ -782,6 +791,7 @@ class _SummaryBar extends StatelessWidget {
   final bool isScanning;
   final int pageCount;
   final bool isMarriage;
+  final String engine;
 
   @override
   Widget build(BuildContext context) {
@@ -801,14 +811,32 @@ class _SummaryBar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            isScanning
-                ? 'Preparing $entryCount rows…'
-                : '$entryCount record(s) — edit in table',
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  isScanning
+                      ? 'Preparing $entryCount rows…'
+                      : '$entryCount record(s) — edit in table',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              if (engine == 'cloud')
+                const _EngineBadge(
+                  icon: Icons.cloud_done_outlined,
+                  label: 'Cloud OCR',
+                  color: Colors.green,
+                )
+              else if (engine == 'onDevice')
+                const _EngineBadge(
+                  icon: Icons.phone_android,
+                  label: 'On-device',
+                  color: Colors.orange,
+                ),
+            ],
           ),
           const SizedBox(height: 6),
           if (pageCount > 1)
@@ -839,6 +867,46 @@ class _SummaryBar extends StatelessWidget {
                 highlight: validCount > 0,
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Small badge showing which OCR engine produced the rows.
+class _EngineBadge extends StatelessWidget {
+  const _EngineBadge({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
           ),
         ],
       ),

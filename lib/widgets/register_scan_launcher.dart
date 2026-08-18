@@ -296,6 +296,7 @@ class _ScanProgressDialogState extends State<_ScanProgressDialog> {
       );
       var lineCount = widget.existing?.lineCount ?? 0;
       var cellCount = widget.existing?.cellCount ?? 0;
+      var engine = widget.existing?.engine ?? '';
       final isMarriage = widget.recordType.toLowerCase() == 'marriage';
 
       for (var i = 0; i < total; i++) {
@@ -313,6 +314,8 @@ class _ScanProgressDialogState extends State<_ScanProgressDialog> {
           widget.files[i],
           recordType: widget.recordType,
         );
+        // Prefer 'cloud' if any page used it; else keep the latest engine.
+        engine = scan.engine == 'cloud' ? 'cloud' : (engine.isEmpty ? scan.engine : engine);
 
         mergedText = RegisterOcrScanHelper.mergeScanText(mergedText, scan.text);
         lineCount += scan.lineCount;
@@ -343,7 +346,7 @@ class _ScanProgressDialogState extends State<_ScanProgressDialog> {
       final result = RegisterOcrScanHelper.finalizeScanResult(
         merged,
         recordType: widget.recordType,
-      );
+      ).copyWith(engine: engine);
 
       if (!mounted) return;
       Navigator.pop(context, result);
