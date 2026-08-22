@@ -53,6 +53,20 @@ function rotatePointBack(p, rotation, bounds) {
 /**
  * Detects page rotation from the modal word-baseline angle and rotates all
  * coordinates into an upright reading frame.
+ *
+ * COORDINATE CONTRACT: the returned `words` are in a normalized
+ * CONTENT-RELATIVE frame, not source-image pixel coordinates. For a non-zero
+ * rotation, the inverse rotation is computed against the bounding box of the
+ * WORD CONTENT itself (there is no captured source page width/height to
+ * invert against), so recovered coordinates are shifted from true
+ * source-image pixels by the page's content margin (whatever whitespace/
+ * border sits outside the outermost OCR'd words). For rotation 0, `words` is
+ * returned untouched — i.e. in literal source-image coordinates — so this
+ * margin offset is present for rotated pages but absent for upright ones.
+ * This is fine for relative-position work (column/row calibration only cares
+ * about order and spacing), but any consumer that maps a returned coordinate
+ * back onto the original scanned image (e.g. to draw a highlight box) must
+ * account for this margin — it is not source-image-accurate as-is.
  * @returns {{rotation: 0|90|180|270, words: Array}}
  */
 function normalizeOrientation(words) {
