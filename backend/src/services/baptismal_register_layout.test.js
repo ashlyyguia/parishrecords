@@ -473,4 +473,244 @@ describe('calibrateColumns', () => {
       assertNoInvertedOrZeroWidthBands(columns);
     });
   });
+
+  // Round-3 finding: the round-2 fix's degenerate-interval branch (matched
+  // anchors too close together for MIN_GAP-spaced distinct centers) stepped
+  // from `lo` by MIN_GAP per unmatched column without ever comparing against
+  // `hi`, so a narrow-but-nonzero interval could still overshoot the next
+  // matched anchor and invert the band between them -- reintroducing the
+  // exact "words match no column and vanish silently" failure the guard
+  // exists to prevent, just relocated to a smaller interval than round 2's
+  // fix was tested against. The fix replaces the two-branch (degenerate vs.
+  // spacious) logic with one formula that can never step outside [lo, hi].
+  describe('degenerate interval handling (round-3 regression)', () => {
+    function makeWord(text, cx, cy = 100) {
+      const w = 60;
+      const h = 22;
+      return {
+        text,
+        vertices: [
+          { x: cx - w / 2, y: cy - h / 2 }, { x: cx + w / 2, y: cy - h / 2 },
+          { x: cx + w / 2, y: cy + h / 2 }, { x: cx - w / 2, y: cy + h / 2 },
+        ],
+        confidence: 0.9,
+      };
+    }
+
+    // colZ/colF are matched columns adjacent to another matched column
+    // (colA/colE respectively) on the far side from the run under test. The
+    // boundary between two ADJACENT matched columns is a pure function of
+    // their own declared cx values (the redistribution loop never runs
+    // there), so checking colZ.x1/colA.x0 and colE.x1/colF.x0 against that
+    // midpoint independently proves colA's and colE's centers are exactly
+    // what was detected -- unmoved by whatever the run between them did.
+    const DEFS = [
+      { key: 'colZ', header: ['zulu'], fallbackRatio: 0.01 },
+      { key: 'colA', header: ['alpha'], fallbackRatio: 0.10 },
+      { key: 'colB', header: ['beta'], fallbackRatio: 0.30 },
+      { key: 'colC', header: ['gamma'], fallbackRatio: 0.50 },
+      { key: 'colD', header: ['delta'], fallbackRatio: 0.70 },
+      { key: 'colE', header: ['epsilon'], fallbackRatio: 0.90 },
+      { key: 'colF', header: ['foxtrot'], fallbackRatio: 0.99 },
+    ];
+    const COL_Z_CX = 0;
+    const COL_F_CX = 10000;
+
+    /** Builds the colZ..colF page with colA at `cxA`, colE at `cxE`, and
+     * colB/colC/colD (the run under test) genuinely unmatched. */
+    function buildPage(cxA, cxE) {
+      return [
+        makeWord('ZULU', COL_Z_CX),
+        makeWord('ALPHA', cxA),
+        makeWord('EPSILON', cxE),
+        makeWord('FOXTROT', COL_F_CX),
+      ];
+    }
+
+    function byKeyOf(columns) {
+      return Object.fromEntries(columns.map((c) => [c.key, c]));
+    }
+
+    test('reviewer repro: two matched anchors 1px apart with three unmatched columns between them', () => {
+      const { columns, warnings } = calibrateColumns(buildPage(100, 101), DEFS);
+      const byKey = byKeyOf(columns);
+
+      expect(warnings).toContain('LAYOUT_UNCERTAIN');
+      expect(byKey.colB.matched).toBe(false);
+      expect(byKey.colC.matched).toBe(false);
+      expect(byKey.colD.matched).toBe(false);
+
+      // colA and colE's own detected centers are exactly 100 and 101 --
+      // unmoved by the run between them.
+      expect(byKey.colZ.x1).toBeCloseTo((COL_Z_CX + 100) / 2, 9);
+      expect(byKey.colA.x0).toBeCloseTo((COL_Z_CX + 100) / 2, 9);
+      expect(byKey.colE.x1).toBeCloseTo((101 + COL_F_CX) / 2, 9);
+      expect(byKey.colF.x0).toBeCloseTo((101 + COL_F_CX) / 2, 9);
+
+      for (const c of columns) {
+        expect(c.x1).toBeGreaterThanOrEqual(c.x0);
+      }
+      for (let i = 1; i < columns.length; i += 1) {
+        expect(columns[i].x0).toBeGreaterThanOrEqual(columns[i - 1].x1 - 1e-9);
+      }
+    });
+
+    test('zero-width interval: two matched anchors at the same x with unmatched columns between them', () => {
+      const { columns, warnings } = calibrateColumns(buildPage(500, 500), DEFS);
+      const byKey = byKeyOf(columns);
+
+      expect(warnings).toContain('LAYOUT_UNCERTAIN');
+
+      // colA and colE's own detected centers are exactly 500 -- unmoved.
+      expect(byKey.colZ.x1).toBeCloseTo((COL_Z_CX + 500) / 2, 9);
+      expect(byKey.colA.x0).toBeCloseTo((COL_Z_CX + 500) / 2, 9);
+      expect(byKey.colE.x1).toBeCloseTo((500 + COL_F_CX) / 2, 9);
+      expect(byKey.colF.x0).toBeCloseTo((500 + COL_F_CX) / 2, 9);
+
+      // A genuinely zero-width interval collapses the run's bands to zero
+      // width too -- honest and acceptable, unlike an inverted band.
+      expect(byKey.colB.x0).toBeCloseTo(500, 9);
+      expect(byKey.colB.x1).toBeCloseTo(500, 9);
+      expect(byKey.colC.x0).toBeCloseTo(500, 9);
+      expect(byKey.colC.x1).toBeCloseTo(500, 9);
+      expect(byKey.colD.x0).toBeCloseTo(500, 9);
+      expect(byKey.colD.x1).toBeCloseTo(500, 9);
+
+      for (const c of columns) {
+        expect(c.x1).toBeGreaterThanOrEqual(c.x0);
+      }
+      for (let i = 1; i < columns.length; i += 1) {
+        expect(columns[i].x0).toBeGreaterThanOrEqual(columns[i - 1].x1 - 1e-9);
+      }
+    });
+
+    // Pins the boundary between "degenerate" and "spacious" that round 2's
+    // two-branch logic drew at `hi - lo <= runLength * MIN_GAP` (MIN_GAP=1,
+    // runLength=3, so the old threshold sat at an interval width of 3). This
+    // interval is just above that -- round 2 would have taken the spacious
+    // branch here, so this alone wouldn't have caught the round-2 bug, but it
+    // pins that both sides of the old branch split now produce the same kind
+    // of well-formed, non-inverted result via the single unified formula.
+    test('narrow-but-not-degenerate interval just above the old branch threshold', () => {
+      const { columns, warnings } = calibrateColumns(buildPage(100, 103.5), DEFS);
+      const byKey = byKeyOf(columns);
+
+      expect(warnings).toContain('LAYOUT_UNCERTAIN');
+      expect(byKey.colZ.x1).toBeCloseTo((COL_Z_CX + 100) / 2, 9);
+      expect(byKey.colA.x0).toBeCloseTo((COL_Z_CX + 100) / 2, 9);
+      expect(byKey.colE.x1).toBeCloseTo((103.5 + COL_F_CX) / 2, 9);
+      expect(byKey.colF.x0).toBeCloseTo((103.5 + COL_F_CX) / 2, 9);
+
+      for (const c of columns) {
+        expect(c.x1).toBeGreaterThanOrEqual(c.x0);
+      }
+      for (let i = 1; i < columns.length; i += 1) {
+        expect(columns[i].x0).toBeGreaterThanOrEqual(columns[i - 1].x1 - 1e-9);
+      }
+    });
+  });
+
+  // Property-style sweep: rather than one synthetic layout at a time, vary
+  // BOTH which columns are matched and how far apart the matched anchors sit
+  // (0px coincident, 1px reviewer-repro-scale, 150px wide) across a table of
+  // cases, and check the same invariants hold for every one of them. This is
+  // the generalized version of the three regressions above -- the point is
+  // to stop re-deriving one specific inverted-band scenario at a time.
+  describe('band invariants hold across synthetic layouts (property-style)', () => {
+    const TOKENS = ['aaa', 'bbb', 'ccc', 'ddd', 'eee'];
+
+    function makeWord(text, cx, cy = 100) {
+      const w = 60;
+      const h = 22;
+      return {
+        text,
+        vertices: [
+          { x: cx - w / 2, y: cy - h / 2 }, { x: cx + w / 2, y: cy - h / 2 },
+          { x: cx + w / 2, y: cy + h / 2 }, { x: cx - w / 2, y: cy + h / 2 },
+        ],
+        confidence: 0.9,
+      };
+    }
+
+    function buildConfig(cxs, mask) {
+      const defs = cxs.map((_, i) => ({
+        key: `col${i}`,
+        header: [TOKENS[i]],
+        fallbackRatio: (i + 1) / (cxs.length + 1),
+      }));
+      const words = cxs
+        .map((cx, i) => (mask[i] ? makeWord(TOKENS[i].toUpperCase(), cx) : null))
+        .filter(Boolean);
+      // Filler words far outside the anchor range establish page bounds even
+      // when every column in the mask is unmatched (mirrors the existing
+      // all-unmatched test above).
+      const minCx = Math.min(...cxs);
+      const maxCx = Math.max(...cxs);
+      const filler = [
+        makeWord('FILLERLEFT', minCx - 500, 400),
+        makeWord('FILLERRIGHT', maxCx + 500, 400),
+      ];
+      return { defs, words: [...words, ...filler] };
+    }
+
+    // Anchor spacing to sweep: 0 (every anchor coincides -- the zero-width
+    // case), 1px (the reviewer-repro scale), 150px (the existing tests'
+    // wide scale).
+    const SPACINGS = [0, 1, 150];
+    // Match masks over 5 columns: none matched, all matched, a run in the
+    // middle, a run at each edge, and two separate single-column runs.
+    const MASKS = [
+      [false, false, false, false, false],
+      [true, true, true, true, true],
+      [true, false, false, false, true],
+      [false, false, true, true, true],
+      [true, true, true, false, false],
+      [true, false, true, false, true],
+      [false, true, false, true, false],
+    ];
+
+    for (const spacing of SPACINGS) {
+      for (const mask of MASKS) {
+        const label = mask.map((m) => (m ? '1' : '0')).join('');
+        test(`spacing=${spacing}px mask=${label} produces non-inverted, non-decreasing bands`, () => {
+          const cxs = mask.map((_, i) => i * spacing);
+          const { defs, words } = buildConfig(cxs, mask);
+          const { columns } = calibrateColumns(words, defs);
+
+          expect(columns).toHaveLength(mask.length);
+
+          // Invariant: no inverted band (zero-width is fine; negative is not).
+          for (const c of columns) {
+            expect(c.x1).toBeGreaterThanOrEqual(c.x0);
+          }
+
+          // Invariant: bands are non-decreasing left to right.
+          for (let i = 1; i < columns.length; i += 1) {
+            expect(columns[i].x0).toBeGreaterThanOrEqual(columns[i - 1].x1 - 1e-9);
+          }
+
+          // Invariant: a matched column's own known anchor position is
+          // exactly what calibration detected (each token matches exactly
+          // one word, so no averaging), and that position always falls
+          // within that column's own band.
+          columns.forEach((c, i) => {
+            if (!mask[i]) return;
+            expect(cxs[i]).toBeGreaterThanOrEqual(c.x0 - 1e-9);
+            expect(cxs[i]).toBeLessThanOrEqual(c.x1 + 1e-9);
+          });
+
+          // Invariant: two ADJACENT matched columns share a boundary that is
+          // a pure function of their own known positions, independent of
+          // anything else on the page -- proving neither one moved.
+          for (let i = 1; i < columns.length; i += 1) {
+            if (mask[i - 1] && mask[i]) {
+              const expectedBoundary = (cxs[i - 1] + cxs[i]) / 2;
+              expect(columns[i - 1].x1).toBeCloseTo(expectedBoundary, 6);
+              expect(columns[i].x0).toBeCloseTo(expectedBoundary, 6);
+            }
+          }
+        });
+      }
+    }
+  });
 });

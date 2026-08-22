@@ -343,8 +343,10 @@ function calibrateColumns(pageWords, columnDefs) {
   // column instead of just mis-sizing it; dropping the column removes its
   // band entirely, which resurrects the exact "words have nowhere to go and
   // vanish" failure this guard exists to prevent. Redistributing keeps every
-  // column present with a valid, ordered, non-zero-width band.
-  const MIN_GAP = 1;
+  // column present with a valid, ordered band whose width is zero only when
+  // the interval it was redistributed across is itself zero-width (two
+  // matched anchors that landed on the same x, or no room at a page edge) —
+  // never negative.
 
   let runStart = 0;
   while (runStart < centers.length) {
@@ -360,29 +362,38 @@ function calibrateColumns(pageWords, columnDefs) {
     const lo = runStart > 0 ? centers[runStart - 1].center : minX;
     const hi = runEnd < centers.length ? centers[runEnd].center : maxX;
 
-    if (hi - lo <= runLength * MIN_GAP) {
-      // Degenerate interval (matched anchors too close together, or a
-      // page-edge run with little room) — still must produce distinct,
-      // strictly ascending values, so just step by MIN_GAP from lo.
-      for (let k = 0; k < runLength; k += 1) {
-        centers[runStart + k].center = lo + MIN_GAP * (k + 1);
-      }
-    } else {
-      // Evenly space the run's centers across the open interval (lo, hi).
-      const step = (hi - lo) / (runLength + 1);
-      for (let k = 0; k < runLength; k += 1) {
-        centers[runStart + k].center = lo + step * (k + 1);
-      }
+    // Evenly space the run's centers across the closed interval [lo, hi].
+    // This one formula covers every case, degenerate or not: `step` is never
+    // negative (lo <= hi for a valid run) and every generated value is
+    // `lo + step*(k+1)` for k in [0, runLength), which is always >= lo and
+    // always <= hi (the largest, k = runLength-1, is hi - step <= hi). A
+    // narrow interval just yields a small `step` — down to 0 when hi === lo
+    // — producing coincident centers rather than distinct ones. Coincident
+    // centers (a zero-width band) are an honest, acceptable result for a
+    // genuinely too-narrow interval; stepping past `hi` to force distinctness
+    // (the previous approach) is not, because it overshoots the next matched
+    // anchor and inverts the band between them — the exact failure this
+    // guard exists to prevent, just relocated instead of removed.
+    const step = (hi - lo) / (runLength + 1);
+    for (let k = 0; k < runLength; k += 1) {
+      centers[runStart + k].center = lo + step * (k + 1);
     }
     runStart = runEnd;
   }
 
-  // Bands are the midpoints between adjacent column centers.
+  // Bands are the midpoints between adjacent column centers. Centers are
+  // constructed to be non-decreasing above, which makes x1 >= x0 here by
+  // construction — but this is the accuracy-critical path an inverted band
+  // silently drops words from, and this is the third round of finding a new
+  // way to produce one. Belt and braces: clamp x1 to x0 defensively so an
+  // inverted band is structurally impossible here regardless of how the
+  // centers upstream were derived, now or after a future change.
   const columns = centers.map((c, i) => {
     const prev = centers[i - 1];
     const next = centers[i + 1];
     const x0 = prev ? (prev.center + c.center) / 2 : minX - 1;
-    const x1 = next ? (c.center + next.center) / 2 : maxX + 1;
+    const x1raw = next ? (c.center + next.center) / 2 : maxX + 1;
+    const x1 = Math.max(x1raw, x0);
     return { key: c.key, x0, x1, matched: c.matched };
   });
 
