@@ -98,4 +98,56 @@ function normalizeOrientation(words) {
   return { rotation, words: rotated };
 }
 
-module.exports = { boxOf, wordAngle, normalizeOrientation };
+/**
+ * Splits a two-page spread at the gutter.
+ *
+ * The gutter is the widest vertical band in the middle third of the page
+ * that no word's box crosses. Confirmed by finding the printed page titles
+ * ("Baptismal" left, "Register" right).
+ */
+function splitSpread(words) {
+  if (!words || words.length === 0) {
+    return { gutterX: 0, left: [], right: [], confirmed: false };
+  }
+
+  const boxes = words.map(boxOf);
+  const minX = Math.min(...boxes.map((b) => b.x0));
+  const maxX = Math.max(...boxes.map((b) => b.x1));
+  const searchStart = minX + (maxX - minX) / 3;
+  const searchEnd = minX + ((maxX - minX) * 2) / 3;
+
+  // Sort spans by x0 and sweep for the widest uncovered interval in range.
+  const spans = boxes
+    .map((b) => [b.x0, b.x1])
+    .sort((a, b) => a[0] - b[0]);
+
+  let bestGap = 0;
+  let bestX = (searchStart + searchEnd) / 2;
+  let cursor = spans.length ? spans[0][1] : searchStart;
+
+  for (const [x0, x1] of spans) {
+    if (x0 > cursor) {
+      const gapStart = cursor;
+      const gapEnd = x0;
+      const mid = (gapStart + gapEnd) / 2;
+      const gap = gapEnd - gapStart;
+      if (mid >= searchStart && mid <= searchEnd && gap > bestGap) {
+        bestGap = gap;
+        bestX = mid;
+      }
+    }
+    if (x1 > cursor) cursor = x1;
+  }
+
+  const left = [];
+  const right = [];
+  words.forEach((w, i) => (boxes[i].cx < bestX ? left : right).push(w));
+
+  const hasTitle = (list, title) =>
+    list.some((w) => w.text.toLowerCase() === title);
+  const confirmed = hasTitle(left, 'baptismal') && hasTitle(right, 'register');
+
+  return { gutterX: bestX, left, right, confirmed };
+}
+
+module.exports = { boxOf, wordAngle, normalizeOrientation, splitSpread };

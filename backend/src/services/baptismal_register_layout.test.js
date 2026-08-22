@@ -1,5 +1,5 @@
-const { boxOf, normalizeOrientation } = require('./baptismal_register_layout');
-const { buildRegisterFixture } = require('../../test/helpers/register_fixture');
+const { boxOf, normalizeOrientation, splitSpread } = require('./baptismal_register_layout');
+const { buildRegisterFixture, GUTTER_X0, GUTTER_X1 } = require('../../test/helpers/register_fixture');
 
 describe('boxOf', () => {
   test('returns the axis-aligned bounds and center', () => {
@@ -103,5 +103,31 @@ describe('normalizeOrientation', () => {
       expect(recoveredBox.cx).toBe(originalBox.cx + dx);
       expect(recoveredBox.cy).toBe(originalBox.cy + dy);
     }
+  });
+});
+
+describe('splitSpread', () => {
+  test('finds the gutter and confirms it via the page titles', () => {
+    const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 0 }).words);
+    const out = splitSpread(words);
+    expect(out.gutterX).toBeGreaterThanOrEqual(GUTTER_X0 - 60);
+    expect(out.gutterX).toBeLessThanOrEqual(GUTTER_X1 + 60);
+    expect(out.confirmed).toBe(true);
+    expect(out.left.some((w) => w.text === 'CHILD')).toBe(true);
+    expect(out.right.some((w) => w.text === 'MINISTER')).toBe(true);
+    expect(out.left.some((w) => w.text === 'MINISTER')).toBe(false);
+  });
+
+  test('splits correctly on a rotated page too', () => {
+    const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 180 }).words);
+    const out = splitSpread(words);
+    expect(out.left.some((w) => w.text === 'CHILD')).toBe(true);
+    expect(out.right.some((w) => w.text === 'SPONSORS')).toBe(true);
+  });
+
+  test('reports unconfirmed when the page titles are missing', () => {
+    const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 0 }).words);
+    const stripped = words.filter((w) => w.text !== 'Baptismal' && w.text !== 'Register');
+    expect(splitSpread(stripped).confirmed).toBe(false);
   });
 });
