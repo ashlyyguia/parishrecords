@@ -323,46 +323,59 @@ function calibrateColumns(pageWords, columnDefs) {
   // matched neighbour, inverting the band between them. An inverted or
   // zero-width band means words that belong there match no column and
   // vanish silently, which is worse than a merely-imprecise fallback
-  // position. Clamping (rather than sorting columns by position, or
-  // dropping the column) is the deliberate choice here: sorting could swap
-  // which KEY a band gets assigned to, silently mis-labeling a column
-  // instead of just mis-sizing it; dropping the column removes its band
-  // entirely, which resurrects the exact "words have nowhere to go and
-  // vanish" failure this guard exists to prevent. Clamping keeps every
-  // column present with a valid, ordered, non-zero-width band while leaving
-  // matched (trustworthy) centers untouched.
+  // position.
+  //
+  // The tie-breaking room for an unmatched column is strictly the interval
+  // between its surrounding matched anchors (or the page's own edge, for a
+  // run that starts/ends the column list) — never past them. So rather than
+  // clamping each unmatched center independently and then nudging ties
+  // forward (which can walk a nudge straight into the NEXT matched column
+  // and corrupt a value that was read directly off the page), every maximal
+  // run of adjacent unmatched columns is redistributed evenly across the
+  // interval bounded by its neighbouring matched centers. This never writes
+  // to a matched column's `center` — only indices inside an unmatched run
+  // are ever assigned — so a matched center is always exactly what
+  // calibration detected, unmodified.
+  //
+  // Redistributing (rather than sorting columns by position, or dropping
+  // the column) is the deliberate choice here, same as before: sorting
+  // could swap which KEY a band gets assigned to, silently mis-labeling a
+  // column instead of just mis-sizing it; dropping the column removes its
+  // band entirely, which resurrects the exact "words have nowhere to go and
+  // vanish" failure this guard exists to prevent. Redistributing keeps every
+  // column present with a valid, ordered, non-zero-width band.
   const MIN_GAP = 1;
 
-  let leftAnchor = null;
-  const leftBounds = centers.map((c) => {
-    if (c.matched) leftAnchor = c.center;
-    return leftAnchor;
-  });
+  let runStart = 0;
+  while (runStart < centers.length) {
+    if (centers[runStart].matched) {
+      runStart += 1;
+      continue;
+    }
+    let runEnd = runStart;
+    while (runEnd < centers.length && !centers[runEnd].matched) runEnd += 1;
+    // Run of unmatched columns is [runStart, runEnd). Bounded by the nearest
+    // matched center on each side, or the page's own bounds at an edge run.
+    const runLength = runEnd - runStart;
+    const lo = runStart > 0 ? centers[runStart - 1].center : minX;
+    const hi = runEnd < centers.length ? centers[runEnd].center : maxX;
 
-  let rightAnchor = null;
-  const rightBounds = new Array(centers.length);
-  for (let i = centers.length - 1; i >= 0; i -= 1) {
-    if (centers[i].matched) rightAnchor = centers[i].center;
-    rightBounds[i] = rightAnchor;
+    if (hi - lo <= runLength * MIN_GAP) {
+      // Degenerate interval (matched anchors too close together, or a
+      // page-edge run with little room) — still must produce distinct,
+      // strictly ascending values, so just step by MIN_GAP from lo.
+      for (let k = 0; k < runLength; k += 1) {
+        centers[runStart + k].center = lo + MIN_GAP * (k + 1);
+      }
+    } else {
+      // Evenly space the run's centers across the open interval (lo, hi).
+      const step = (hi - lo) / (runLength + 1);
+      for (let k = 0; k < runLength; k += 1) {
+        centers[runStart + k].center = lo + step * (k + 1);
+      }
+    }
+    runStart = runEnd;
   }
-
-  centers.forEach((c, i) => {
-    if (c.matched) return;
-    const lo = leftBounds[i] !== null ? leftBounds[i] + MIN_GAP : -Infinity;
-    const hi = rightBounds[i] !== null ? rightBounds[i] - MIN_GAP : Infinity;
-    c.center = lo > hi ? (lo + hi) / 2 : Math.min(Math.max(c.center, lo), hi);
-  });
-
-  // Final safety net: guarantees strictly ascending centers even with
-  // multiple adjacent unmatched columns (where the neighbour-anchored clamp
-  // above only bounds each one independently against its nearest MATCHED
-  // neighbour, not against each other). Only ever raises a value, and only
-  // touches columns the clamp above already left needing it.
-  let floor = -Infinity;
-  centers.forEach((c) => {
-    if (c.center < floor + MIN_GAP) c.center = floor + MIN_GAP;
-    floor = c.center;
-  });
 
   // Bands are the midpoints between adjacent column centers.
   const columns = centers.map((c, i) => {

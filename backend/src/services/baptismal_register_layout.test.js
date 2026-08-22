@@ -311,4 +311,166 @@ describe('calibrateColumns', () => {
     expect(Math.abs(parents.x0 - baselineParents.x0)).toBeLessThan(2);
     expect(Math.abs(parents.x1 - baselineParents.x1)).toBeLessThan(2);
   });
+
+  // Round-2 finding: the forward-monotonic safety net that used to follow
+  // the per-column neighbour clamp applied unconditionally to EVERY center,
+  // including matched ones, even though its own comment claimed to leave
+  // "matched (trustworthy) centers untouched". Two-or-more adjacent
+  // unmatched columns could clamp to the same value and tie; the old
+  // forward nudge broke that tie by pushing later centers ahead, and the
+  // push could cascade into the next MATCHED column's own detected center.
+  // These tests build synthetic column defs (not LEFT_COLUMNS/RIGHT_COLUMNS,
+  // which stay untouched) so header presence/absence — and therefore which
+  // columns are matched vs. unmatched — is fully controlled, independent of
+  // the protected register fixture's geometry.
+  describe('unmatched-run tie-breaking (round-2 regression)', () => {
+    // Eight generic columns, spaced 150px apart, is enough room to carve out
+    // runs of unmatched columns of any length/position needed below. Each
+    // header token is single-word and unique, so a present header word's own
+    // cx becomes its exactly-known matched center.
+    const SYNTH_COLUMNS = [
+      { key: 'colA', header: ['alpha'], fallbackRatio: 0.05 },
+      { key: 'colB', header: ['beta'], fallbackRatio: 0.20 },
+      { key: 'colC', header: ['gamma'], fallbackRatio: 0.35 },
+      { key: 'colD', header: ['delta'], fallbackRatio: 0.50 },
+      { key: 'colE', header: ['epsilon'], fallbackRatio: 0.65 },
+      { key: 'colF', header: ['zeta'], fallbackRatio: 0.80 },
+      { key: 'colG', header: ['eta'], fallbackRatio: 0.90 },
+    ];
+    const SYNTH_CX = {
+      colA: 100, colB: 250, colC: 400, colD: 550, colE: 700, colF: 850, colG: 1000,
+    };
+
+    function makeWord(text, cx, cy = 100) {
+      const w = 60;
+      const h = 22;
+      return {
+        text,
+        vertices: [
+          { x: cx - w / 2, y: cy - h / 2 }, { x: cx + w / 2, y: cy - h / 2 },
+          { x: cx + w / 2, y: cy + h / 2 }, { x: cx - w / 2, y: cy + h / 2 },
+        ],
+        confidence: 0.9,
+      };
+    }
+
+    /** Builds a header-only page with only the given column keys' header
+     * words present; the rest are omitted so they're genuinely unmatched. */
+    function buildSynthPage(presentKeys, extraWords = []) {
+      const words = SYNTH_COLUMNS
+        .filter((def) => presentKeys.includes(def.key))
+        .map((def) => makeWord(def.header[0].toUpperCase(), SYNTH_CX[def.key]));
+      return [...words, ...extraWords];
+    }
+
+    function assertNoInvertedOrZeroWidthBands(columns) {
+      for (const c of columns) {
+        expect(c.x1).toBeGreaterThan(c.x0);
+      }
+      for (let i = 1; i < columns.length; i += 1) {
+        expect(columns[i].x0).toBeGreaterThanOrEqual(columns[i - 1].x1 - 0.001);
+      }
+    }
+
+    test('two adjacent unmatched columns between two matched ones never move a matched center', () => {
+      // colA,colB matched | colC,colD unmatched (the run) | colE,colF matched.
+      const defs = SYNTH_COLUMNS.slice(0, 6);
+      const words = buildSynthPage(['colA', 'colB', 'colE', 'colF']);
+      const { columns, warnings } = calibrateColumns(words, defs);
+      const byKey = Object.fromEntries(columns.map((c) => [c.key, c]));
+
+      expect(warnings).toContain('LAYOUT_UNCERTAIN');
+      expect(byKey.colA.matched).toBe(true);
+      expect(byKey.colB.matched).toBe(true);
+      expect(byKey.colC.matched).toBe(false);
+      expect(byKey.colD.matched).toBe(false);
+      expect(byKey.colE.matched).toBe(true);
+      expect(byKey.colF.matched).toBe(true);
+
+      // The shared boundary between two ADJACENT MATCHED columns is a pure
+      // function of their own declared header cx values (midpoint), with no
+      // dependency on anything in the unmatched run — so this independently
+      // proves neither center was moved, without re-deriving the
+      // redistribution math the implementation itself uses.
+      expect(byKey.colA.x1).toBeCloseTo((SYNTH_CX.colA + SYNTH_CX.colB) / 2, 6);
+      expect(byKey.colB.x0).toBeCloseTo((SYNTH_CX.colA + SYNTH_CX.colB) / 2, 6);
+      expect(byKey.colE.x1).toBeCloseTo((SYNTH_CX.colE + SYNTH_CX.colF) / 2, 6);
+      expect(byKey.colF.x0).toBeCloseTo((SYNTH_CX.colE + SYNTH_CX.colF) / 2, 6);
+
+      assertNoInvertedOrZeroWidthBands(columns);
+    });
+
+    test('three adjacent unmatched columns never move a matched center', () => {
+      // colA,colB matched | colC,colD,colE unmatched (the run) | colF,colG matched.
+      const defs = SYNTH_COLUMNS;
+      const words = buildSynthPage(['colA', 'colB', 'colF', 'colG']);
+      const { columns, warnings } = calibrateColumns(words, defs);
+      const byKey = Object.fromEntries(columns.map((c) => [c.key, c]));
+
+      expect(warnings).toContain('LAYOUT_UNCERTAIN');
+      expect(byKey.colA.matched).toBe(true);
+      expect(byKey.colB.matched).toBe(true);
+      expect(byKey.colC.matched).toBe(false);
+      expect(byKey.colD.matched).toBe(false);
+      expect(byKey.colE.matched).toBe(false);
+      expect(byKey.colF.matched).toBe(true);
+      expect(byKey.colG.matched).toBe(true);
+
+      expect(byKey.colA.x1).toBeCloseTo((SYNTH_CX.colA + SYNTH_CX.colB) / 2, 6);
+      expect(byKey.colB.x0).toBeCloseTo((SYNTH_CX.colA + SYNTH_CX.colB) / 2, 6);
+      expect(byKey.colF.x1).toBeCloseTo((SYNTH_CX.colF + SYNTH_CX.colG) / 2, 6);
+      expect(byKey.colG.x0).toBeCloseTo((SYNTH_CX.colF + SYNTH_CX.colG) / 2, 6);
+
+      assertNoInvertedOrZeroWidthBands(columns);
+    });
+
+    test('the first column unmatched never moves the matched columns after it', () => {
+      // colA unmatched (leftmost) | colB,colC matched.
+      const defs = SYNTH_COLUMNS.slice(0, 3);
+      const words = buildSynthPage(['colB', 'colC']);
+      const { columns, warnings } = calibrateColumns(words, defs);
+      const byKey = Object.fromEntries(columns.map((c) => [c.key, c]));
+
+      expect(warnings).toContain('LAYOUT_UNCERTAIN');
+      expect(byKey.colA.matched).toBe(false);
+      expect(byKey.colB.matched).toBe(true);
+      expect(byKey.colC.matched).toBe(true);
+
+      expect(byKey.colB.x1).toBeCloseTo((SYNTH_CX.colB + SYNTH_CX.colC) / 2, 6);
+      expect(byKey.colC.x0).toBeCloseTo((SYNTH_CX.colB + SYNTH_CX.colC) / 2, 6);
+
+      assertNoInvertedOrZeroWidthBands(columns);
+    });
+
+    test('the last column unmatched never moves the matched columns before it', () => {
+      // colA,colB matched | colC unmatched (rightmost).
+      const defs = SYNTH_COLUMNS.slice(0, 3);
+      const words = buildSynthPage(['colA', 'colB']);
+      const { columns, warnings } = calibrateColumns(words, defs);
+      const byKey = Object.fromEntries(columns.map((c) => [c.key, c]));
+
+      expect(warnings).toContain('LAYOUT_UNCERTAIN');
+      expect(byKey.colA.matched).toBe(true);
+      expect(byKey.colB.matched).toBe(true);
+      expect(byKey.colC.matched).toBe(false);
+
+      expect(byKey.colA.x1).toBeCloseTo((SYNTH_CX.colA + SYNTH_CX.colB) / 2, 6);
+      expect(byKey.colB.x0).toBeCloseTo((SYNTH_CX.colA + SYNTH_CX.colB) / 2, 6);
+
+      assertNoInvertedOrZeroWidthBands(columns);
+    });
+
+    test('all columns unmatched still produces valid, ascending, non-degenerate bands', () => {
+      const defs = SYNTH_COLUMNS.slice(0, 4);
+      // No header words present at all; filler words (matching no column
+      // token) establish a page width for calibrateColumns to work with.
+      const filler = [makeWord('FILLER', 50, 400), makeWord('FILLER', 1200, 400)];
+      const words = buildSynthPage([], filler);
+      const { columns, warnings } = calibrateColumns(words, defs);
+
+      expect(warnings).toContain('LAYOUT_UNCERTAIN');
+      expect(columns.every((c) => !c.matched)).toBe(true);
+      assertNoInvertedOrZeroWidthBands(columns);
+    });
+  });
 });
