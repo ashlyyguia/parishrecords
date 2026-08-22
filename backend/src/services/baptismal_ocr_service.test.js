@@ -22,6 +22,7 @@ describe('resolveVisionCredentials', () => {
   test('throws VISION_AUTH on unparseable JSON', () => {
     try {
       resolveVisionCredentials({ GOOGLE_CLOUD_VISION_CREDENTIALS_JSON: 'not json' });
+      throw new Error('should have thrown');
     } catch (e) {
       expect(e.code).toBe('VISION_AUTH');
     }
@@ -78,6 +79,7 @@ describe('recognizeWords', () => {
     const client = { documentTextDetection: async () => { const e = new Error('quota'); e.code = 8; throw e; } };
     try {
       await recognizeWords(Buffer.from('x'), { client });
+      throw new Error('should have thrown');
     } catch (e) {
       expect(e.code).toBe('VISION_QUOTA');
     }
@@ -87,6 +89,7 @@ describe('recognizeWords', () => {
     const client = { documentTextDetection: async () => { const e = new Error('denied'); e.code = 7; throw e; } };
     try {
       await recognizeWords(Buffer.from('x'), { client });
+      throw new Error('should have thrown');
     } catch (e) {
       expect(e.code).toBe('VISION_AUTH');
     }
@@ -96,8 +99,65 @@ describe('recognizeWords', () => {
     const client = { documentTextDetection: async () => { throw new Error('socket hang up'); } };
     try {
       await recognizeWords(Buffer.from('x'), { client });
+      throw new Error('should have thrown');
     } catch (e) {
       expect(e.code).toBe('VISION_UNAVAILABLE');
     }
+  });
+});
+
+describe('defaultClient (production Vision client, lazily required)', () => {
+  const env = { GOOGLE_CLOUD_VISION_CREDENTIALS_JSON: '{"project_id":"vision-proj"}' };
+
+  afterEach(() => {
+    jest.dontMock('@google-cloud/vision');
+    jest.resetModules();
+  });
+
+  test('constructs ImageAnnotatorClient with the resolved credentials on first use', async () => {
+    jest.resetModules();
+    const documentTextDetection = jest
+      .fn()
+      .mockResolvedValue([{ fullTextAnnotation: { text: 'X', pages: [] } }]);
+    jest.doMock('@google-cloud/vision', () => ({
+      ImageAnnotatorClient: jest.fn().mockImplementation(() => ({ documentTextDetection })),
+    }));
+
+    const vision = require('@google-cloud/vision');
+    const { recognizeWords: recognizeWordsIsolated } = require('./baptismal_ocr_service');
+
+    // No text annotation with words survives normalization, so this still
+    // rejects (NO_TEXT_FOUND) — irrelevant here; we only assert on how the
+    // client was constructed.
+    await expect(recognizeWordsIsolated(Buffer.from('x'), { env })).rejects.toMatchObject({
+      code: 'NO_TEXT_FOUND',
+    });
+
+    expect(vision.ImageAnnotatorClient).toHaveBeenCalledTimes(1);
+    expect(vision.ImageAnnotatorClient).toHaveBeenCalledWith({
+      credentials: { project_id: 'vision-proj' },
+    });
+  });
+
+  test('reuses the cached client on a second call instead of constructing again', async () => {
+    jest.resetModules();
+    const documentTextDetection = jest
+      .fn()
+      .mockResolvedValue([{ fullTextAnnotation: { text: 'X', pages: [] } }]);
+    jest.doMock('@google-cloud/vision', () => ({
+      ImageAnnotatorClient: jest.fn().mockImplementation(() => ({ documentTextDetection })),
+    }));
+
+    const vision = require('@google-cloud/vision');
+    const { recognizeWords: recognizeWordsIsolated } = require('./baptismal_ocr_service');
+
+    await expect(recognizeWordsIsolated(Buffer.from('x'), { env })).rejects.toMatchObject({
+      code: 'NO_TEXT_FOUND',
+    });
+    await expect(recognizeWordsIsolated(Buffer.from('x'), { env })).rejects.toMatchObject({
+      code: 'NO_TEXT_FOUND',
+    });
+
+    expect(vision.ImageAnnotatorClient).toHaveBeenCalledTimes(1);
   });
 });
