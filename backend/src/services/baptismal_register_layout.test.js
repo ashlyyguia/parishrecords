@@ -1,4 +1,6 @@
-const { boxOf, normalizeOrientation, splitSpread } = require('./baptismal_register_layout');
+const {
+  boxOf, normalizeOrientation, splitSpread, calibrateColumns, LEFT_COLUMNS, RIGHT_COLUMNS,
+} = require('./baptismal_register_layout');
 const { buildRegisterFixture, GUTTER_X0, GUTTER_X1 } = require('../../test/helpers/register_fixture');
 
 describe('boxOf', () => {
@@ -129,5 +131,65 @@ describe('splitSpread', () => {
     const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 0 }).words);
     const stripped = words.filter((w) => w.text !== 'Baptismal' && w.text !== 'Register');
     expect(splitSpread(stripped).confirmed).toBe(false);
+  });
+});
+
+describe('calibrateColumns', () => {
+  const pages = () => {
+    const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 0 }).words);
+    return splitSpread(words);
+  };
+
+  test('matches every left-page header', () => {
+    const { columns, warnings } = calibrateColumns(pages().left, LEFT_COLUMNS);
+    expect(columns.map((c) => c.key)).toEqual([
+      'lineNo', 'nameOfChild', 'placeAndBirthDate', 'legitimacy', 'parents',
+    ]);
+    expect(columns.every((c) => c.matched)).toBe(true);
+    expect(warnings).toEqual([]);
+  });
+
+  test('matches every right-page header', () => {
+    const { columns, warnings } = calibrateColumns(pages().right, RIGHT_COLUMNS);
+    expect(columns.map((c) => c.key)).toEqual([
+      'residentsOf', 'dateOfBaptism', 'minister', 'sponsors', 'observations',
+    ]);
+    expect(columns.every((c) => c.matched)).toBe(true);
+    expect(warnings).toEqual([]);
+  });
+
+  test('produces bands in ascending, non-overlapping order', () => {
+    const { columns } = calibrateColumns(pages().left, LEFT_COLUMNS);
+    for (let i = 1; i < columns.length; i += 1) {
+      expect(columns[i].x0).toBeGreaterThanOrEqual(columns[i - 1].x1 - 0.001);
+    }
+  });
+
+  test('falls back and warns when a header is unreadable', () => {
+    const { words } = normalizeOrientation(
+      buildRegisterFixture({ rotation: 0, omitHeaders: ['L or ILL'] }).words,
+    );
+    const { columns, warnings } = calibrateColumns(splitSpread(words).left, LEFT_COLUMNS);
+    expect(warnings).toContain('LAYOUT_UNCERTAIN');
+    expect(columns.find((c) => c.key === 'legitimacy').matched).toBe(false);
+    expect(columns).toHaveLength(5);
+  });
+
+  test('warns when no header matches at all', () => {
+    const { warnings } = calibrateColumns([], LEFT_COLUMNS);
+    expect(warnings).toContain('LAYOUT_UNCERTAIN');
+  });
+
+  // Regression: matching on 'name' hits both "NAME OF CHILD" and "NAME OF
+  // PARENTS", averaging them into a center over the birth-date column.
+  test('does not let the parents header drag the child-name column right', () => {
+    const { columns } = calibrateColumns(pages().left, LEFT_COLUMNS);
+    const name = columns.find((c) => c.key === 'nameOfChild');
+    const place = columns.find((c) => c.key === 'placeAndBirthDate');
+    expect(name.x1).toBeLessThanOrEqual(place.x0 + 0.001);
+    // The child's given name sits at x=160 in the fixture; it must land in the
+    // name column, not in lineNo or place.
+    expect(160).toBeGreaterThanOrEqual(name.x0);
+    expect(160).toBeLessThan(name.x1);
   });
 });

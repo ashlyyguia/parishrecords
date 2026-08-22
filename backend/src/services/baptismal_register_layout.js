@@ -150,4 +150,133 @@ function splitSpread(words) {
   return { gutterX: bestX, left, right, confirmed };
 }
 
-module.exports = { boxOf, wordAngle, normalizeOrientation, splitSpread };
+/**
+ * Column descriptors. `header` tokens are matched case-insensitively against
+ * PRINTED header words; `fallbackRatio` is the column center as a fraction of
+ * page width, used only when the header can't be read.
+ */
+// Tokens must be DISTINCTIVE, not merely present in the header. 'name' would
+// match both "NAME OF CHILD" and "NAME OF PARENTS", averaging the two into a
+// center sitting over the birth-date column. Match on the token unique to each
+// header instead.
+const LEFT_COLUMNS = [
+  { key: 'lineNo',            header: ['no'],                          fallbackRatio: 0.03 },
+  { key: 'nameOfChild',       header: ['child'],                       fallbackRatio: 0.20 },
+  { key: 'placeAndBirthDate', header: ['place', 'birth'],              fallbackRatio: 0.48 },
+  { key: 'legitimacy',        header: ['ill'],                         fallbackRatio: 0.72 },
+  { key: 'parents',           header: ['parents'],                     fallbackRatio: 0.88 },
+];
+
+const RIGHT_COLUMNS = [
+  { key: 'residentsOf',   header: ['residents'],   fallbackRatio: 0.10 },
+  { key: 'dateOfBaptism', header: ['baptism'],     fallbackRatio: 0.30 },
+  { key: 'minister',      header: ['minister'],    fallbackRatio: 0.50 },
+  { key: 'sponsors',      header: ['sponsors'],    fallbackRatio: 0.72 },
+  { key: 'observations',  header: ['observations'],fallbackRatio: 0.92 },
+];
+
+const HEADER_BAND_RATIO = 0.25; // fallback: headers live in the top quarter of the page
+
+/**
+ * Locates the header band's lower boundary by finding the widest vertical
+ * gap between rows of words on the page (same gap-sweep technique
+ * `splitSpread` uses on the x-axis for the gutter).
+ *
+ * This is more robust than a fixed top-of-page ratio: a printed page title
+ * (e.g. "Baptismal"/"Register") sitting above the column headers pulls the
+ * page's minY well above the header row, which would otherwise shrink a
+ * ratio-based band below the header row itself and cause every header to go
+ * unmatched. The gap between the header row and the first handwritten data
+ * row is reliably the widest gap near the top of the page, so sweeping for
+ * it finds the header/data boundary regardless of what sits above it.
+ * Falls back to the fixed ratio when no clear gap exists (e.g. too few
+ * words to form distinct rows).
+ */
+function findHeaderBandBoundary(boxes, minY, maxY) {
+  const spans = boxes.map((b) => [b.y0, b.y1]).sort((a, b) => a[0] - b[0]);
+
+  let bestGap = 0;
+  let bestY = null;
+  let cursor = spans.length ? spans[0][1] : minY;
+
+  for (const [y0, y1] of spans) {
+    if (y0 > cursor) {
+      const gap = y0 - cursor;
+      if (gap > bestGap) {
+        bestGap = gap;
+        bestY = (cursor + y0) / 2;
+      }
+    }
+    if (y1 > cursor) cursor = y1;
+  }
+
+  return bestY !== null ? bestY : minY + (maxY - minY) * HEADER_BAND_RATIO;
+}
+
+/**
+ * Finds the x-center of a column header by matching its tokens among the
+ * words in the page's header band. Returns null when unmatched.
+ */
+function findHeaderCenter(pageWords, tokens, band) {
+  const hits = [];
+  for (const w of pageWords) {
+    const b = boxOf(w);
+    if (b.cy > band.headerMaxY) continue;
+    const text = w.text.toLowerCase().replace(/[^a-z]/g, '');
+    if (!text) continue;
+    if (tokens.some((t) => text === t || text.startsWith(t))) hits.push(b.cx);
+  }
+  if (hits.length === 0) return null;
+  return hits.reduce((a, b) => a + b, 0) / hits.length;
+}
+
+/**
+ * Calibrates column x-bands for one page.
+ * @returns {{columns: Array<{key,x0,x1,matched}>, warnings: string[]}}
+ */
+function calibrateColumns(pageWords, columnDefs) {
+  const warnings = [];
+  if (!pageWords || pageWords.length === 0) {
+    return { columns: [], warnings: ['LAYOUT_UNCERTAIN'] };
+  }
+
+  const boxes = pageWords.map(boxOf);
+  const minX = Math.min(...boxes.map((b) => b.x0));
+  const maxX = Math.max(...boxes.map((b) => b.x1));
+  const minY = Math.min(...boxes.map((b) => b.y0));
+  const maxY = Math.max(...boxes.map((b) => b.y1));
+  const width = maxX - minX;
+  const band = { headerMaxY: findHeaderBandBoundary(boxes, minY, maxY) };
+
+  const centers = columnDefs.map((def) => {
+    const found = findHeaderCenter(pageWords, def.header, band);
+    return {
+      key: def.key,
+      center: found === null ? minX + width * def.fallbackRatio : found,
+      matched: found !== null,
+    };
+  });
+
+  if (centers.some((c) => !c.matched)) warnings.push('LAYOUT_UNCERTAIN');
+
+  // Bands are the midpoints between adjacent column centers.
+  const columns = centers.map((c, i) => {
+    const prev = centers[i - 1];
+    const next = centers[i + 1];
+    const x0 = prev ? (prev.center + c.center) / 2 : minX - 1;
+    const x1 = next ? (c.center + next.center) / 2 : maxX + 1;
+    return { key: c.key, x0, x1, matched: c.matched };
+  });
+
+  return { columns, warnings };
+}
+
+module.exports = {
+  boxOf,
+  wordAngle,
+  normalizeOrientation,
+  splitSpread,
+  LEFT_COLUMNS,
+  RIGHT_COLUMNS,
+  calibrateColumns,
+};
