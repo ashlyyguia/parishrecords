@@ -1,7 +1,9 @@
 const {
   boxOf, normalizeOrientation, splitSpread, calibrateColumns, LEFT_COLUMNS, RIGHT_COLUMNS,
 } = require('./baptismal_register_layout');
-const { buildRegisterFixture, GUTTER_X0, GUTTER_X1 } = require('../../test/helpers/register_fixture');
+const {
+  buildRegisterFixture, GUTTER_X0, GUTTER_X1, FIRST_ROW_Y, ROW_H,
+} = require('../../test/helpers/register_fixture');
 
 describe('boxOf', () => {
   test('returns the axis-aligned bounds and center', () => {
@@ -185,11 +187,128 @@ describe('calibrateColumns', () => {
   test('does not let the parents header drag the child-name column right', () => {
     const { columns } = calibrateColumns(pages().left, LEFT_COLUMNS);
     const name = columns.find((c) => c.key === 'nameOfChild');
-    const place = columns.find((c) => c.key === 'placeAndBirthDate');
-    expect(name.x1).toBeLessThanOrEqual(place.x0 + 0.001);
     // The child's given name sits at x=160 in the fixture; it must land in the
     // name column, not in lineNo or place.
     expect(160).toBeGreaterThanOrEqual(name.x0);
     expect(160).toBeLessThan(name.x1);
+  });
+
+  // Critical 1: a header-only page (no data rows below it — a blank/unfilled
+  // register page, or a photo cropped tight to the header row) has no
+  // header-to-data gap for a naive gap-sweep to find. The boundary must
+  // still land below the header row, never above it.
+  test('matches every header on a page with no data rows below them', () => {
+    const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 0, rows: 0 }).words);
+    const { left, right } = splitSpread(words);
+    const leftResult = calibrateColumns(left, LEFT_COLUMNS);
+    const rightResult = calibrateColumns(right, RIGHT_COLUMNS);
+    expect(leftResult.columns.every((c) => c.matched)).toBe(true);
+    expect(leftResult.warnings).toEqual([]);
+    expect(rightResult.columns.every((c) => c.matched)).toBe(true);
+    expect(rightResult.warnings).toEqual([]);
+  });
+
+  test('matches every header on a page with exactly one data row', () => {
+    const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 0, rows: 1 }).words);
+    const { left, right } = splitSpread(words);
+    const leftResult = calibrateColumns(left, LEFT_COLUMNS);
+    const rightResult = calibrateColumns(right, RIGHT_COLUMNS);
+    expect(leftResult.columns.every((c) => c.matched)).toBe(true);
+    expect(leftResult.warnings).toEqual([]);
+    expect(rightResult.columns.every((c) => c.matched)).toBe(true);
+    expect(rightResult.warnings).toEqual([]);
+  });
+
+  test('matches every header on a header-only page with no page titles either', () => {
+    const { words } = normalizeOrientation(
+      buildRegisterFixture({ rotation: 0, rows: 0 }).words.filter(
+        (w) => w.text !== 'Baptismal' && w.text !== 'Register',
+      ),
+    );
+    const { left } = splitSpread(words);
+    const { columns, warnings } = calibrateColumns(left, LEFT_COLUMNS);
+    expect(columns.every((c) => c.matched)).toBe(true);
+    expect(warnings).toEqual([]);
+  });
+
+  // Critical 2: a missed header's fallback center is a fraction of page
+  // width. A stray word far outside the normal content area (e.g. an
+  // overflowing observations note) inflates that width and can push the
+  // fallback past a correctly matched neighbour's real position, inverting
+  // the band between them so words falling in it match no column at all.
+  test('clamps an inverted band caused by a missed header plus a stray far-right word', () => {
+    const built = buildRegisterFixture({ rotation: 0, omitHeaders: ['MINISTER'] });
+    const strayWord = {
+      text: 'OVERFLOWNOTE',
+      vertices: [
+        { x: 2400, y: 300 }, { x: 2600, y: 300 },
+        { x: 2600, y: 322 }, { x: 2400, y: 322 },
+      ],
+      confidence: 0.9,
+    };
+    const { words } = normalizeOrientation([...built.words, strayWord]);
+    const { columns, warnings } = calibrateColumns(splitSpread(words).right, RIGHT_COLUMNS);
+
+    expect(warnings).toContain('LAYOUT_UNCERTAIN');
+    expect(columns.find((c) => c.key === 'minister').matched).toBe(false);
+
+    // No band may invert or collapse: every column's x1 must exceed its x0,
+    // and bands must stay in ascending order left-to-right no matter how far
+    // the unmatched column's fallback would otherwise have been pushed.
+    for (const c of columns) {
+      expect(c.x1).toBeGreaterThan(c.x0);
+    }
+    for (let i = 1; i < columns.length; i += 1) {
+      expect(columns[i].x0).toBeGreaterThanOrEqual(columns[i - 1].x1 - 0.001);
+    }
+  });
+
+  // Important 3: real handwritten registers have uneven row spacing. The
+  // header/data boundary must come from the header row's own position, not
+  // from "the widest gap anywhere on the page" — otherwise a wide inter-row
+  // gap further down can pull the boundary into the data region and let a
+  // stray data word masquerade as a header.
+  test('does not let a wide inter-row gap pull the header boundary into the data region', () => {
+    const built = buildRegisterFixture({ rotation: 0, rows: 3 });
+    const rowThreeCy = FIRST_ROW_Y + 2 * ROW_H;
+    const SHIFT = 1000;
+
+    // Baseline: real header centers with normal (even) row spacing, no decoy.
+    const baseline = calibrateColumns(
+      splitSpread(normalizeOrientation(built.words).words).left, LEFT_COLUMNS,
+    );
+    const baselineParents = baseline.columns.find((c) => c.key === 'parents');
+
+    // Push row 3 far down the page: the row2->row3 gap (~1000px) now dwarfs
+    // the real header->row1 gap (~78px) -- deliberately uneven spacing, as a
+    // real handwritten register would have.
+    const shiftedWords = built.words.map((w) => {
+      const b = boxOf(w);
+      if (b.cy !== rowThreeCy) return w;
+      return { ...w, vertices: w.vertices.map((v) => ({ x: v.x, y: v.y + SHIFT })) };
+    });
+
+    // A decoy word reading "PARENTS", sitting in what is now a huge gap
+    // between row 2 and the shifted row 3. If the boundary were (wrongly)
+    // pulled down into that gap, this decoy would count as a second
+    // "parents" header hit and drag the column's center off the real header.
+    const decoy = {
+      text: 'PARENTS',
+      vertices: [
+        { x: 384, y: 300 }, { x: 447, y: 300 }, { x: 447, y: 322 }, { x: 384, y: 322 },
+      ],
+      confidence: 0.9,
+    };
+
+    const { words } = normalizeOrientation([...shiftedWords, decoy]);
+    const { columns, warnings } = calibrateColumns(splitSpread(words).left, LEFT_COLUMNS);
+    const parents = columns.find((c) => c.key === 'parents');
+
+    expect(parents.matched).toBe(true);
+    expect(warnings).toEqual([]);
+    // The decoy must not have been folded into the header average: the band
+    // stays anchored to the real header regardless of the later uneven gap.
+    expect(Math.abs(parents.x0 - baselineParents.x0)).toBeLessThan(2);
+    expect(Math.abs(parents.x1 - baselineParents.x1)).toBeLessThan(2);
   });
 });

@@ -175,42 +175,99 @@ const RIGHT_COLUMNS = [
   { key: 'observations',  header: ['observations'],fallbackRatio: 0.92 },
 ];
 
-const HEADER_BAND_RATIO = 0.25; // fallback: headers live in the top quarter of the page
-
 /**
- * Locates the header band's lower boundary by finding the widest vertical
- * gap between rows of words on the page (same gap-sweep technique
- * `splitSpread` uses on the x-axis for the gutter).
+ * Locates the header band's lower boundary.
  *
- * This is more robust than a fixed top-of-page ratio: a printed page title
- * (e.g. "Baptismal"/"Register") sitting above the column headers pulls the
- * page's minY well above the header row, which would otherwise shrink a
- * ratio-based band below the header row itself and cause every header to go
- * unmatched. The gap between the header row and the first handwritten data
- * row is reliably the widest gap near the top of the page, so sweeping for
- * it finds the header/data boundary regardless of what sits above it.
- * Falls back to the fixed ratio when no clear gap exists (e.g. too few
- * words to form distinct rows).
+ * Anchored, two-step gap sweep (same gap-sweep technique `splitSpread` uses
+ * on the x-axis for the gutter, but constrained to the region it actually
+ * applies to):
+ *
+ *  1. Find the header row's own bottom edge by matching column-header tokens
+ *     directly against page words, unrestricted by position, then taking the
+ *     y-level with the most matches clustered together (headers are printed
+ *     on one line, so the real header row wins the vote over any lone
+ *     stray/decoy word that happens to share text with a header token). This
+ *     is the one thing we know for certain regardless of what else is
+ *     printed on the page (a title above the headers, a page with no data
+ *     rows at all, etc.) — if header tokens matched, real header text is
+ *     sitting right there.
+ *  2. Sweep forward from that anchor for the FIRST gap between rows of
+ *     words (not the widest gap on the page). That first gap is the
+ *     header-row/data-row boundary by construction, so it can't be fooled by
+ *     an uneven inter-row gap further down a real handwritten register.
+ *
+ * Two failure modes this replaces:
+ *  - A fixed top-of-page ratio (the original bug): a title sitting above the
+ *    header row pulls the page's minY up, shrinking the ratio-based band
+ *    below the header row itself and excluding every header.
+ *  - A "widest gap anywhere" sweep: with no data rows below the header (a
+ *    blank page, or one cropped tight to the header) there's no header/data
+ *    gap to find, so it fell back to the same broken ratio above. And with
+ *    uneven row spacing, a wide inter-row gap further down the page could
+ *    beat the real (possibly narrower) header/data gap and pull the
+ *    boundary into the data region.
+ *
+ * If no header token matches anywhere on the page, there is nothing to
+ * anchor to and every column will end up unmatched regardless of where the
+ * boundary sits — return `maxY` (no restriction at all) rather than guess,
+ * since an overly tight guess could only make things worse.
  */
-function findHeaderBandBoundary(boxes, minY, maxY) {
-  const spans = boxes.map((b) => [b.y0, b.y1]).sort((a, b) => a[0] - b[0]);
+function findHeaderBandBoundary(pageWords, columnDefs, maxY) {
+  const boxes = pageWords.map(boxOf);
 
-  let bestGap = 0;
+  const hitY1s = [];
+  pageWords.forEach((w, i) => {
+    const text = w.text.toLowerCase().replace(/[^a-z]/g, '');
+    if (!text) return;
+    const isHeaderToken = columnDefs.some(
+      (def) => def.header.some((t) => text === t || text.startsWith(t)),
+    );
+    if (isHeaderToken) hitY1s.push(boxes[i].y1);
+  });
+
+  if (hitY1s.length === 0) return maxY;
+
+  // Printed headers all sit on the same line, so the real header row is
+  // whichever y-level has the MOST header-token hits clustered together. A
+  // single stray word that happens to share text with a header token (e.g.
+  // a coincidental OCR misread deeper on the page) is a cluster of size one
+  // and loses the vote to the real header row — using the single bottommost
+  // (or topmost) hit instead would let exactly that kind of outlier drag the
+  // anchor to the wrong place.
+  const TOL = 8;
+  hitY1s.sort((a, b) => a - b);
+  let headerRowBottom = hitY1s[0];
+  let bestClusterSize = 1;
+  let clusterStart = 0;
+  for (let i = 1; i <= hitY1s.length; i += 1) {
+    if (i === hitY1s.length || hitY1s[i] - hitY1s[i - 1] > TOL) {
+      const size = i - clusterStart;
+      if (size > bestClusterSize) {
+        bestClusterSize = size;
+        headerRowBottom = hitY1s[i - 1];
+      }
+      clusterStart = i;
+    }
+  }
+
+  const spans = boxes
+    .map((b) => [b.y0, b.y1])
+    .filter(([, y1]) => y1 > headerRowBottom - 0.001)
+    .sort((a, b) => a[0] - b[0]);
+
+  let cursor = headerRowBottom;
   let bestY = null;
-  let cursor = spans.length ? spans[0][1] : minY;
-
   for (const [y0, y1] of spans) {
     if (y0 > cursor) {
-      const gap = y0 - cursor;
-      if (gap > bestGap) {
-        bestGap = gap;
-        bestY = (cursor + y0) / 2;
-      }
+      bestY = (cursor + y0) / 2;
+      break; // first gap after the header row IS the header/data boundary
     }
     if (y1 > cursor) cursor = y1;
   }
 
-  return bestY !== null ? bestY : minY + (maxY - minY) * HEADER_BAND_RATIO;
+  // No row found below the headers at all: nothing to exclude, so the
+  // boundary can safely sit right at the header row's own bottom edge.
+  return bestY !== null ? bestY : headerRowBottom;
 }
 
 /**
@@ -243,10 +300,9 @@ function calibrateColumns(pageWords, columnDefs) {
   const boxes = pageWords.map(boxOf);
   const minX = Math.min(...boxes.map((b) => b.x0));
   const maxX = Math.max(...boxes.map((b) => b.x1));
-  const minY = Math.min(...boxes.map((b) => b.y0));
   const maxY = Math.max(...boxes.map((b) => b.y1));
   const width = maxX - minX;
-  const band = { headerMaxY: findHeaderBandBoundary(boxes, minY, maxY) };
+  const band = { headerMaxY: findHeaderBandBoundary(pageWords, columnDefs, maxY) };
 
   const centers = columnDefs.map((def) => {
     const found = findHeaderCenter(pageWords, def.header, band);
@@ -258,6 +314,55 @@ function calibrateColumns(pageWords, columnDefs) {
   });
 
   if (centers.some((c) => !c.matched)) warnings.push('LAYOUT_UNCERTAIN');
+
+  // Guard against inverted or zero-width bands. `columnDefs` is declared in
+  // true left-to-right physical order, so matched centers (real header text)
+  // are trustworthy anchors, but an unmatched column's fallback is derived
+  // from page width alone — a stray outlier word (e.g. an overflowing note)
+  // can inflate that width enough to push a fallback center past a correctly
+  // matched neighbour, inverting the band between them. An inverted or
+  // zero-width band means words that belong there match no column and
+  // vanish silently, which is worse than a merely-imprecise fallback
+  // position. Clamping (rather than sorting columns by position, or
+  // dropping the column) is the deliberate choice here: sorting could swap
+  // which KEY a band gets assigned to, silently mis-labeling a column
+  // instead of just mis-sizing it; dropping the column removes its band
+  // entirely, which resurrects the exact "words have nowhere to go and
+  // vanish" failure this guard exists to prevent. Clamping keeps every
+  // column present with a valid, ordered, non-zero-width band while leaving
+  // matched (trustworthy) centers untouched.
+  const MIN_GAP = 1;
+
+  let leftAnchor = null;
+  const leftBounds = centers.map((c) => {
+    if (c.matched) leftAnchor = c.center;
+    return leftAnchor;
+  });
+
+  let rightAnchor = null;
+  const rightBounds = new Array(centers.length);
+  for (let i = centers.length - 1; i >= 0; i -= 1) {
+    if (centers[i].matched) rightAnchor = centers[i].center;
+    rightBounds[i] = rightAnchor;
+  }
+
+  centers.forEach((c, i) => {
+    if (c.matched) return;
+    const lo = leftBounds[i] !== null ? leftBounds[i] + MIN_GAP : -Infinity;
+    const hi = rightBounds[i] !== null ? rightBounds[i] - MIN_GAP : Infinity;
+    c.center = lo > hi ? (lo + hi) / 2 : Math.min(Math.max(c.center, lo), hi);
+  });
+
+  // Final safety net: guarantees strictly ascending centers even with
+  // multiple adjacent unmatched columns (where the neighbour-anchored clamp
+  // above only bounds each one independently against its nearest MATCHED
+  // neighbour, not against each other). Only ever raises a value, and only
+  // touches columns the clamp above already left needing it.
+  let floor = -Infinity;
+  centers.forEach((c) => {
+    if (c.center < floor + MIN_GAP) c.center = floor + MIN_GAP;
+    floor = c.center;
+  });
 
   // Bands are the midpoints between adjacent column centers.
   const columns = centers.map((c, i) => {
