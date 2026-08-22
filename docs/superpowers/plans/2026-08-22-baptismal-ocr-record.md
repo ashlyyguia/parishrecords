@@ -1795,9 +1795,11 @@ git commit -m "feat(ocr): add image validation and OCR preprocessing"
 **Interfaces:**
 - Consumes: `recognizeWords` (Task 1), `extractBaptismalRows` (Task 7), `sniffImageType` / `preprocessForOcr` (Task 8).
 - Produces: `POST /api/ocr/baptismal/scan`. Body `{ scanId: string, imageBase64: string }`. Responds `{ success: true, data: { scanId, rows, columns, rotation, gutterX, warnings } }`.
-- Exports `createBaptismalOcrRouter({ recognize, extract })` for injection in tests, plus a default router instance as `module.exports.router`.
+- Exports `createBaptismalOcrRouter({ recognize, extract, preprocess, verifyToken })` for injection in tests, plus a default router instance as `module.exports.router`.
 
-**Note on body size:** `server.js` sets a global `express.json({ limit: '10mb' })`. Base64 inflates a 10 MB image to ~13.4 MB, so this route mounts its **own** 20 MB JSON parser ahead of the global one.
+**Note on body size — read carefully, this is easy to get wrong.** `server.js:58` sets a global `express.json({ limit: '10mb' })` that runs *before every route mount*. Base64 inflates a 10 MB image to ~13.4 MB, so a valid scan would be rejected by that global parser with a generic Express 413 before this route's handler ever ran — and a router-level parser mounted at line ~91 would be dead code, because the global parser has already consumed (or rejected) the body.
+
+The route must therefore be mounted **before** `app.use(express.json({ limit: '10mb' }))`, with its own 20 MB parser. Mounting early also means it sits ahead of `app.use('/api', verifyFirebaseToken)`, so this router applies `verifyFirebaseToken` itself — injectable as `verifyToken` so tests can substitute a pass-through.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1813,8 +1815,9 @@ const b64 = (buf) => buf.toString('base64');
 
 function appWith(overrides = {}, role = 'admin') {
   const app = express();
-  app.use((req, _res, next) => { req.user = { uid: 'u1', role }; next(); });
   app.use('/api/ocr/baptismal', createBaptismalOcrRouter({
+    // Stand in for verifyFirebaseToken so tests need no Firebase.
+    verifyToken: (req, _res, next) => { req.user = { uid: 'u1', role }; next(); },
     recognize: async () => ({ words: [{ text: 'X', vertices: [], confidence: 1 }], fullText: 'X' }),
     extract: () => ({ rows: [{ index: 0, lineNo: '1', fields: {} }], rotation: 0, gutterX: 500, columns: { left: [], right: [] }, warnings: [] }),
     ...overrides,
@@ -1911,6 +1914,7 @@ Create `backend/src/routes/baptismal_ocr_firestore.js`:
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 
+const { verifyFirebaseToken } = require('../middleware/auth');
 const { recognizeWords } = require('../services/baptismal_ocr_service');
 const { extractBaptismalRows } = require('../services/baptismal_register_layout');
 const { sniffImageType, preprocessForOcr } = require('../services/baptismal_image_preprocess');
@@ -1949,14 +1953,18 @@ function createBaptismalOcrRouter(deps = {}) {
   const recognize = deps.recognize || recognizeWords;
   const extract = deps.extract || extractBaptismalRows;
   const preprocess = deps.preprocess || preprocessForOcr;
+  const verifyToken = deps.verifyToken || verifyFirebaseToken;
 
   const router = express.Router();
 
   // Base64 inflates a 10MB image to ~13.4MB, over the app-wide 10mb limit.
+  // This router is mounted BEFORE the global parser in server.js so this
+  // limit is the one that applies — see the mount step.
   router.use(express.json({ limit: '20mb' }));
 
   router.post(
     '/scan',
+    verifyToken,
     requireStaffOrAdmin,
     [body('scanId').isString().trim().notEmpty(), body('imageBase64').isString().notEmpty()],
     async (req, res) => {
@@ -2030,9 +2038,10 @@ module.exports = { createBaptismalOcrRouter, router: createBaptismalOcrRouter() 
 - [ ] **Step 4: Run tests**
 
 Run: `cd backend && npx jest src/routes/baptismal_ocr_firestore.test.js`
-Expected: PASS — 13 tests.
+Expected: PASS — 13 tests. (The two body-size tests in Step 5b are added after
+the mount and will fail until Step 5 is done — run them with the rest at Step 7.)
 
-- [ ] **Step 5: Mount the route**
+- [ ] **Step 5: Mount the route (ordering matters)**
 
 In `backend/src/server.js`, add beside the other route requires (after line 21):
 
@@ -2040,13 +2049,57 @@ In `backend/src/server.js`, add beside the other route requires (after line 21):
 const baptismalOcrRoutes = require('./routes/baptismal_ocr_firestore');
 ```
 
-and beside the other mounts (after the `app.use('/api/ocr', ocrRoutes);` line):
+Then mount it **immediately before** the global body parser at line 58 —
+i.e. between `app.use(limiter);` and `app.use(express.json({ limit: '10mb' }));`:
 
 ```js
+// Baptismal register OCR: mounted ahead of the global 10mb JSON parser
+// because a base64 register photo runs to ~13.4MB. This router brings its
+// own 20mb parser and its own verifyFirebaseToken.
 app.use('/api/ocr/baptismal', baptismalOcrRoutes.router);
+
+// Body parsing middleware
+app.use(express.json({ limit: '10mb' }));
 ```
 
-Mount it **before** `app.use('/api/ocr', ocrRoutes)` so the more specific path wins.
+Do **not** mount it down with the other `/api/*` routes — the global parser
+would reject a valid scan with a generic 413 before this handler ran, and the
+router's own parser would never execute.
+
+- [ ] **Step 5b: Prove the ordering with a test**
+
+Append to `backend/src/routes/baptismal_ocr_firestore.test.js`:
+
+```js
+describe('body size ordering', () => {
+  // Regression: mounted after server.js's global express.json({limit:'10mb'}),
+  // a valid ~13.4MB base64 scan dies with a generic Express 413 and never
+  // reaches our handler. The router must own a 20mb parser and be mounted
+  // ahead of the global one.
+  test('accepts a base64 body over 10MB', async () => {
+    // 8MB of image bytes -> ~10.9MB of base64, past the global 10mb limit.
+    const image = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+      Buffer.alloc(8 * 1024 * 1024, 1),
+    ]);
+    const res = await request(appWith()).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(image) });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  test('server.js mounts the router before the global JSON parser', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const mountAt = src.indexOf("app.use('/api/ocr/baptismal'");
+    const globalJsonAt = src.indexOf("express.json({ limit: '10mb' })");
+    expect(mountAt).toBeGreaterThan(-1);
+    expect(globalJsonAt).toBeGreaterThan(-1);
+    expect(mountAt).toBeLessThan(globalJsonAt);
+  });
+});
+```
 
 - [ ] **Step 6: Document the env vars**
 
@@ -4145,6 +4198,8 @@ git commit -m "fix(ocr): address verification findings"
 **Placeholder scan:** no TBD/TODO. Every code step carries real code. No "similar to Task N" back-references.
 
 **Type consistency checked:** the word shape `{text, vertices, confidence}` is produced by `recognizeWords` (Task 1) and consumed unchanged by `normalizeOrientation` (Task 2) through `extractBaptismalRows` (Task 7). The row shape `{index, lineNo, fields: {key: {value, confidence, inherited}}}` is produced by `joinPages`/`applyFillDown` (Task 7), serialized by the route (Task 9), and parsed by `BaptismalOcrScan.fromJson` (Task 10). `baptismalFieldKeys` (Task 10) is the key set used by the review table (Task 14), the notes map (Task 12), and the save path (Task 15). `RowIssue` (Task 13) is consumed by Tasks 14 and 15 with matching field names.
+
+**Second bug, caught in the pre-flight scan (already fixed above):** Task 9 originally mounted the scan route with the other `/api/*` routes and gave it a router-level `express.json({ limit: '20mb' })`. That parser would have been dead code — `server.js:58` installs a global 10 MB JSON parser that runs before every route mount, so a valid ~13.4 MB base64 register photo would have died with a generic Express 413 and never reached the handler. The route now mounts ahead of the global parser and carries its own `verifyFirebaseToken` (injectable for tests); two regression tests pin both the size behavior and the mount ordering.
 
 **Bug caught during self-review (already fixed above):** Task 4's column matcher originally used `['name', 'child']` for `nameOfChild`. Because the register has *two* headers containing "NAME" — `NAME OF CHILD` and `NAME OF PARENTS` — averaging both hits put the column center at x≈407 instead of 220, landing the child-name band on top of the birth-date column. Every extracted name would have been silently wrong. Fixed by matching only distinctive tokens and tightening fixture header spacing so matched-token averages track the ruled column; a regression test in Task 4 pins it.
 
