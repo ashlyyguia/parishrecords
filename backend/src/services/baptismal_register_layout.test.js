@@ -916,10 +916,15 @@ describe('detectRows', () => {
 
 /** Builds a single synthetic word with an explicit center, for adversarial
  * cell-boundary cases that the fixture's regular row/column geometry can't
- * express on its own. Mirrors register_fixture.js's internal `word()`. */
-function mkWord(text, cx, cy, confidence = 0.9) {
+ * express on its own. Mirrors register_fixture.js's internal `word()`, plus
+ * an optional explicit `height` (defaulting to the fixture's fixed 22px) so
+ * tests can construct words with genuinely different heights — the fixture's
+ * own `word()` hardcodes every word to 22px, which never exercises a cell
+ * whose two lines have different word heights (e.g. a tall capital line vs a
+ * small cursive line). */
+function mkWord(text, cx, cy, confidence = 0.9, height = 22) {
   const w = Math.max(24, text.length * 9);
-  const h = 22;
+  const h = height;
   const x0 = Math.round(cx - w / 2);
   const y0 = Math.round(cy - h / 2);
   return {
@@ -947,7 +952,7 @@ describe('assignCells', () => {
 
   test('places handwriting in the correct left-page columns', () => {
     const s = setup();
-    const cells = assignCells(s.left, s.leftCols, s.leftRows);
+    const { cells } = assignCells(s.left, s.leftCols, s.leftRows);
     expect(cells).toHaveLength(3);
     expect(cells[0].nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
     expect(cells[0].placeAndBirthDate.value).toBe('19 FEBRUARY 2001');
@@ -957,33 +962,61 @@ describe('assignCells', () => {
 
   test('places handwriting in the correct right-page columns', () => {
     const s = setup();
-    const cells = assignCells(s.right, s.rightCols, s.rightRows);
+    const { cells } = assignCells(s.right, s.rightCols, s.rightRows);
     expect(cells[0].dateOfBaptism.value).toBe('12 MAY 2016');
     expect(cells[0].minister.value).toBe('FR. PABLITO ARCAPA');
     expect(cells[2].dateOfBaptism.value).toBe('22 MAY 2016');
   });
 
+  // Every word in the fixture's confidence-averaging fixture used to share
+  // one value (0.4), which passes identically under mean, min, max, or
+  // "first word wins" — it never actually proved averaging. Two distinct
+  // confidences with a known mean rule that out.
   test('averages word confidence per cell', () => {
-    const { words } = normalizeOrientation(
-      buildRegisterFixture({ rows: 1, confidence: 0.4 }).words,
-    );
-    const { left } = splitSpread(words);
-    const cal = calibrateColumns(left, LEFT_COLUMNS);
-    const rows = detectRows(left, cal.columns, cal.headerMaxY).rows;
-    const cells = assignCells(left, cal.columns, rows);
-    expect(cells[0].nameOfChild.confidence).toBeCloseTo(0.4, 2);
+    const s = setup();
+    const col = s.leftCols.find((c) => c.key === 'nameOfChild');
+    const row = s.leftRows[0];
+    const cx = (col.x0 + col.x1) / 2;
+    const cy = (row.y0 + row.y1) / 2;
+    const words = [
+      mkWord('LOW', cx - 30, cy, 0.2),
+      mkWord('HIGH', cx + 30, cy, 0.8),
+    ];
+    const { cells } = assignCells(words, s.leftCols, s.leftRows);
+    expect(cells[0].nameOfChild.value).toBe('LOW HIGH');
+    expect(cells[0].nameOfChild.confidence).toBeCloseTo(0.5, 5);
   });
 
   test('leaves an unwritten column empty rather than guessing', () => {
     const s = setup();
-    const cells = assignCells(s.left, s.leftCols, s.leftRows);
+    const { cells } = assignCells(s.left, s.leftCols, s.leftRows);
     expect(cells[0].legitimacy.value).toBe('');
+    expect(cells[0].legitimacy.confidence).toBe(0);
+  });
+
+  // A genuinely empty cell ({value:'', confidence:0}) must stay
+  // distinguishable from a cell that WAS read but with zero confidence —
+  // downstream review treats "nothing here" differently from "something
+  // here, but don't trust it". Confidence alone can't tell them apart (both
+  // are 0); `value` is what distinguishes them.
+  test('a zero-confidence word in a written cell is distinguishable from an empty cell', () => {
+    const s = setup();
+    const col = s.leftCols.find((c) => c.key === 'legitimacy');
+    const row = s.leftRows[0];
+    const cx = (col.x0 + col.x1) / 2;
+    const cy = (row.y0 + row.y1) / 2;
+    const word = mkWord('N', cx, cy, 0);
+
+    const { cells } = assignCells([word], s.leftCols, s.leftRows);
+
+    expect(cells[0].legitimacy.value).toBe('N');
+    expect(cells[0].legitimacy.value).not.toBe('');
     expect(cells[0].legitimacy.confidence).toBe(0);
   });
 
   test('never assigns header words to a data row', () => {
     const s = setup();
-    const cells = assignCells(s.left, s.leftCols, s.leftRows);
+    const { cells } = assignCells(s.left, s.leftCols, s.leftRows);
     const all = cells.map((c) => Object.values(c).map((f) => f.value).join(' ')).join(' ');
     expect(all).not.toContain('CHILD');
     expect(all).not.toContain('PARENTS');
@@ -994,13 +1027,14 @@ describe('assignCells', () => {
   // cell in every row must come back empty rather than throwing.
   test('returns an all-empty grid when there are no words at all', () => {
     const s = setup();
-    const cells = assignCells([], s.leftCols, s.leftRows);
+    const { cells, dropped } = assignCells([], s.leftCols, s.leftRows);
     expect(cells).toHaveLength(s.leftRows.length);
     for (const row of cells) {
       for (const key of Object.keys(row)) {
         expect(row[key]).toEqual({ value: '', confidence: 0 });
       }
     }
+    expect(dropped).toBe(0);
   });
 
   // Edge case: a row band that calibration/detection produced but that has
@@ -1015,7 +1049,7 @@ describe('assignCells', () => {
       const b = boxOf(w);
       return !(b.cy >= row1.y0 && b.cy < row1.y1);
     });
-    const cells = assignCells(words, s.leftCols, s.leftRows);
+    const { cells } = assignCells(words, s.leftCols, s.leftRows);
     expect(cells).toHaveLength(3);
     for (const key of Object.keys(cells[1])) {
       expect(cells[1][key]).toEqual({ value: '', confidence: 0 });
@@ -1039,7 +1073,7 @@ describe('assignCells', () => {
     const cx = (col.x0 + col.x1) / 2;
     const boundaryWord = mkWord('ONBOUNDARY', cx, boundaryY);
 
-    const cells = assignCells([boundaryWord], s.leftCols, s.leftRows);
+    const { cells } = assignCells([boundaryWord], s.leftCols, s.leftRows);
 
     expect(cells[0].nameOfChild.value).toBe('');
     expect(cells[1].nameOfChild.value).toBe('ONBOUNDARY');
@@ -1054,7 +1088,7 @@ describe('assignCells', () => {
     const cy = (row.y0 + row.y1) / 2;
     const boundaryWord = mkWord('ONBOUNDARY', boundaryX, cy);
 
-    const cells = assignCells([boundaryWord], s.leftCols, s.leftRows);
+    const { cells } = assignCells([boundaryWord], s.leftCols, s.leftRows);
 
     expect(cells[0].nameOfChild.value).not.toContain('ONBOUNDARY');
     expect(cells[0].placeAndBirthDate.value).toBe('ONBOUNDARY');
@@ -1083,8 +1117,141 @@ describe('assignCells', () => {
       mkWord('LEFT2', leftCx, bottomCy),
     ];
 
-    const cells = assignCells(words, s.leftCols, s.leftRows);
+    const { cells } = assignCells(words, s.leftCols, s.leftRows);
 
     expect(cells[1].nameOfChild.value).toBe('LEFT1 RIGHT1 LEFT2 RIGHT2');
+  });
+
+  // Real handwriting is not uniform height: a line of tall capitals and a
+  // line of small cursive script routinely coexist in the same cell. The
+  // fixture's own mkWord/word() hardcode every word to 22px, so without an
+  // explicit height override this risky case was never exercised — a
+  // whole-cell median dominated by one line's height could either merge the
+  // two real lines together (interleaving words across lines by x) or, in
+  // the opposite skew, split one line into two. This case uses a clearly
+  // tall top line and a clearly short bottom line, well outside each
+  // other's clustering tolerance, and checks reading order still comes out
+  // top-line-then-bottom-line, left-to-right within each.
+  test('reads a two-line cell with mixed word heights (tall capitals over small cursive) in correct order', () => {
+    const s = setup();
+    const row = s.leftRows[1];
+    const col = s.leftCols.find((c) => c.key === 'nameOfChild');
+    const leftCx = col.x0 + (col.x1 - col.x0) * 0.3;
+    const rightCx = col.x0 + (col.x1 - col.x0) * 0.7;
+    const topCy1 = row.y0 + 5;
+    const topCy2 = row.y0 + 8;
+    const bottomCy1 = row.y0 + 45;
+    const bottomCy2 = row.y0 + 48;
+
+    const words = [
+      mkWord('SMALLR', rightCx, bottomCy2, 0.9, 14), // small cursive, bottom line
+      mkWord('TALLL', leftCx, topCy1, 0.9, 50), // tall capitals, top line
+      mkWord('SMALLL', leftCx, bottomCy1, 0.9, 14),
+      mkWord('TALLR', rightCx, topCy2, 0.9, 50),
+    ];
+
+    const { cells } = assignCells(words, s.leftCols, s.leftRows);
+
+    expect(cells[1].nameOfChild.value).toBe('TALLL TALLR SMALLL SMALLR');
+  });
+
+  // Proves the actual defect the clusterByY switch fixes, not just the
+  // happy path above. Here the whole-cell median (driven by the 2 tall + 2
+  // short words) yields lineTolerance = 35. The gap between the raw closest
+  // cross-line words (top line's second word at row.y0+7, bottom line's
+  // first word at row.y0+42 → Δ=35) sits exactly AT that naive threshold —
+  // under the old pairwise `|Δcy| > tolerance` test (35 > 35 is false) that
+  // pair reads as "same line", while the OLD code's other cross-line pair
+  // (row.y0+5 vs row.y0+42 → Δ=37) reads as "different line": a direct,
+  // concrete instance of the non-transitive comparator this task removed.
+  // clusterByY instead compares each new point against its cluster's
+  // running MEAN (not the nearest raw neighbour), which pulls the top
+  // cluster's effective position to row.y0+6 — 36 away from the first
+  // bottom-line word, safely over tolerance — so the two lines still split
+  // cleanly instead of merging into one interleaved-by-x line.
+  test('keeps mixed-height lines split even where a naive nearest-word check would call them one line', () => {
+    const s = setup();
+    const row = s.leftRows[1];
+    const col = s.leftCols.find((c) => c.key === 'nameOfChild');
+    const leftCx = col.x0 + (col.x1 - col.x0) * 0.3;
+    const rightCx = col.x0 + (col.x1 - col.x0) * 0.7;
+    const topCy1 = row.y0 + 5;
+    const topCy2 = row.y0 + 7;
+    const bottomCy1 = row.y0 + 42;
+    const bottomCy2 = row.y0 + 44;
+
+    const words = [
+      mkWord('BOTR', rightCx, bottomCy2, 0.9, 20), // scrambled input order
+      mkWord('TOPL', leftCx, topCy1, 0.9, 50),
+      mkWord('BOTL', leftCx, bottomCy1, 0.9, 20),
+      mkWord('TOPR', rightCx, topCy2, 0.9, 50),
+    ];
+
+    const { cells } = assignCells(words, s.leftCols, s.leftRows);
+
+    expect(cells[1].nameOfChild.value).toBe('TOPL TOPR BOTL BOTR');
+  });
+
+  // `assignCells` deliberately drops a word whose center lands outside every
+  // row band or every column band rather than guessing — but a silently
+  // dropped word looks identical to a genuinely blank field to a human
+  // reviewer. `dropped` must count those words so a caller can flag a page
+  // where calibration went badly wrong instead of trusting an all-blank
+  // result at face value.
+  describe('dropped count', () => {
+    test('is 0 for a clean fixture page (every word lands in some band)', () => {
+      const s = setup();
+      const firstY = s.leftRows[0].y0;
+      const lastY = s.leftRows[s.leftRows.length - 1].y1;
+      // Restrict to the data-row words only; header/title words above the
+      // first row band are a separate, deliberately-dropped case covered below.
+      const dataWords = s.left.filter((w) => {
+        const b = boxOf(w);
+        return b.cy >= firstY && b.cy < lastY;
+      });
+      const { dropped } = assignCells(dataWords, s.leftCols, s.leftRows);
+      expect(dropped).toBe(0);
+    });
+
+    test('counts words whose center lands outside every row band or every column band', () => {
+      const s = setup();
+      const validRowCy = (s.leftRows[0].y0 + s.leftRows[0].y1) / 2;
+      const belowLastRow = s.leftRows[s.leftRows.length - 1].y1 + 5000;
+      const beforeFirstColumn = s.leftCols[0].x0 - 5000;
+
+      const words = [
+        mkWord('NOROW1', 200, belowLastRow), // outside every row band
+        mkWord('NOROW2', 200, belowLastRow + 100),
+        mkWord('NOCOL', beforeFirstColumn, validRowCy), // valid row, no column
+      ];
+
+      const { dropped, cells } = assignCells(words, s.leftCols, s.leftRows);
+
+      expect(dropped).toBe(3);
+      for (const row of cells) {
+        for (const key of Object.keys(row)) {
+          expect(row[key].value).not.toContain('NOROW');
+          expect(row[key].value).not.toContain('NOCOL');
+        }
+      }
+    });
+
+    test('counts header words above the first row band as dropped — they legitimately have nowhere to go', () => {
+      const s = setup();
+      const firstRowY0 = s.leftRows[0].y0;
+      const headerWords = s.left.filter((w) => boxOf(w).cy < firstRowY0);
+      // Sanity: the fixture actually has header/title words up there, or
+      // this test would trivially pass with dropped === 0 === length.
+      expect(headerWords.length).toBeGreaterThan(0);
+
+      const { dropped, cells } = assignCells(headerWords, s.leftCols, s.leftRows);
+
+      expect(dropped).toBe(headerWords.length);
+      for (const row of cells) {
+        for (const key of Object.keys(row)) {
+          expect(row[key]).toEqual({ value: '', confidence: 0 });
+        }
+      }
+    });
   });
 });

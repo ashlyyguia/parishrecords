@@ -567,7 +567,12 @@ function detectRows(pageWords, columns, headerMaxY) {
  *
  * A word whose center falls outside every row band or every column band is
  * dropped — that is deliberate. Guessing is worse than an empty field the
- * reviewer can see and fill in.
+ * reviewer can see and fill in. But a silently-dropped word looks identical
+ * to a genuinely blank field, and a badly calibrated or badly skewed scan can
+ * drop most of a page's words this way — so the count of dropped words is
+ * reported back rather than swallowed, letting a caller flag a page whose
+ * drop count is suspiciously high instead of trusting an all-blank result at
+ * face value.
  *
  * Sub-column note: `nameOfChild`, `parents` and `sponsors` are physically two
  * sub-columns each on the printed register, but they are calibrated and
@@ -579,8 +584,11 @@ function detectRows(pageWords, columns, headerMaxY) {
  * @param {Array<{key,x0,x1}>} columns - calibrated column bands from
  *   `calibrateColumns`.
  * @param {Array<{index,y0,y1}>} rows - detected row bands from `detectRows`.
- * @returns {Array<Record<string, {value: string, confidence: number}>>} one
- *   entry per row, keyed by column key.
+ * @returns {{cells: Array<Record<string, {value: string, confidence: number}>>,
+ *   dropped: number}} `cells` has one entry per row, keyed by column key.
+ *   `dropped` is the count of words whose center fell outside every row band
+ *   or every column band (header words above the first row band count here
+ *   too — they legitimately have nowhere to go).
  */
 function assignCells(pageWords, columns, rows) {
   const cells = rows.map(() => {
@@ -589,16 +597,23 @@ function assignCells(pageWords, columns, rows) {
     return row;
   });
 
+  let dropped = 0;
   for (const w of pageWords || []) {
     const b = boxOf(w);
     const rowIndex = rows.findIndex((r) => b.cy >= r.y0 && b.cy < r.y1);
-    if (rowIndex === -1) continue;
+    if (rowIndex === -1) {
+      dropped += 1;
+      continue;
+    }
     const col = columns.find((c) => b.cx >= c.x0 && b.cx < c.x1);
-    if (!col) continue;
+    if (!col) {
+      dropped += 1;
+      continue;
+    }
     cells[rowIndex][col.key].words.push({ text: w.text, confidence: w.confidence, box: b });
   }
 
-  return cells.map((row) => {
+  const outCells = cells.map((row) => {
     const out = {};
     for (const key of Object.keys(row)) {
       const items = row[key].words;
@@ -606,12 +621,24 @@ function assignCells(pageWords, columns, rows) {
         out[key] = { value: '', confidence: 0 };
         continue;
       }
-      // Reading order: group into lines by y, then left-to-right within a line.
+      // Reading order: group into lines by y using the same agglomerative
+      // clusterByY primitive detectRows relies on (rather than a pairwise
+      // |Δcy| > tolerance test inside Array.sort's comparator, which is not
+      // an equivalence relation — A-same-line-as-B and B-same-line-as-C does
+      // not imply A-same-line-as-C, so feeding that test straight into
+      // Array.sort produces an engine-dependent order). clusterByY clusters
+      // against a running cluster mean instead, which is well-defined
+      // regardless of visit order. Each cluster is then sorted left-to-right,
+      // and clusters are concatenated top-to-bottom by cluster mean y.
       const lineTolerance = medianHeight(items.map((i) => i.box)) * 0.7;
-      const sorted = [...items].sort((a, b) => {
-        if (Math.abs(a.box.cy - b.box.cy) > lineTolerance) return a.box.cy - b.box.cy;
-        return a.box.cx - b.box.cx;
-      });
+      const lines = clusterByY(
+        items.map((it) => ({ ...it, cy: it.box.cy })),
+        lineTolerance,
+      );
+      lines.sort((a, b) => a.cy - b.cy);
+      const sorted = lines.flatMap((line) =>
+        [...line.members].sort((a, b) => a.box.cx - b.box.cx),
+      );
       const value = sorted.map((i) => i.text).join(' ').replace(/\s+/g, ' ').trim();
       const confidence =
         sorted.reduce((sum, i) => sum + (i.confidence || 0), 0) / sorted.length;
@@ -619,6 +646,8 @@ function assignCells(pageWords, columns, rows) {
     }
     return out;
   });
+
+  return { cells: outCells, dropped };
 }
 
 module.exports = {
