@@ -176,6 +176,31 @@ const RIGHT_COLUMNS = [
 ];
 
 /**
+ * Matches OCR'd header text against a column header token.
+ *
+ * Exact match always counts. A prefix match (`text.startsWith(token)`) also
+ * counts, but only when the leftover suffix is short (`MAX_HEADER_SUFFIX`
+ * characters or fewer) — enough slack for real OCR noise (a trailing plural
+ * "s", a stray misread character) without accepting a wholly different
+ * English word that merely happens to start with a short token. Unbounded
+ * `startsWith` let a fabricated non-register document (e.g. a memo
+ * containing "CHILDREN", "ILLNESS", "SPONSORSHIP", "NOTICE") rack up
+ * several false column-header matches purely by coincidence — 'children'
+ * starts with 'child', 'illness' starts with 'ill', 'sponsorship' starts
+ * with 'sponsors', 'notice' starts with 'no' — enough to clear
+ * `extractBaptismalRows`'s LAYOUT_UNRECOGNIZED guard and produce a
+ * fabricated extraction. Every one of those has a leftover suffix of 3+
+ * characters; every genuine header token in this file matches the real
+ * fixture with a leftover of 0.
+ */
+const MAX_HEADER_SUFFIX = 2;
+
+function matchesHeaderToken(text, token) {
+  if (text === token) return true;
+  return text.startsWith(token) && text.length - token.length <= MAX_HEADER_SUFFIX;
+}
+
+/**
  * Locates the header band's lower boundary.
  *
  * Anchored, two-step gap sweep (same gap-sweep technique `splitSpread` uses
@@ -220,7 +245,7 @@ function findHeaderBandBoundary(pageWords, columnDefs, maxY) {
     const text = w.text.toLowerCase().replace(/[^a-z]/g, '');
     if (!text) return;
     const isHeaderToken = columnDefs.some(
-      (def) => def.header.some((t) => text === t || text.startsWith(t)),
+      (def) => def.header.some((t) => matchesHeaderToken(text, t)),
     );
     if (isHeaderToken) hitY1s.push(boxes[i].y1);
   });
@@ -281,7 +306,7 @@ function findHeaderCenter(pageWords, tokens, band) {
     if (b.cy > band.headerMaxY) continue;
     const text = w.text.toLowerCase().replace(/[^a-z]/g, '');
     if (!text) continue;
-    if (tokens.some((t) => text === t || text.startsWith(t))) hits.push(b.cx);
+    if (tokens.some((t) => matchesHeaderToken(text, t))) hits.push(b.cx);
   }
   if (hits.length === 0) return null;
   return hits.reduce((a, b) => a + b, 0) / hits.length;
@@ -433,13 +458,21 @@ function clusterByY(items, tolerance) {
  * row, rather than inferring row boundaries from wherever handwritten data
  * happens to sit.
  *
- * Fallback: when no lineNo digit can be matched (the column itself is
- * unreadable — smudged, cropped, or genuinely blank), clusters every word on
- * the page by y instead. This is noisier — a row with unusually wide
- * handwriting can span more than one visual cluster, or a stray mark can
- * create a spurious one — so it always warns `ROW_ANCHOR_FALLBACK` and
- * cannot recover a `lineNo` value (there was nothing legible to read one
- * from).
+ * Fallback: when no lineNo digit can be matched, clusters every word on the
+ * page by y instead. This is noisier — a row with unusually wide handwriting
+ * can span more than one visual cluster, or a stray mark can create a
+ * spurious one — and it cannot recover a `lineNo` value. Two different
+ * reasons land here, and only one of them is worth a warning:
+ *  - The page has no lineNo column AT ALL (`columns` carries no `lineNo`
+ *    entry — true for the right-hand page of a spread by design, since the
+ *    register only prints row numbers on the left page). Falling back here
+ *    is the structurally normal, expected path, not a quality problem, so
+ *    it does NOT warn `ROW_ANCHOR_FALLBACK`. Warning on every scan for a
+ *    page that was never going to have row numbers trains the reviewer to
+ *    ignore the warnings list.
+ *  - The page HAS a lineNo column but its digits are actually unreadable
+ *    (smudged, cropped, or genuinely blank) — this is the case the warning
+ *    exists for, and it still fires.
  *
  * Corroboration: one or more lineNo anchors is not automatically trusted at
  * face value. `anchors.length` alone can't distinguish a genuine one-row
@@ -533,7 +566,10 @@ function detectRows(pageWords, columns, headerMaxY) {
       }));
     }
   } else {
-    warnings.push('ROW_ANCHOR_FALLBACK');
+    // Only warn when there was a lineNo column to expect digits from in the
+    // first place. Its absence (e.g. the right page, which never prints row
+    // numbers) is structurally normal, not a fallback worth flagging.
+    if (lineNoCol) warnings.push('ROW_ANCHOR_FALLBACK');
     clusters = fallbackClusters.map((c) => ({ cy: c.cy, lineNo: null }));
   }
 
@@ -585,10 +621,16 @@ function detectRows(pageWords, columns, headerMaxY) {
  *   `calibrateColumns`.
  * @param {Array<{index,y0,y1}>} rows - detected row bands from `detectRows`.
  * @returns {{cells: Array<Record<string, {value: string, confidence: number}>>,
- *   dropped: number}} `cells` has one entry per row, keyed by column key.
- *   `dropped` is the count of words whose center fell outside every row band
- *   or every column band (header words above the first row band count here
- *   too — they legitimately have nowhere to go).
+ *   dropped: number, droppedInDataRegion: number, dataWordCount: number}}
+ *   `cells` has one entry per row, keyed by column key. `dropped` is the
+ *   total count of words whose center fell outside every row band or every
+ *   column band (header words above the first row band count here too —
+ *   they legitimately have nowhere to go). `droppedInDataRegion` and
+ *   `dataWordCount` narrow that same count to words at or below the first
+ *   row's own top edge (`rows[0].y0`) — i.e. excluding the header/title
+ *   words that are *always* dropped by construction — so a caller can build
+ *   a drop ratio that isn't dominated by that fixed baseline. See
+ *   `isManyWordsUnplaced` below.
  */
 function assignCells(pageWords, columns, rows) {
   const cells = rows.map(() => {
@@ -597,17 +639,31 @@ function assignCells(pageWords, columns, rows) {
     return row;
   });
 
+  // Words at or below the first row's own top edge are "in the data region"
+  // — plausibly real handwriting rather than the printed header/title block
+  // above it. When there are no rows at all, there is no data region.
+  const firstRowY0 = rows.length > 0 ? rows[0].y0 : Infinity;
+
   let dropped = 0;
+  let droppedInDataRegion = 0;
+  let dataWordCount = 0;
   for (const w of pageWords || []) {
     const b = boxOf(w);
+    const inDataRegion = b.cy >= firstRowY0;
+    if (inDataRegion) dataWordCount += 1;
+
     const rowIndex = rows.findIndex((r) => b.cy >= r.y0 && b.cy < r.y1);
     if (rowIndex === -1) {
       dropped += 1;
+      if (inDataRegion) droppedInDataRegion += 1;
       continue;
     }
     const col = columns.find((c) => b.cx >= c.x0 && b.cx < c.x1);
     if (!col) {
       dropped += 1;
+      // rowIndex matched, so this word is in the data region by construction
+      // regardless of the `inDataRegion` check above.
+      droppedInDataRegion += 1;
       continue;
     }
     cells[rowIndex][col.key].words.push({ text: w.text, confidence: w.confidence, box: b });
@@ -647,7 +703,7 @@ function assignCells(pageWords, columns, rows) {
     return out;
   });
 
-  return { cells: outCells, dropped };
+  return { cells: outCells, dropped, droppedInDataRegion, dataWordCount };
 }
 
 const ALL_KEYS = [
@@ -662,11 +718,46 @@ function isEmptyCell(field) {
   return v === '' || DITTO.test(v);
 }
 
-/** Joins left- and right-page cells into whole register rows by index. */
-function joinPages(leftCells, rightCells, leftRows) {
+/**
+ * Joins left- and right-page cells into whole register rows by index.
+ *
+ * Index-pairing alone is not proof the two sides actually correspond to the
+ * same physical row: if the left page mis-detects one extra row and the
+ * right page misses one, the two row COUNTS can coincide by chance while
+ * every row past the divergence point is paired with the wrong person's
+ * data — the single highest-consequence failure mode here, since it means a
+ * baptism record naming one child with another child's parents, sponsors
+ * and date. `ROW_COUNT_MISMATCH` alone cannot catch this, because the counts
+ * genuinely match.
+ *
+ * Both `detectRows` outputs already carry each row's `y0`/`y1` band, so a
+ * pairing that's actually wrong is independently checkable: paired rows from
+ * a correctly-joined spread describe the same physical strip of the page and
+ * their y-bands overlap; a misaligned pairing (rows drifted out of sync)
+ * will not. This never re-aligns rows on its own — silently patching the
+ * pairing would hide the exact problem a reviewer needs to see — it only
+ * raises `ROW_ALIGNMENT_MISMATCH` so the divergence is impossible to miss.
+ */
+function joinPages(leftCells, rightCells, leftRows, rightRows) {
   const warnings = [];
   const count = Math.max(leftCells.length, rightCells.length);
   if (leftCells.length !== rightCells.length) warnings.push('ROW_COUNT_MISMATCH');
+
+  const lRows = leftRows || [];
+  const rRows = rightRows || [];
+  const checkable = Math.min(lRows.length, rRows.length);
+  for (let i = 0; i < checkable; i += 1) {
+    const l = lRows[i];
+    const r = rRows[i];
+    if (!l || !r) continue;
+    if (typeof l.y0 !== 'number' || typeof l.y1 !== 'number') continue;
+    if (typeof r.y0 !== 'number' || typeof r.y1 !== 'number') continue;
+    const overlaps = Math.max(l.y0, r.y0) < Math.min(l.y1, r.y1);
+    if (!overlaps) {
+      warnings.push('ROW_ALIGNMENT_MISMATCH');
+      break;
+    }
+  }
 
   const rows = [];
   for (let i = 0; i < count; i += 1) {
@@ -728,26 +819,33 @@ function applyFillDown(rows) {
 }
 
 /**
- * Threshold share of a page's words that must be dropped by `assignCells`
- * (fell in no row band or no column band) before `MANY_WORDS_UNPLACED` is
- * raised.
+ * Threshold share of a page's DATA-REGION words (see `assignCells`'s
+ * `droppedInDataRegion`/`dataWordCount`) that must be dropped before
+ * `MANY_WORDS_UNPLACED` is raised.
  *
- * `assignCells` always counts header words above the first row band as
- * dropped, so even a cleanly calibrated page has a non-zero baseline drop
- * ratio — and that baseline is NOT small: the header row is a fixed ~15-word
- * cost, so on a sparse page (few data rows) it dominates the total. The
- * reference fixture's default 3-row page peaks at ~39% dropped on its
- * busier (5-column) side from the header baseline alone, across all four
- * rotations. 0.5 sits comfortably above that with margin, so it never fires
- * on a clean page, while still catching the case this warning exists for:
- * roughly half or more of a page's words landing nowhere, which a header
- * baseline alone cannot produce — that takes a badly calibrated or badly
- * skewed scan actually failing to place real handwriting.
+ * A prior version of this ratio was computed over ALL of a page's words,
+ * header/title block included. `assignCells` always counts those header
+ * words as dropped (they legitimately have nowhere to go), so that ratio's
+ * numerator carried a fixed ~15-word baseline while its denominator grew
+ * with row count — on a sparse page (few data rows) the fixed baseline
+ * dominated the total, producing false positives on perfectly clean small
+ * pages (measured as high as 64% dropped on a clean 1-row fixture, comfortably
+ * past any reasonable threshold). A partial/last page of a register with only
+ * one or two rows is an entirely ordinary input, not an edge case to special-
+ * case away.
+ *
+ * Restricting both the numerator and denominator to the data region (at or
+ * below the first row's own top edge) removes that fixed cost entirely: a
+ * cleanly calibrated page — of any row count, including one row — places
+ * essentially all of its real data words into some row/column band, so the
+ * ratio sits at or near 0. Reaching past 0.5 now genuinely requires half or
+ * more of the page's DATA words to land nowhere, which only a real
+ * calibration/skew failure produces.
  */
 const MANY_WORDS_UNPLACED_RATIO = 0.5;
 
-function isManyWordsUnplaced(totalWords, dropped) {
-  return totalWords > 0 && dropped / totalWords > MANY_WORDS_UNPLACED_RATIO;
+function isManyWordsUnplaced(dataWordCount, droppedInDataRegion) {
+  return dataWordCount > 0 && droppedInDataRegion / dataWordCount > MANY_WORDS_UNPLACED_RATIO;
 }
 
 /**
@@ -761,10 +859,15 @@ function extractBaptismalRows(words) {
   const leftCal = calibrateColumns(spread.left, LEFT_COLUMNS);
   const rightCal = calibrateColumns(spread.right, RIGHT_COLUMNS);
 
-  const matchedCount =
-    leftCal.columns.filter((c) => c.matched).length +
-    rightCal.columns.filter((c) => c.matched).length;
-  if (matchedCount < 3) {
+  const leftMatched = leftCal.columns.filter((c) => c.matched).length;
+  const rightMatched = rightCal.columns.filter((c) => c.matched).length;
+  // A bare combined total is passable by a non-register document that
+  // happens to rack up several coincidental header matches on ONE side (a
+  // memo isn't laid out as a two-page register spread, so its words tend to
+  // land entirely on one side of splitSpread's arbitrary gutter guess). A
+  // genuine register spread always shows print on BOTH halves, so require
+  // evidence on each side individually as well as the combined total.
+  if (leftMatched + rightMatched < 3 || leftMatched < 1 || rightMatched < 1) {
     const err = new Error(
       'LAYOUT_UNRECOGNIZED: this does not look like a baptismal register page',
     );
@@ -778,12 +881,12 @@ function extractBaptismalRows(words) {
   const left = assignCells(spread.left, leftCal.columns, leftRows.rows);
   const right = assignCells(spread.right, rightCal.columns, rightRows.rows);
 
-  const joined = joinPages(left.cells, right.cells, leftRows.rows);
+  const joined = joinPages(left.cells, right.cells, leftRows.rows, rightRows.rows);
   const { rows } = applyFillDown(joined.rows);
 
   const unplacedWarnings =
-    isManyWordsUnplaced(spread.left.length, left.dropped) ||
-    isManyWordsUnplaced(spread.right.length, right.dropped)
+    isManyWordsUnplaced(left.dataWordCount, left.droppedInDataRegion) ||
+    isManyWordsUnplaced(right.dataWordCount, right.droppedInDataRegion)
       ? ['MANY_WORDS_UNPLACED']
       : [];
 

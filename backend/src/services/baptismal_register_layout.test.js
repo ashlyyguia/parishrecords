@@ -761,6 +761,22 @@ describe('detectRows', () => {
     expect(rows[0].lineNo).toBe(null);
   });
 
+  // Critical 1: the right page never has a lineNo column at all (the
+  // register only prints row numbers on the left page), so it always takes
+  // the fallback path -- but that is the structurally normal, expected
+  // outcome for that page, not a quality problem worth flagging on every
+  // single scan. Contrast with the test above, where the SAME fallback path
+  // is reached on a page that DOES have a lineNo column -- that one still
+  // warns.
+  test('falls back silently (no warning) on a page with no lineNo column at all, e.g. the right page', () => {
+    const { words } = normalizeOrientation(buildRegisterFixture({ rows: 6 }).words);
+    const right = splitSpread(words).right;
+    const { columns, headerMaxY } = calibrateColumns(right, RIGHT_COLUMNS);
+    const { rows, warnings } = detectRows(right, columns, headerMaxY);
+    expect(rows).toHaveLength(6);
+    expect(warnings).not.toContain('ROW_ANCHOR_FALLBACK');
+  });
+
   test('returns no rows for an empty page', () => {
     expect(detectRows([], [], 0).rows).toEqual([]);
   });
@@ -1351,7 +1367,9 @@ describe('joinPages', () => {
   test('joins left and right by row index', () => {
     const left = [{ nameOfChild: { value: 'A', confidence: 0.9 } }];
     const right = [{ minister: { value: 'FR. X', confidence: 0.8 } }];
-    const { rows, warnings } = joinPages(left, right, [{ lineNo: '1' }]);
+    const leftRows = [{ lineNo: '1', y0: 0, y1: 50 }];
+    const rightRows = [{ y0: 0, y1: 50 }];
+    const { rows, warnings } = joinPages(left, right, leftRows, rightRows);
     expect(rows).toHaveLength(1);
     expect(rows[0].lineNo).toBe('1');
     expect(rows[0].fields.nameOfChild.value).toBe('A');
@@ -1362,7 +1380,9 @@ describe('joinPages', () => {
   test('warns and joins the overlap on a row-count mismatch', () => {
     const left = [{ nameOfChild: { value: 'A', confidence: 1 } }, { nameOfChild: { value: 'B', confidence: 1 } }];
     const right = [{ minister: { value: 'FR. X', confidence: 1 } }];
-    const { rows, warnings } = joinPages(left, right, [{ lineNo: '1' }, { lineNo: '2' }]);
+    const leftRows = [{ lineNo: '1', y0: 0, y1: 50 }, { lineNo: '2', y0: 50, y1: 100 }];
+    const rightRows = [{ y0: 0, y1: 50 }];
+    const { rows, warnings } = joinPages(left, right, leftRows, rightRows);
     expect(warnings).toContain('ROW_COUNT_MISMATCH');
     expect(rows).toHaveLength(2);
     expect(rows[1].fields.minister.value).toBe('');
@@ -1371,12 +1391,72 @@ describe('joinPages', () => {
   test('handles one side having zero rows without crashing, joining on the overlap', () => {
     const left = [{ nameOfChild: { value: 'A', confidence: 1 } }, { nameOfChild: { value: 'B', confidence: 1 } }];
     const right = [];
-    const { rows, warnings } = joinPages(left, right, [{ lineNo: '1' }, { lineNo: '2' }]);
+    const leftRows = [{ lineNo: '1', y0: 0, y1: 50 }, { lineNo: '2', y0: 50, y1: 100 }];
+    const rightRows = [];
+    const { rows, warnings } = joinPages(left, right, leftRows, rightRows);
     expect(warnings).toContain('ROW_COUNT_MISMATCH');
     expect(rows).toHaveLength(2);
     expect(rows[0].fields.nameOfChild.value).toBe('A');
     expect(rows[0].fields.minister.value).toBe('');
     expect(rows[1].fields.minister.value).toBe('');
+  });
+
+  // Important 4: the highest-consequence failure mode in the whole feature.
+  // If the left page mis-detects one extra row and the right page misses
+  // one, the two row COUNTS can coincide by chance -- ROW_COUNT_MISMATCH
+  // stays silent -- while every row past the divergence point gets paired
+  // with the wrong person's data (one child's name joined to a different
+  // child's parents/sponsors/date). Equal counts here (2 and 2) but the
+  // second pair's y-bands don't overlap at all, so the pairing must be
+  // flagged rather than silently trusted.
+  test('flags misaligned rows when equal-count left/right row bands do not overlap vertically', () => {
+    const left = [
+      { nameOfChild: { value: 'CHILD_A', confidence: 1 } },
+      { nameOfChild: { value: 'CHILD_B', confidence: 1 } },
+    ];
+    const right = [
+      { minister: { value: 'FR. A', confidence: 1 } },
+      { minister: { value: 'FR. B', confidence: 1 } },
+    ];
+    const leftRows = [
+      { lineNo: '1', y0: 0, y1: 50 },
+      { lineNo: '2', y0: 50, y1: 100 },
+    ];
+    // Right page's second row band sits nowhere near the left page's second
+    // row band, even though both sides report exactly 2 rows.
+    const rightRows = [
+      { y0: 0, y1: 50 },
+      { y0: 400, y1: 450 },
+    ];
+    const { rows, warnings } = joinPages(left, right, leftRows, rightRows);
+    expect(warnings).toContain('ROW_ALIGNMENT_MISMATCH');
+    expect(warnings).not.toContain('ROW_COUNT_MISMATCH');
+    // Not silently re-aligned or dropped -- still joined by index, with the
+    // warning as the signal a reviewer must act on.
+    expect(rows).toHaveLength(2);
+  });
+
+  // Control: equal counts AND overlapping bands must NOT warn -- proves the
+  // check above is actually testing overlap, not just equal counts.
+  test('does not flag alignment when equal-count row bands genuinely overlap', () => {
+    const left = [
+      { nameOfChild: { value: 'CHILD_A', confidence: 1 } },
+      { nameOfChild: { value: 'CHILD_B', confidence: 1 } },
+    ];
+    const right = [
+      { minister: { value: 'FR. A', confidence: 1 } },
+      { minister: { value: 'FR. B', confidence: 1 } },
+    ];
+    const leftRows = [
+      { lineNo: '1', y0: 0, y1: 50 },
+      { lineNo: '2', y0: 50, y1: 100 },
+    ];
+    const rightRows = [
+      { y0: 2, y1: 48 },
+      { y0: 55, y1: 98 },
+    ];
+    const { warnings } = joinPages(left, right, leftRows, rightRows);
+    expect(warnings).not.toContain('ROW_ALIGNMENT_MISMATCH');
   });
 });
 
@@ -1415,36 +1495,133 @@ describe('extractBaptismalRows', () => {
     }
   });
 
-  // MANY_WORDS_UNPLACED: assignCells always counts header words above the
-  // first row band as dropped, so a clean page has a non-zero baseline drop
-  // ratio (see the threshold's own doc comment in the source for the actual
-  // measured baseline across rotations). This must not fire on that baseline.
-  test('does not warn MANY_WORDS_UNPLACED on a clean fixture page', () => {
-    const { words } = buildRegisterFixture({ rows: 3, rotation: 0 });
+  // Important 3: with the old bare `matchedCount < 3` guard plus unbounded
+  // `startsWith` header matching, a fabricated NON-register memo could rack
+  // up 3+ coincidental header-token matches purely by containing ordinary
+  // English words that happen to start with a short token: "CHILDREN"
+  // starts with 'child', "ILLNESS" starts with 'ill', "SPONSORSHIP" starts
+  // with 'sponsors', "NOTICE" starts with 'no'. That was enough to clear the
+  // guard and produce a fabricated 1-row extraction from a document that
+  // isn't a baptismal register at all. All of the memo's words are laid out
+  // as a single narrow column (as a real memo would be), so splitSpread's
+  // gutter guess drops them all on one side -- which is also exactly the
+  // "evidence on both sides" gap this fix closes.
+  test('throws LAYOUT_UNRECOGNIZED for a fabricated memo with coincidental header-like words', () => {
+    const memoWords = [
+      'NOTICE', 'TO', 'ALL', 'PARISHIONERS', 'REGARDING', 'THE', 'CHILDREN',
+      'PROGRAM', 'DUE', 'TO', 'RECENT', 'ILLNESS', 'REPORTS', 'THE',
+      'SPONSORSHIP', 'DRIVE', 'IS', 'POSTPONED', 'PLEASE', 'SEE', 'THE',
+      'PARISH', 'REPORT', 'FOR', 'DETAILS', 'THANK', 'YOU',
+    ];
+    const words = memoWords.map((text, i) => mkWord(text, 40 + i * 70, 40 + Math.floor(i / 6) * 30));
+    try {
+      extractBaptismalRows(words);
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e.code).toBe('LAYOUT_UNRECOGNIZED');
+    }
+  });
+
+  // Control: the genuine fixture must still be recognized at every
+  // rotation, including with a header or two missing -- the tightened
+  // matcher/guard must not have collaterally broken real recognition.
+  test('still recognizes the genuine fixture at every rotation, even with a header missing', () => {
+    for (const rotation of [0, 90, 180, 270]) {
+      const { words } = buildRegisterFixture({ rotation, omitHeaders: ['L or ILL'] });
+      expect(() => extractBaptismalRows(words)).not.toThrow();
+    }
+  });
+
+  // Important 2: `MANY_WORDS_UNPLACED`'s ratio must not be contaminated by
+  // assignCells' fixed header-word baseline (see the threshold's own doc
+  // comment in the source). A partial/last page of a register with only one
+  // or two rows is an ordinary input, not an edge case -- it must not warn.
+  test.each([1, 2, 3])('does not warn MANY_WORDS_UNPLACED on a clean %i-row fixture', (rows) => {
+    const { words } = buildRegisterFixture({ rows });
     const out = extractBaptismalRows(words);
     expect(out.warnings).not.toContain('MANY_WORDS_UNPLACED');
   });
 
-  // Simulates a badly calibrated/skewed scan by adding a batch of extra
-  // words positioned above the first row band (alongside the real headers)
-  // that are not header tokens themselves. assignCells drops any word whose
-  // center falls outside every row band regardless of what it says, so these
-  // land nowhere — same mechanism a real skewed scan would trip, without
-  // having to fake a whole skewed geometry. The added words are deliberately
-  // plain text that cannot match any column-header token, so header
-  // matching/calibration and lineNo-anchored row detection are unaffected;
-  // only the dropped-word count changes.
-  test('warns MANY_WORDS_UNPLACED when most of a page\'s words land outside every row band', () => {
-    const { words } = buildRegisterFixture({ rows: 3, rotation: 0 });
-    const junk = [];
-    for (let i = 0; i < 40; i += 1) {
-      junk.push(mkWord(`ZZQQ${i}`, 50 + (i % 20) * 45, 5 + Math.floor(i / 20) * 10));
+  // Genuinely bad page: real content dropped by a badly-cropped/compressed
+  // scan, not by the (now-excluded) header baseline. This is a from-scratch
+  // minimal spread rather than buildRegisterFixture, because reproducing a
+  // genuine data-region drop through the full pipeline requires row spacing
+  // tighter than the fixture's fixed 60px pitch (see below) -- and the
+  // fixture's own geometry constants must not be changed.
+  //
+  // Mechanism: with 22px-tall words, detectRows' clustering tolerance is
+  // ~19.8px. A normally-spaced register (60px row pitch, like the fixture)
+  // gives each row a ~30px half-band -- bigger than the tolerance -- so
+  // anything landing outside a row's band is, by construction, also far
+  // enough from every anchor to register as its own new row candidate
+  // (rescued via the ROW_ANCHOR_FALLBACK corroboration check, not dropped).
+  // Compressing the rows to a 30px pitch shrinks the half-band to 15px,
+  // *smaller* than the 19.8px tolerance: words placed 18px past the last
+  // row's anchor (outside its 15px band, so genuinely dropped) still land
+  // within 19.8px of that anchor for clustering purposes, so they quietly
+  // merge into the real row's corroboration cluster instead of standing out
+  // as a new one. Net effect: real handwriting-shaped content vanishes with
+  // no other warning standing in for it -- exactly the failure
+  // MANY_WORDS_UNPLACED exists to catch.
+  test('warns MANY_WORDS_UNPLACED when real content is dropped by a badly compressed page', () => {
+    const w = (text, cx, cy) => mkWord(text, cx, cy);
+    const words = [];
+    // Left page headers + title (5/5 matched).
+    words.push(w('NO.', 60, 20), w('CHILD', 220, 20), w('PLACE', 400, 20),
+      w('ILL', 560, 20), w('PARENTS', 720, 20), w('Baptismal', 300, 5));
+    // Right page headers + title (5/5 matched).
+    words.push(w('RESIDENTS', 1100, 20), w('BAPTISM', 1250, 20), w('MINISTER', 1400, 20),
+      w('SPONSORS', 1550, 20), w('OBSERVATIONS', 1700, 20), w('Register', 1400, 5));
+    // 2 real data rows, compressed to a 30px pitch (vs. the fixture's 60px).
+    const rowCys = [70, 100];
+    rowCys.forEach((cy, i) => {
+      words.push(w(String(i + 1), 60, cy));
+      words.push(w(`NAME${i}`, 220, cy), w(`PLACEV${i}`, 400, cy), w(`PARENTV${i}`, 720, cy));
+      words.push(w(`RESIDV${i}`, 1100, cy), w(`DATEV${i}`, 1250, cy), w(`MINV${i}`, 1400, cy), w(`SPONV${i}`, 1550, cy));
+    });
+    // Real content, genuinely dropped: parked 18px past the last row's
+    // anchor (outside its 15px half-band) but within the 19.8px clustering
+    // tolerance of it, per the mechanism above.
+    const lastRowCy = rowCys[rowCys.length - 1];
+    const dropped = [];
+    for (let i = 0; i < 20; i += 1) {
+      dropped.push(w(`REAL${i}`, 200 + i * 25, lastRowCy + 18));
     }
-    const out = extractBaptismalRows(words.concat(junk));
+
+    const clean = extractBaptismalRows(words);
+    expect(clean.warnings).not.toContain('MANY_WORDS_UNPLACED');
+
+    const out = extractBaptismalRows(words.concat(dropped));
     expect(out.warnings).toContain('MANY_WORDS_UNPLACED');
-    // The real rows must still come through correctly despite the junk.
-    expect(out.rows).toHaveLength(3);
-    expect(out.rows[0].fields.nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
+    // The real rows still come through correctly -- only the extra dropped
+    // content is affected.
+    expect(out.rows).toHaveLength(2);
+    expect(out.rows[0].fields.nameOfChild.value).toBe('NAME0');
+    expect(out.rows[1].fields.nameOfChild.value).toBe('NAME1');
+  });
+
+  // Critical 1: RIGHT_COLUMNS has no lineNo entry (the register only prints
+  // row numbers on the LEFT page, by design), so detectRows' fallback path
+  // is the structurally normal, expected outcome for the right page on
+  // EVERY scan -- not a quality problem. Before this fix, ROW_ANCHOR_FALLBACK
+  // fired unconditionally as a result, on every clean scan at every
+  // rotation, which trains a reviewer to ignore the warnings list and buries
+  // the case that actually matters (the LEFT page's NO. column being
+  // illegible).
+  test('does not warn ROW_ANCHOR_FALLBACK on a clean fixture at any rotation', () => {
+    for (const rotation of [0, 90, 180, 270]) {
+      const { words } = buildRegisterFixture({ rows: 3, rotation });
+      const out = extractBaptismalRows(words);
+      expect(out.warnings).not.toContain('ROW_ANCHOR_FALLBACK');
+    }
+  });
+
+  // The left page DOES have a lineNo column, so a left-page NO. column that
+  // is genuinely unreadable must still surface the warning.
+  test('warns ROW_ANCHOR_FALLBACK when the left page NO. column is unreadable', () => {
+    const { words } = buildRegisterFixture({ rows: 3, omitNoColumn: true });
+    const out = extractBaptismalRows(words);
+    expect(out.warnings).toContain('ROW_ANCHOR_FALLBACK');
   });
 
   // Edge case beyond the brief: one side of the spread has zero detected
