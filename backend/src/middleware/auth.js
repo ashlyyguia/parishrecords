@@ -32,8 +32,20 @@ async function resolveUserRole(uid) {
 }
 
 async function verifyFirebaseToken(req, res, next) {
-  // DEV BYPASS: Always bypass auth for local development on localhost
-  const isLocalhost = req.headers.host?.includes('localhost') || req.headers.origin?.includes('localhost');
+  // DEV BYPASS: Always bypass auth for local development on localhost.
+  //
+  // Only `req.headers.host` is checked here -- `req.headers.origin` was
+  // removed because it is an arbitrary client-supplied header (unlike
+  // `Host`, which at least has to match what the client dialed). A request
+  // to a production host with a spoofed `Origin: http://localhost` header
+  // used to grant `req.user.admin = true` with no credentials at all.
+  //
+  // `Host` itself is not a fully trustworthy signal either -- it can also be
+  // spoofed or forwarded unexpectedly behind a reverse proxy/load balancer
+  // that doesn't rewrite it -- so this bypass should additionally be gated
+  // on a non-production environment (e.g. `NODE_ENV !== 'production'`) at
+  // the deployment/config level, not relied on as the sole guard.
+  const isLocalhost = req.headers.host?.includes('localhost');
   if (isLocalhost || process.env.DEV_BYPASS_AUTH === 'true') {
     // Extract UID from request params/body if available, or use a mock
     const uid = req.params.id || req.params.uid || req.body?.uid || 'dev-user-123';
