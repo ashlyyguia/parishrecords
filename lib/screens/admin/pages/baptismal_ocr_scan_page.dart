@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,18 +64,19 @@ class BaptismalOcrScanPage extends ConsumerStatefulWidget {
 
   final BaptismalOcrService? ocrService;
   final Future<Uint8List?> Function(BuildContext context)? imagePicker;
-  final Future<String?> Function(String scanId, Uint8List bytes)?
-  imageUploader;
+  final Future<String?> Function(String scanId, Uint8List bytes)? imageUploader;
 
   /// Resolves the Firebase ID token to send with the scan request.
   ///
-  /// [BaptismalOcrService.scan] falls back to `FirebaseAuth.instance`
-  /// internally when no token is supplied, which makes it reach past this
-  /// widget into live Firebase -- exactly what widget tests can't have.
-  /// Passing a token explicitly (real or injected) short-circuits that
-  /// fallback, so this is the fourth seam that keeps the page testable
-  /// without Firebase, alongside [ocrService], [imagePicker] and
-  /// [imageUploader].
+  /// Only used when non-null. [BaptismalOcrService.scan] already resolves
+  /// `FirebaseAuth.instance.currentUser?.getIdToken()` itself exactly once
+  /// when it isn't handed a token, so the production path (this left null)
+  /// deliberately does NOT duplicate that lookup here -- it passes `idToken:
+  /// null` through and lets the service do it a single time. This field
+  /// exists purely as the fourth widget-test seam, alongside [ocrService],
+  /// [imagePicker] and [imageUploader]: tests inject a fake token here to
+  /// short-circuit Firebase entirely (there is no Firebase app registered
+  /// in a widget test).
   final Future<String?> Function()? idTokenProvider;
 
   /// Persists the confirmed rows. Defaults to
@@ -98,7 +98,8 @@ class BaptismalOcrScanPage extends ConsumerStatefulWidget {
 class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
   static const _uuid = Uuid();
 
-  late final BaptismalOcrService _service = widget.ocrService ?? BaptismalOcrService();
+  late final BaptismalOcrService _service =
+      widget.ocrService ?? BaptismalOcrService();
 
   _Step _step = _Step.pick;
   Uint8List? _bytes;
@@ -152,27 +153,24 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
   }
 
   /// Archives the raw image to Firebase Storage when no test double was
-  /// injected. Follows the `putData` convention used by
-  /// `lib/services/events_repository.dart`.
+  /// injected. Follows the `putData` + `getDownloadURL` convention used by
+  /// `lib/services/events_repository.dart:48-53`.
+  ///
+  /// `ref.fullPath` (the bare Storage path, e.g. `baptism_scans/<id>.jpg`)
+  /// is NOT renderable by anything downstream: `record_detail_screen.dart`
+  /// does `Image.file(File(rec.imagePath!))` and `record_form_screen.dart`
+  /// does `Image.network`/`Image.file` on it. A real download URL is the
+  /// only value that flows correctly into `Image.network`. `record.dart`
+  /// (`ParishRecord`/`RegisterRecordDraft`) has a single `imagePath` field
+  /// and that model is on the do-not-touch list for this task, so the URL
+  /// -- not a separate raw-path field -- is what gets stored.
   Future<String?> _defaultUpload(String scanId, Uint8List bytes) async {
     try {
       final ref = FirebaseStorage.instance.ref().child(
         'baptism_scans/$scanId.jpg',
       );
       await ref.putData(bytes);
-      return ref.fullPath;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Falls back to the signed-in user's Firebase ID token when no
-  /// [BaptismalOcrScanPage.idTokenProvider] was injected. Swallows any
-  /// Firebase error (no app initialized, no signed-in user) as "no token",
-  /// matching [BaptismalOcrService]'s own fallback.
-  Future<String?> _defaultIdToken() async {
-    try {
-      return await FirebaseAuth.instance.currentUser?.getIdToken();
+      return await ref.getDownloadURL();
     } catch (_) {
       return null;
     }
@@ -202,7 +200,24 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     }
 
     try {
-      final token = await (widget.idTokenProvider ?? _defaultIdToken)();
+      // NOT calling widget.idTokenProvider ?? _someDefault here on purpose:
+      // when idTokenProvider is null (the production case), passing
+      // idToken: null lets BaptismalOcrService.scan() resolve
+      // FirebaseAuth.instance.currentUser?.getIdToken() itself, exactly
+      // once. Resolving a token here too and passing it down would make the
+      // service's own `idToken ?? await _currentUserToken()` fallback
+      // redundant only when this lookup succeeds, and would still fire a
+      // second Firebase call whenever it returns null -- so this branch is
+      // intentionally the single point of resolution.
+      //
+      // COVERAGE NOTE: every test in test/baptismal_ocr_scan_page_test.dart
+      // injects idTokenProvider, so the `null` (production) path below --
+      // which touches live FirebaseAuth via BaptismalOcrService -- is never
+      // exercised by the automated suite. See the fix report for the manual
+      // verification this needs.
+      final token = widget.idTokenProvider == null
+          ? null
+          : await widget.idTokenProvider!();
       final scan = await _service.scan(
         scanId: _scanId,
         bytes: bytes,
@@ -252,14 +267,24 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     }
 
     try {
-      final saveRecords = widget.saveRecords ??
+      // COVERAGE NOTE: every test in test/baptismal_ocr_scan_page_test.dart
+      // injects widget.saveRecords, so this `?? (...)` fallback -- the
+      // actual recordsProvider.notifier.addRecordsBatch call that writes
+      // sacramental records to Firestore -- is never exercised by the
+      // automated suite. RecordsNotifier (records_provider.dart, which is
+      // on the do-not-touch list) touches live FirebaseFirestore.instance
+      // in an eager field initializer that runs before build(), so a
+      // widget test cannot reach this line without a real Firebase app.
+      // See the fix report for the manual verification this needs.
+      final saveRecords =
+          widget.saveRecords ??
           ((List<RegisterRecordDraft> d) =>
               ref.read(recordsProvider.notifier).addRecordsBatch(d));
       final saved = await saveRecords(drafts);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Saved $saved baptismal record(s).')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved $saved baptismal record(s).')),
+      );
       Navigator.of(context).maybePop();
     } catch (e) {
       if (!mounted) return;
@@ -321,10 +346,22 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     // Only OcrRecovery.retry means resubmitting the exact same bytes may
     // succeed. Every other recovery kind (differentImage / signIn /
     // contactAdmin) would fail identically on retry, so no retry action is
-    // offered for those -- "Choose a different image" below remains the
-    // only affordance, which also guarantees the uploaded image is never
-    // lost: the user is never forced back to the bare pick step.
-    final showScanAction = failure == null || failure.recovery == OcrRecovery.retry;
+    // offered for those. In every case the image is retained and the step
+    // returns to preview (never back to the bare pick step) -- the user is
+    // never forced to re-pick just because a scan failed.
+    final showScanAction =
+        failure == null || failure.recovery == OcrRecovery.retry;
+    // "Choose a different image" is only a genuine fix when the problem
+    // might be the image itself (no failure yet, a transient failure worth
+    // retrying with the same bytes, or differentImage where the bytes truly
+    // are unusable). For signIn/contactAdmin the image was never the
+    // problem, so pairing this button with those failures would falsely
+    // imply picking a new photo helps; the error banner's hint carries the
+    // real guidance for those two instead.
+    final showChooseDifferent =
+        failure == null ||
+        failure.recovery == OcrRecovery.retry ||
+        failure.recovery == OcrRecovery.differentImage;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -345,11 +382,12 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
               label: Text(failure != null ? 'Retry OCR' : 'Scan / Process OCR'),
             ),
           if (showScanAction) const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _pick,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Choose a different image'),
-          ),
+          if (showChooseDifferent)
+            OutlinedButton.icon(
+              onPressed: _pick,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Choose a different image'),
+            ),
         ],
       ),
     );
@@ -518,7 +556,9 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
                 if (blocking > 0)
                   Text(
                     '$blocking field(s) need attention before saving.',
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
                   ),
                 const SizedBox(height: 8),
                 FilledButton.icon(

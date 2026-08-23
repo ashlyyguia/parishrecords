@@ -12,15 +12,73 @@ import 'package:parishrecord/services/baptismal_ocr_service.dart';
 
 // A 1x1 PNG is enough — the page only needs bytes Image.memory can decode.
 final _png = Uint8List.fromList([
-  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
-  0x49, 0x48, 0x44, 0x52,
-  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
-  0x00, 0x1F, 0x15, 0xC4,
-  0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63,
-  0x00, 0x01, 0x00, 0x00,
-  0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
-  0x45, 0x4E, 0x44, 0xAE,
-  0x42, 0x60, 0x82,
+  0x89,
+  0x50,
+  0x4E,
+  0x47,
+  0x0D,
+  0x0A,
+  0x1A,
+  0x0A,
+  0x00,
+  0x00,
+  0x00,
+  0x0D,
+  0x49,
+  0x48,
+  0x44,
+  0x52,
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x08,
+  0x06,
+  0x00,
+  0x00,
+  0x00,
+  0x1F,
+  0x15,
+  0xC4,
+  0x89,
+  0x00,
+  0x00,
+  0x00,
+  0x0A,
+  0x49,
+  0x44,
+  0x41,
+  0x54,
+  0x78,
+  0x9C,
+  0x63,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x05,
+  0x00,
+  0x01,
+  0x0D,
+  0x0A,
+  0x2D,
+  0xB4,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x49,
+  0x45,
+  0x4E,
+  0x44,
+  0xAE,
+  0x42,
+  0x60,
+  0x82,
 ]);
 
 Map<String, dynamic> _scanBody({String name = 'JEZL ANTOINETTE'}) => {
@@ -79,19 +137,26 @@ Widget harness({
   );
 }
 
-BaptismalOcrService serviceReturning(int status, Object body) => BaptismalOcrService(
-  client: MockClient((_) async => http.Response(jsonEncode(body), status)),
-);
+BaptismalOcrService serviceReturning(int status, Object body) =>
+    BaptismalOcrService(
+      client: MockClient((_) async => http.Response(jsonEncode(body), status)),
+    );
 
 void main() {
   testWidgets('starts on the upload step', (tester) async {
-    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
+    await tester.pumpWidget(
+      harness(service: serviceReturning(200, _scanBody())),
+    );
     expect(find.text('Upload or capture a register page'), findsOneWidget);
     expect(find.text('Scan / Process OCR'), findsNothing);
   });
 
-  testWidgets('shows a preview and the scan action after picking', (tester) async {
-    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
+  testWidgets('shows a preview and the scan action after picking', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(service: serviceReturning(200, _scanBody())),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     expect(find.byType(Image), findsOneWidget);
@@ -99,7 +164,9 @@ void main() {
   });
 
   testWidgets('runs OCR and lands on the review step', (tester) async {
-    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
+    await tester.pumpWidget(
+      harness(service: serviceReturning(200, _scanBody())),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
@@ -109,32 +176,49 @@ void main() {
   });
 
   testWidgets('blocks save while a required field is empty', (tester) async {
-    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody(name: ''))));
+    await tester.pumpWidget(
+      harness(service: serviceReturning(200, _scanBody(name: ''))),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
     await tester.pumpAndSettle();
     expect(find.text('Name of child is required.'), findsOneWidget);
-    final saveButton = tester.widget<FilledButton>(find.byKey(const ValueKey('save-rows')));
+    final saveButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('save-rows')),
+    );
     expect(saveButton.onPressed, isNull);
   });
 
   testWidgets('unblocks save once the field is corrected', (tester) async {
-    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody(name: ''))));
+    await tester.pumpWidget(
+      harness(service: serviceReturning(200, _scanBody(name: ''))),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('cell-0-nameOfChild')), 'CORRECTED');
+    await tester.enterText(
+      find.byKey(const ValueKey('cell-0-nameOfChild')),
+      'CORRECTED',
+    );
     await tester.pumpAndSettle();
-    final saveButton = tester.widget<FilledButton>(find.byKey(const ValueKey('save-rows')));
+    final saveButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('save-rows')),
+    );
     expect(saveButton.onPressed, isNotNull);
   });
 
   testWidgets('shows a retryable error and keeps the image', (tester) async {
-    await tester.pumpWidget(harness(
-      service: serviceReturning(429, {'success': false, 'code': 'VISION_QUOTA', 'message': 'rate limited'}),
-    ));
+    await tester.pumpWidget(
+      harness(
+        service: serviceReturning(429, {
+          'success': false,
+          'code': 'VISION_QUOTA',
+          'message': 'rate limited',
+        }),
+      ),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
@@ -144,28 +228,71 @@ void main() {
     expect(find.byType(Image), findsOneWidget); // image survived the failure
   });
 
-  testWidgets('hides retry for a non-retryable configuration error', (tester) async {
-    await tester.pumpWidget(harness(
-      service: serviceReturning(500, {'success': false, 'code': 'VISION_AUTH', 'message': 'not configured'}),
-    ));
+  testWidgets('hides retry for a non-retryable configuration error', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        service: serviceReturning(500, {
+          'success': false,
+          'code': 'VISION_AUTH',
+          'message': 'not configured',
+        }),
+      ),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
     await tester.pumpAndSettle();
     expect(find.text('not configured'), findsOneWidget);
     expect(find.text('Retry OCR'), findsNothing);
+    // contactAdmin has nothing to do with the image, so "Choose a different
+    // image" must not be offered as if it were a fix.
+    expect(find.text('Choose a different image'), findsNothing);
+    expect(find.textContaining('server configuration problem'), findsOneWidget);
+    expect(find.byType(Image), findsOneWidget); // image survived the failure
   });
+
+  testWidgets(
+    'a sign-in error directs the user to sign in, not to pick a new image',
+    (tester) async {
+      await tester.pumpWidget(
+        harness(
+          service: serviceReturning(401, {
+            'success': false,
+            'code': 'UNAUTHENTICATED',
+            'message': 'You are signed out.',
+          }),
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('pick-image')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Scan / Process OCR'));
+      await tester.pumpAndSettle();
+      expect(find.text('You are signed out.'), findsOneWidget);
+      expect(find.text('Retry OCR'), findsNothing);
+      // signIn has nothing to do with the image either -- same requirement as
+      // contactAdmin above.
+      expect(find.text('Choose a different image'), findsNothing);
+      expect(find.textContaining('Sign in again'), findsOneWidget);
+      expect(find.byType(Image), findsOneWidget); // image survived the failure
+    },
+  );
 
   // --- Edge cases -----------------------------------------------------
 
-  testWidgets('a different-image error hides retry and keeps the image', (tester) async {
-    await tester.pumpWidget(harness(
-      service: serviceReturning(200, {
-        'success': false,
-        'code': 'NO_TEXT_FOUND',
-        'message': 'no text found',
-      }),
-    ));
+  testWidgets('a different-image error hides retry and keeps the image', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        service: serviceReturning(200, {
+          'success': false,
+          'code': 'NO_TEXT_FOUND',
+          'message': 'no text found',
+        }),
+      ),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
@@ -176,49 +303,69 @@ void main() {
     expect(find.byType(Image), findsOneWidget); // image survived the failure
   });
 
-  testWidgets('cancelling the picker leaves the page on the upload step', (tester) async {
-    await tester.pumpWidget(harness(
-      service: serviceReturning(200, _scanBody()),
-      picker: (_) async => null,
-    ));
+  testWidgets('cancelling the picker leaves the page on the upload step', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        service: serviceReturning(200, _scanBody()),
+        picker: (_) async => null,
+      ),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     expect(find.text('Upload or capture a register page'), findsOneWidget);
     expect(find.byType(Image), findsNothing);
   });
 
-  testWidgets('a scan with zero rows explains why and disables save', (tester) async {
-    await tester.pumpWidget(harness(service: serviceReturning(200, _emptyScanBody())));
+  testWidgets('a scan with zero rows explains why and disables save', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(service: serviceReturning(200, _emptyScanBody())),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
     await tester.pumpAndSettle();
     expect(find.textContaining('No rows were detected'), findsOneWidget);
-    final saveButton = tester.widget<FilledButton>(find.byKey(const ValueKey('save-rows')));
+    final saveButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('save-rows')),
+    );
     expect(saveButton.onPressed, isNull);
   });
 
   testWidgets('deselecting the only row disables save', (tester) async {
-    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
+    await tester.pumpWidget(
+      harness(service: serviceReturning(200, _scanBody())),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
     await tester.pumpAndSettle();
-    var saveButton = tester.widget<FilledButton>(find.byKey(const ValueKey('save-rows')));
+    var saveButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('save-rows')),
+    );
     expect(saveButton.onPressed, isNotNull);
 
     await tester.tap(find.byKey(const ValueKey('row-select-0')));
     await tester.pumpAndSettle();
 
-    saveButton = tester.widget<FilledButton>(find.byKey(const ValueKey('save-rows')));
+    saveButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('save-rows')),
+    );
     expect(saveButton.onPressed, isNull);
   });
 
-  testWidgets('OCR still runs even when the storage upload fails', (tester) async {
-    await tester.pumpWidget(harness(
-      service: serviceReturning(200, _scanBody()),
-      uploader: (_, _) async => throw Exception('storage unavailable'),
-    ));
+  testWidgets('OCR still runs even when the storage upload fails', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        service: serviceReturning(200, _scanBody()),
+        uploader: (_, _) async => throw Exception('storage unavailable'),
+      ),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
@@ -228,17 +375,23 @@ void main() {
     expect(find.text('JEZL ANTOINETTE'), findsOneWidget);
   });
 
-  testWidgets('a save that throws shows an error and stays on review', (tester) async {
-    await tester.pumpWidget(harness(
-      service: serviceReturning(200, _scanBody()),
-      saveRecords: (_) async => throw Exception('write failed'),
-    ));
+  testWidgets('a save that throws shows an error and stays on review', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        service: serviceReturning(200, _scanBody()),
+        saveRecords: (_) async => throw Exception('write failed'),
+      ),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
     await tester.pumpAndSettle();
 
-    final saveButton = tester.widget<FilledButton>(find.byKey(const ValueKey('save-rows')));
+    final saveButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('save-rows')),
+    );
     expect(saveButton.onPressed, isNotNull);
 
     await tester.tap(find.byKey(const ValueKey('save-rows')));
@@ -250,11 +403,51 @@ void main() {
     expect(find.text('JEZL ANTOINETTE'), findsOneWidget);
   });
 
+  testWidgets(
+    'the uploader\'s returned value is what lands in the saved draft\'s imagePath',
+    (tester) async {
+      // _defaultUpload (production) resolves this to a Firebase Storage
+      // download URL via ref.getDownloadURL(), not the bare ref.fullPath --
+      // existing screens (record_detail_screen.dart, record_form_screen.dart)
+      // can only render a real URL/local file path, not a bare Storage path.
+      // This test locks in the wiring: whatever the uploader returns must be
+      // exactly what ends up in RegisterRecordDraft.imagePath, so a future
+      // regression back to a bare path would be caught here even though the
+      // real Firebase Storage call itself can't run in a widget test.
+      const uploadedUrl =
+          'https://firebasestorage.googleapis.com/v0/b/x/o/'
+          'baptism_scans%2Fs1.jpg?alt=media&token=abc123';
+      List<RegisterRecordDraft>? captured;
+      await tester.pumpWidget(
+        harness(
+          service: serviceReturning(200, _scanBody()),
+          uploader: (_, _) async => uploadedUrl,
+          saveRecords: (drafts) async {
+            captured = drafts;
+            return drafts.length;
+          },
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('pick-image')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Scan / Process OCR'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('save-rows')));
+      await tester.pump();
+
+      expect(captured, isNotNull);
+      expect(captured!.single.imagePath, uploadedUrl);
+    },
+  );
+
   testWidgets('a successful save shows a confirmation', (tester) async {
-    await tester.pumpWidget(harness(
-      service: serviceReturning(200, _scanBody()),
-      saveRecords: (drafts) async => drafts.length,
-    ));
+    await tester.pumpWidget(
+      harness(
+        service: serviceReturning(200, _scanBody()),
+        saveRecords: (drafts) async => drafts.length,
+      ),
+    );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
