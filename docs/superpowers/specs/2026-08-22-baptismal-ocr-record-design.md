@@ -17,7 +17,7 @@ Columns, left page (titled *Baptismal*):
 |---|---|
 | `NO.` | 1..24, printed rule + handwritten numeral |
 | `NAME OF CHILD` | two sub-columns: given name(s) \| surname |
-| `PLACE & DATE OF BIRTH` | free text, often two lines, e.g. "19 FEBRUARY 2001 / NORTHERN MINDANAO MEDICAL CENTER, CAGAYAN DE ORO CITY" |
+| `PLACE & DATE OF BIRTH` | free text, often two lines, e.g. "19 FEBRUARY 2001 / TESTVILLE DISTRICT HOSPITAL, TESTVILLE CITY" |
 | `L or ILL` | legitimacy check-space, usually blank or a tick |
 | `NAME OF PARENTS (Mother's Maiden Name)` | two sub-columns: father \| mother |
 
@@ -27,11 +27,11 @@ Columns, right page (titled *Register*):
 |---|---|
 | `RESIDENTS OF` | address |
 | `DATE OF BAPTISM` | e.g. "12 MAY 2016" |
-| `MINISTER` | e.g. "FR. PABLITO ARCAPA" |
+| `MINISTER` | e.g. "FR. TEST CLERIC" |
 | `SPONSORS` | two sub-columns |
 | `OBSERVATIONS` | mostly blank; carries annotations such as "Married to ..." |
 
-Characteristics that drive the design: all-caps ballpoint handwriting, cramped and variable; heavy repetition down the `MINISTER` and `DATE OF BAPTISM` columns (long runs of the same value, sometimes written as ditto); paper warped at the gutter so ruled column lines bow; a footer reading "In certification thereof, FR. PABLITO D. ARCAPA, Parish Priest".
+Characteristics that drive the design: all-caps ballpoint handwriting, cramped and variable; heavy repetition down the `MINISTER` and `DATE OF BAPTISM` columns (long runs of the same value, sometimes written as ditto); paper warped at the gutter so ruled column lines bow; a footer reading "In certification thereof, FR. TEST D. CLERIC, Parish Priest".
 
 ### Why the current implementation is unreliable
 
@@ -107,13 +107,13 @@ Row output shape:
 {
   "lineNo": "1",
   "fields": {
-    "nameOfChild":      { "value": "JEZL ANTOINETTE HITUTUAAN", "confidence": 0.71 },
+    "nameOfChild":      { "value": "TESTA SAMPLE FAMILYONE", "confidence": 0.71 },
     "placeAndBirthDate":{ "value": "19 FEBRUARY 2001 ...",      "confidence": 0.54 },
     "legitimacy":       { "value": "",                          "confidence": 0.0  },
-    "parents":          { "value": "LITA / HITUTUAAN",          "confidence": 0.62 },
-    "residentsOf":      { "value": "P-2 CANITOAN, CAGAYAN DE ORO CITY", "confidence": 0.66 },
+    "parents":          { "value": "PARENTA / FAMILYONE",          "confidence": 0.62 },
+    "residentsOf":      { "value": "ZONE-1 TESTVILLE, TESTVILLE CITY", "confidence": 0.66 },
     "dateOfBaptism":    { "value": "12 MAY 2016", "confidence": 0.81, "inherited": false },
-    "minister":         { "value": "FR. PABLITO ARCAPA", "confidence": 0.78, "inherited": true },
+    "minister":         { "value": "FR. TEST CLERIC", "confidence": 0.78, "inherited": true },
     "sponsors":         { "value": "...", "confidence": 0.49 },
     "observations":     { "value": "", "confidence": 0.0 }
   }
