@@ -24,13 +24,13 @@ void main() {
         'rotation': 0,
         'warnings': <String>[],
         'rows': [
-          {'lineNo': '1', 'fields': {'nameOfChild': {'value': 'JEZL', 'confidence': 0.9}}}
+          {'lineNo': '1', 'fields': {'nameOfChild': {'value': 'TESTA', 'confidence': 0.9}}}
         ],
       },
     });
     final scan = await svc.scan(scanId: 's1', bytes: bytes, idToken: 't');
     expect(scan.rows, hasLength(1));
-    expect(scan.rows.first.field('nameOfChild').value, 'JEZL');
+    expect(scan.rows.first.field('nameOfChild').value, 'TESTA');
   });
 
   test('sends the bearer token and base64 body', () async {
@@ -210,6 +210,43 @@ void main() {
         throwsA(isA<BaptismalOcrFailure>()
             .having((f) => f.code, 'code', 'BAD_RESPONSE')
             .having((f) => f.message, 'message', 'something broke')),
+      );
+    });
+
+    // FIX 6 regression: `verifyFirebaseToken` (shared middleware, not this
+    // route's own error path) replies `{ error: '...' }` on a 401 -- no
+    // `code` key, and a different message key (`error`, not `message`) than
+    // every other response. This used to fall through to
+    // `code ?? 'BAD_RESPONSE'`, which maps to OcrRecovery.retry -- an admin
+    // whose token had simply expired got "The server returned an unexpected
+    // response. Please retry." and an infinite, never-succeeding retry loop,
+    // because OcrRecovery.signIn (the fix) could never be produced.
+    test('a 401 with no code field (verifyFirebaseToken shape) maps to UNAUTHENTICATED / signIn', () async {
+      final svc = serviceReturning(401, {'error': 'Invalid Firebase token'});
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+        throwsA(isA<BaptismalOcrFailure>()
+            .having((f) => f.code, 'code', 'UNAUTHENTICATED')
+            .having((f) => f.recovery, 'recovery', OcrRecovery.signIn)
+            .having((f) => f.message, 'message', 'Invalid Firebase token')),
+      );
+    });
+
+    // Same finding, the 403 side: `requireStaffOrAdmin`
+    // (`baptismal_ocr_firestore.js`) replies `{ success: false, message: '...'
+    // }` with no `code` either. Must map to a permission-flavoured code with
+    // OcrRecovery.contactAdmin, not the generic retry-forever BAD_RESPONSE.
+    test('a 403 with no code field (requireStaffOrAdmin shape) maps to a permission code / contactAdmin', () async {
+      final svc = serviceReturning(403, {
+        'success': false,
+        'message': 'Staff or admin role required',
+      });
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+        throwsA(isA<BaptismalOcrFailure>()
+            .having((f) => f.code, 'code', 'FORBIDDEN')
+            .having((f) => f.recovery, 'recovery', OcrRecovery.contactAdmin)
+            .having((f) => f.message, 'message', 'Staff or admin role required')),
       );
     });
 

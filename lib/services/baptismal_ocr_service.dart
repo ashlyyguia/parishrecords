@@ -92,13 +92,43 @@ class BaptismalOcrService {
     'LAYOUT_UNRECOGNIZED': OcrRecovery.differentImage,
     'UNAUTHENTICATED': OcrRecovery.signIn,
     'VISION_AUTH': OcrRecovery.contactAdmin,
+    'FORBIDDEN': OcrRecovery.contactAdmin,
   };
 
   static const Map<String, String> _fallbackMessages = {
     'NETWORK': 'Could not reach the server. Check your connection and retry.',
     'UNAUTHENTICATED': 'You are signed out. Sign in again to scan.',
     'BAD_RESPONSE': 'The server returned an unexpected response. Please retry.',
+    'FORBIDDEN':
+        'Your account does not have permission to scan baptismal records. '
+        'Contact an administrator.',
   };
+
+  /// Maps an HTTP status to an error code when the server response carries
+  /// none of its own.
+  ///
+  /// `verifyFirebaseToken` (`backend/src/middleware/auth.js`) replies
+  /// `{ error: '...' }` on a 401 -- no `code` key at all -- and
+  /// `requireStaffOrAdmin` (`backend/src/routes/baptismal_ocr_firestore.js`)
+  /// replies `{ success: false, message: '...' }` on a 403, also with no
+  /// `code`. Both used to fall through to the generic `'BAD_RESPONSE'` ??
+  /// fallback below, which maps to [OcrRecovery.retry] -- so an admin whose
+  /// token had simply expired saw "The server returned an unexpected
+  /// response. Please retry." and an infinite, never-succeeding retry loop,
+  /// because [OcrRecovery.signIn] (the only recovery that actually fixes an
+  /// expired token) could never be produced by the server's response shape.
+  /// Reading the HTTP status directly closes that gap without requiring any
+  /// backend change.
+  static String _codeForStatus(int statusCode) {
+    switch (statusCode) {
+      case 401:
+        return 'UNAUTHENTICATED';
+      case 403:
+        return 'FORBIDDEN';
+      default:
+        return 'BAD_RESPONSE';
+    }
+  }
 
   Future<BaptismalOcrScan> scan({
     required String scanId,
@@ -140,9 +170,20 @@ class BaptismalOcrService {
     if (decoded == null) throw _failure('BAD_RESPONSE', null);
 
     if (res.statusCode != 200 || decoded['success'] != true) {
+      // `decoded['code']` is present for every response this route itself
+      // generates (see `baptismal_ocr_firestore.js`'s `fail()`), but 401s
+      // from `verifyFirebaseToken` and 403s from `requireStaffOrAdmin` --
+      // both shared/generic middleware, not this route's own error path --
+      // carry no `code` at all. `_codeForStatus` derives one from the HTTP
+      // status itself in that case, rather than defaulting to
+      // 'BAD_RESPONSE' (which maps to an endless, never-succeeding retry
+      // loop for what is actually an expired-session or permissions
+      // problem). `decoded['error']` covers `verifyFirebaseToken`'s
+      // `{ error: '...' }` shape, which uses a different key than every
+      // other response's `message`.
       throw _failure(
-        decoded['code']?.toString() ?? 'BAD_RESPONSE',
-        decoded['message']?.toString(),
+        decoded['code']?.toString() ?? _codeForStatus(res.statusCode),
+        decoded['message']?.toString() ?? decoded['error']?.toString(),
       );
     }
 
