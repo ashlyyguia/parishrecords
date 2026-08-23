@@ -143,8 +143,16 @@ function splitSpread(words) {
   const right = [];
   words.forEach((w, i) => (boxes[i].cx < bestX ? left : right).push(w));
 
+  // Normalised the same way every other matcher in this file normalises OCR
+  // text (see findHeaderBandBoundary/findHeaderCenter's
+  // `.toLowerCase().replace(/[^a-z]/g, '')`). Vision routinely attaches
+  // punctuation to a word ("Baptismal," / "Register."), and an exact
+  // `=== title` match rejects that -- so `confirmed` would be false on every
+  // real scan, permanently showing the GUTTER_UNCONFIRMED warning and
+  // desensitising the reviewer to the panel that also carries the
+  // higher-severity ROW_ALIGNMENT_MISMATCH warning.
   const hasTitle = (list, title) =>
-    list.some((w) => w.text.toLowerCase() === title);
+    list.some((w) => w.text.toLowerCase().replace(/[^a-z]/g, '') === title);
   const confirmed = hasTitle(left, 'baptismal') && hasTitle(right, 'register');
 
   return { gutterX: bestX, left, right, confirmed };
@@ -611,9 +619,22 @@ function detectRows(pageWords, columns, headerMaxY) {
  * face value.
  *
  * Sub-column note: `nameOfChild`, `parents` and `sponsors` are physically two
- * sub-columns each on the printed register, but they are calibrated and
- * assigned here as a single band; the ` / ` separator between the
- * sub-columns is applied in Task 7, where the sub-column geometry is known.
+ * sub-columns each on the printed register (e.g. `parents` is father then
+ * mother), but they are calibrated and assigned here as a single band, and
+ * that is NOT a placeholder for a later task -- there is no sub-column
+ * split anywhere in this pipeline. Both names land in one field as a plain
+ * space-joined blob (e.g. "JUAN DELA CRUZ MARIA SANTOS"), with no ` / `
+ * separator and no way to tell where the father's name ends and the
+ * mother's begins. `ManualRegisterNotes._parentsValue` can split an
+ * already-structured `{father, mother}` map, but nothing upstream of it
+ * ever produces one from OCR. Splitting correctly would require tracking
+ * each sub-column's own x-range (not just the combined band), which this
+ * function does not do -- see the manual verification checklist for the
+ * known-limitation note and the follow-up this needs. Do NOT paper over
+ * this with a crude x-midpoint split: guessing which token belongs to which
+ * parent and getting it wrong (e.g. putting the mother's name in the
+ * father's field) is worse than an honest, visibly-unsplit blob the
+ * reviewer knows to fix by hand.
  *
  * @param {Array} pageWords - words for a single (already split) page, in the
  *   same normalized/rotated frame as the `columns` and `rows` passed in.
@@ -746,17 +767,52 @@ function joinPages(leftCells, rightCells, leftRows, rightRows) {
   const lRows = leftRows || [];
   const rRows = rightRows || [];
   const checkable = Math.min(lRows.length, rRows.length);
+  let alignmentMismatch = false;
   for (let i = 0; i < checkable; i += 1) {
     const l = lRows[i];
     const r = rRows[i];
     if (!l || !r) continue;
     if (typeof l.y0 !== 'number' || typeof l.y1 !== 'number') continue;
     if (typeof r.y0 !== 'number' || typeof r.y1 !== 'number') continue;
-    const overlaps = Math.max(l.y0, r.y0) < Math.min(l.y1, r.y1);
-    if (!overlaps) {
-      warnings.push('ROW_ALIGNMENT_MISMATCH');
+
+    // A bare intersection test (`max(y0) < min(y1)`) is too weak: row bands
+    // are contiguous by construction (each band's y1 is the next band's y0),
+    // so a ONE-ROW DRIFT between the two pages still intersects whenever the
+    // two pages' band heights differ even slightly -- which they always do
+    // in practice, since left bands are sized off small printed `NO.` digits
+    // and right bands off full-width handwriting. Worked case: left anchors
+    // at cy 100/200/300/400/500 give bands [50,150] [150,250] [250,350]
+    // [350,450] [450,550]; a blank right-page row 2 plus a tall row 4 that
+    // splits into two visual clusters gives right bands [55,205] [205,342.5]
+    // [342.5,405] [405,467.5] [467.5,555]. Every index pair still intersects
+    // under bare overlap, so a four-row drift (wrong baptism date, minister,
+    // sponsors for four children) would sail through with an empty
+    // `warnings` array.
+    //
+    // Comparing band CENTRES against a fraction of the smaller band's height
+    // catches this: a correct join's centres agree closely (the same
+    // physical row, measured two different ways), while a drifted join's
+    // centres diverge by roughly half a row height or more. On the worked
+    // case above, |Δcentre| at i=1 is |200 - 273.75| = 73.75, comfortably
+    // past the 0.5 * min(100, 137.5) = 50 threshold.
+    const centreL = (l.y0 + l.y1) / 2;
+    const centreR = (r.y0 + r.y1) / 2;
+    const heightL = l.y1 - l.y0;
+    const heightR = r.y1 - r.y0;
+    const centreDrift = Math.abs(centreL - centreR);
+    const driftThreshold = 0.5 * Math.min(heightL, heightR);
+    if (centreDrift > driftThreshold) {
+      alignmentMismatch = true;
       break;
     }
+  }
+  // A row-count mismatch guarantees every row past the divergence point is
+  // paired with the wrong counterpart (see the doc comment above), so it is
+  // raised unconditionally alongside ROW_COUNT_MISMATCH regardless of what
+  // the (necessarily incomplete) centre-drift check over just the OVERLAPPING
+  // prefix found.
+  if (alignmentMismatch || leftCells.length !== rightCells.length) {
+    warnings.push('ROW_ALIGNMENT_MISMATCH');
   }
 
   const rows = [];

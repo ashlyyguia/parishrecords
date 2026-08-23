@@ -136,6 +136,20 @@ describe('splitSpread', () => {
     const stripped = words.filter((w) => w.text !== 'Baptismal' && w.text !== 'Register');
     expect(splitSpread(stripped).confirmed).toBe(false);
   });
+
+  // FIX 10 regression: Vision routinely attaches punctuation to a printed
+  // title word ("Baptismal," / "Register."). An exact-match hasTitle used to
+  // reject that, so `confirmed` was false on every real scan -- this proves
+  // punctuated titles are still recognized.
+  test('confirms the gutter even when the page titles carry OCR punctuation', () => {
+    const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 0 }).words);
+    const punctuated = words.map((w) => {
+      if (w.text === 'Baptismal') return { ...w, text: 'Baptismal,' };
+      if (w.text === 'Register') return { ...w, text: 'Register.' };
+      return w;
+    });
+    expect(splitSpread(punctuated).confirmed).toBe(true);
+  });
 });
 
 describe('calibrateColumns', () => {
@@ -971,17 +985,17 @@ describe('assignCells', () => {
     const s = setup();
     const { cells } = assignCells(s.left, s.leftCols, s.leftRows);
     expect(cells).toHaveLength(3);
-    expect(cells[0].nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
+    expect(cells[0].nameOfChild.value).toBe('TESTA SAMPLE FAMILYONE');
     expect(cells[0].placeAndBirthDate.value).toBe('19 FEBRUARY 2001');
-    expect(cells[0].parents.value).toBe('LITA HITUTUAAN');
-    expect(cells[1].nameOfChild.value).toBe('JULLIE PACITO');
+    expect(cells[0].parents.value).toBe('PARENTA FAMILYONE');
+    expect(cells[1].nameOfChild.value).toBe('TESTB FAMILYTWO');
   });
 
   test('places handwriting in the correct right-page columns', () => {
     const s = setup();
     const { cells } = assignCells(s.right, s.rightCols, s.rightRows);
     expect(cells[0].dateOfBaptism.value).toBe('12 MAY 2016');
-    expect(cells[0].minister.value).toBe('FR. PABLITO ARCAPA');
+    expect(cells[0].minister.value).toBe('FR. TEST CLERIC');
     expect(cells[2].dateOfBaptism.value).toBe('22 MAY 2016');
   });
 
@@ -1072,10 +1086,10 @@ describe('assignCells', () => {
       expect(cells[1][key]).toEqual({ value: '', confidence: 0 });
     }
     // Row 0 (unaffected) still reads normally.
-    expect(cells[0].nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
+    expect(cells[0].nameOfChild.value).toBe('TESTA SAMPLE FAMILYONE');
     // Row 2 (unaffected) still reads normally too — row 1 being empty must
     // not shift row 2's words up into row 1 or otherwise corrupt it.
-    expect(cells[2].nameOfChild.value).toBe('JOMAR HITUTUAAN');
+    expect(cells[2].nameOfChild.value).toBe('TESTC FAMILYONE');
   });
 
   // Edge case: row bands are half-open [y0, y1) and column bands are
@@ -1287,7 +1301,7 @@ describe('applyFillDown', () => {
 
   test('fills empty minister and date from the row above, tagged inherited', () => {
     const rows = [
-      row({ dateOfBaptism: { value: '12 MAY 2016', confidence: 0.9 }, minister: { value: 'FR. ARCAPA', confidence: 0.9 } }),
+      row({ dateOfBaptism: { value: '12 MAY 2016', confidence: 0.9 }, minister: { value: 'FR. TESTMIN', confidence: 0.9 } }),
       row(),
     ];
     const { rows: out, filled } = applyFillDown(rows);
@@ -1300,15 +1314,15 @@ describe('applyFillDown', () => {
 
   test('treats a ditto mark as empty', () => {
     const rows = [
-      row({ minister: { value: 'FR. ARCAPA', confidence: 0.9 } }),
+      row({ minister: { value: 'FR. TESTMIN', confidence: 0.9 } }),
       row({ minister: { value: '-do-', confidence: 0.5 } }),
     ];
-    expect(applyFillDown(rows).rows[1].fields.minister.value).toBe('FR. ARCAPA');
+    expect(applyFillDown(rows).rows[1].fields.minister.value).toBe('FR. TESTMIN');
   });
 
   test('never fills sponsors or names', () => {
     const rows = [
-      row({ sponsors: { value: 'JOMARIE POL', confidence: 0.9 } }),
+      row({ sponsors: { value: 'SPONSORA ONE', confidence: 0.9 } }),
       row(),
     ];
     const out = applyFillDown(rows).rows;
@@ -1318,7 +1332,7 @@ describe('applyFillDown', () => {
 
   test('leaves a real value alone', () => {
     const rows = [
-      row({ minister: { value: 'FR. ARCAPA', confidence: 0.9 } }),
+      row({ minister: { value: 'FR. TESTMIN', confidence: 0.9 } }),
       row({ minister: { value: 'FR. JEZON', confidence: 0.9 } }),
     ];
     expect(applyFillDown(rows).rows[1].fields.minister.value).toBe('FR. JEZON');
@@ -1340,25 +1354,25 @@ describe('applyFillDown', () => {
   test('leaves a ditto mark in the very first row untouched — there is nothing above to carry', () => {
     const rows = [
       row({ minister: { value: '-do-', confidence: 0.5 } }),
-      row({ minister: { value: 'FR. ARCAPA', confidence: 0.9 } }),
+      row({ minister: { value: 'FR. TESTMIN', confidence: 0.9 } }),
     ];
     const out = applyFillDown(rows).rows;
     expect(out[0].fields.minister.value).toBe('-do-');
     expect(out[0].fields.minister.inherited).toBe(false);
     // The second row's real value must not be disturbed by the leading ditto.
-    expect(out[1].fields.minister.value).toBe('FR. ARCAPA');
+    expect(out[1].fields.minister.value).toBe('FR. TESTMIN');
   });
 
   test('does not crash on a row whose fields object is missing minister/dateOfBaptism keys entirely', () => {
     const rows = [
       { lineNo: '1', fields: { nameOfChild: { value: 'A', confidence: 0.9 } } },
-      row({ minister: { value: 'FR. ARCAPA', confidence: 0.9 } }),
+      row({ minister: { value: 'FR. TESTMIN', confidence: 0.9 } }),
       { lineNo: '3', fields: {} },
     ];
     const out = applyFillDown(rows).rows;
     expect(out[0].fields.minister.value).toBe('');
     expect(out[0].fields.minister.inherited).toBe(false);
-    expect(out[2].fields.minister.value).toBe('FR. ARCAPA');
+    expect(out[2].fields.minister.value).toBe('FR. TESTMIN');
     expect(out[2].fields.minister.inherited).toBe(true);
   });
 });
@@ -1458,6 +1472,89 @@ describe('joinPages', () => {
     const { warnings } = joinPages(left, right, leftRows, rightRows);
     expect(warnings).not.toContain('ROW_ALIGNMENT_MISMATCH');
   });
+
+  // FIX 2 regression: the reviewer-traced case where a bare intersection
+  // test misses a one-row drift entirely. Left NO.-column anchors at cy
+  // 100/200/300/400/500 give contiguous bands [50,150] [150,250] [250,350]
+  // [350,450] [450,550] (100px each, sized off small printed digits). The
+  // right page has a blank row 2 and a tall row 4 whose handwriting splits
+  // into two visual clusters, giving anchors at 105/305/380/430/505 and
+  // bands [55,205] [205,342.5] [342.5,405] [405,467.5] [467.5,555] (uneven
+  // widths, sized off full-width handwriting). Counts match (5==5), so
+  // ROW_COUNT_MISMATCH never fires, and EVERY index pair still intersects
+  // under a bare overlap test -- so under the old check this produced an
+  // empty `warnings` array while four children silently received another
+  // child's baptism date, minister and sponsors.
+  test('flags misalignment via centre-drift even when every index pair still bare-overlaps (reviewer-traced case)', () => {
+    const leftCys = [100, 200, 300, 400, 500];
+    const rightCys = [105, 305, 380, 430, 505];
+    const bandsFromAnchors = (cys) => {
+      const pitch = (cys[cys.length - 1] - cys[0]) / (cys.length - 1);
+      return cys.map((cy, i) => {
+        const prev = cys[i - 1];
+        const next = cys[i + 1];
+        return {
+          y0: prev !== undefined ? (prev + cy) / 2 : cy - pitch / 2,
+          y1: next !== undefined ? (cy + next) / 2 : cy + pitch / 2,
+        };
+      });
+    };
+    const leftRows = bandsFromAnchors(leftCys).map((b, i) => ({ lineNo: String(i + 1), ...b }));
+    const rightRows = bandsFromAnchors(rightCys);
+
+    // Sanity: every index pair genuinely still bare-overlaps, so this test
+    // is actually exercising the centre-drift check, not the old overlap
+    // check by coincidence.
+    for (let i = 0; i < leftRows.length; i += 1) {
+      const l = leftRows[i];
+      const r = rightRows[i];
+      expect(Math.max(l.y0, r.y0)).toBeLessThan(Math.min(l.y1, r.y1));
+    }
+
+    const left = leftCys.map((_, i) => ({ nameOfChild: { value: `CHILD_${i}`, confidence: 1 } }));
+    const right = rightCys.map((_, i) => ({ minister: { value: `FR_${i}`, confidence: 1 } }));
+
+    const { warnings } = joinPages(left, right, leftRows, rightRows);
+    expect(warnings).toContain('ROW_ALIGNMENT_MISMATCH');
+    expect(warnings).not.toContain('ROW_COUNT_MISMATCH');
+  });
+
+  // Control for the same geometry shape: a correct join (right anchors at
+  // the SAME cy as left, just narrower/wider bands from different content
+  // widths) must stay quiet -- centres agree closely even though band
+  // widths still differ.
+  test('does not flag centre-drift on a correct join with differently-sized bands', () => {
+    const cys = [100, 200, 300, 400, 500];
+    const bandsFromAnchors = (cys, halfWidth) => cys.map((cy) => ({ y0: cy - halfWidth, y1: cy + halfWidth }));
+    const leftRows = bandsFromAnchors(cys, 50).map((b, i) => ({ lineNo: String(i + 1), ...b }));
+    const rightRows = bandsFromAnchors(cys, 30); // narrower bands, same centres
+
+    const left = cys.map((_, i) => ({ nameOfChild: { value: `CHILD_${i}`, confidence: 1 } }));
+    const right = cys.map((_, i) => ({ minister: { value: `FR_${i}`, confidence: 1 } }));
+
+    const { warnings } = joinPages(left, right, leftRows, rightRows);
+    expect(warnings).not.toContain('ROW_ALIGNMENT_MISMATCH');
+    expect(warnings).not.toContain('ROW_COUNT_MISMATCH');
+  });
+
+  // FIX 2 also requires ROW_ALIGNMENT_MISMATCH unconditionally whenever
+  // ROW_COUNT_MISMATCH fires -- differing counts guarantee everything past
+  // the divergence point is mispaired, even over the checkable prefix that
+  // happens to still look aligned.
+  test('raises ROW_ALIGNMENT_MISMATCH unconditionally alongside ROW_COUNT_MISMATCH', () => {
+    const left = [
+      { nameOfChild: { value: 'A', confidence: 1 } },
+      { nameOfChild: { value: 'B', confidence: 1 } },
+    ];
+    const right = [{ minister: { value: 'FR. X', confidence: 1 } }];
+    // The one checkable (overlapping) pair looks perfectly aligned on its own.
+    const leftRows = [{ lineNo: '1', y0: 0, y1: 50 }, { lineNo: '2', y0: 50, y1: 100 }];
+    const rightRows = [{ y0: 0, y1: 50 }];
+
+    const { warnings } = joinPages(left, right, leftRows, rightRows);
+    expect(warnings).toContain('ROW_COUNT_MISMATCH');
+    expect(warnings).toContain('ROW_ALIGNMENT_MISMATCH');
+  });
 });
 
 describe('extractBaptismalRows', () => {
@@ -1466,9 +1563,9 @@ describe('extractBaptismalRows', () => {
     const out = extractBaptismalRows(words);
     expect(out.rotation).toBe(0);
     expect(out.rows).toHaveLength(3);
-    expect(out.rows[0].fields.nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
+    expect(out.rows[0].fields.nameOfChild.value).toBe('TESTA SAMPLE FAMILYONE');
     expect(out.rows[0].fields.dateOfBaptism.value).toBe('12 MAY 2016');
-    expect(out.rows[0].fields.parents.value).toBe('LITA HITUTUAAN');
+    expect(out.rows[0].fields.parents.value).toBe('PARENTA FAMILYONE');
     expect(out.rows[0].lineNo).toBe('1');
   });
 
@@ -1642,7 +1739,7 @@ describe('extractBaptismalRows', () => {
     const out = extractBaptismalRows(stripped);
     expect(out.warnings).toContain('ROW_COUNT_MISMATCH');
     expect(out.rows).toHaveLength(3);
-    expect(out.rows[0].fields.nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
+    expect(out.rows[0].fields.nameOfChild.value).toBe('TESTA SAMPLE FAMILYONE');
     expect(out.rows[0].fields.minister.value).toBe('');
   });
 });
