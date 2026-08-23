@@ -1,0 +1,123 @@
+/// Ordered field keys for a baptismal register row, matching the column
+/// order of the physical book (left page, then right page).
+const List<String> baptismalFieldKeys = [
+  'nameOfChild',
+  'placeAndBirthDate',
+  'legitimacy',
+  'parents',
+  'residentsOf',
+  'dateOfBaptism',
+  'minister',
+  'sponsors',
+  'observations',
+];
+
+const Map<String, String> baptismalFieldLabels = {
+  'nameOfChild': 'Name of Child',
+  'placeAndBirthDate': 'Place & Date of Birth',
+  'legitimacy': 'L or ILL',
+  'parents': 'Parents (Mother\'s Maiden Name)',
+  'residentsOf': 'Residents Of',
+  'dateOfBaptism': 'Date of Baptism',
+  'minister': 'Minister',
+  'sponsors': 'Sponsors',
+  'observations': 'Observations',
+};
+
+/// Fields the register always fills in and that the app requires to save.
+const Set<String> baptismalRequiredFields = {'nameOfChild', 'dateOfBaptism'};
+
+/// Below this, OCR output is shown as needing verification.
+const double kOcrReviewThreshold = 0.60;
+
+/// One extracted cell: the text, how sure OCR was, and whether it was carried
+/// down from the row above rather than actually read.
+class OcrField {
+  OcrField({required this.value, required this.confidence, this.inherited = false});
+
+  String value;
+  final double confidence;
+  final bool inherited;
+
+  /// True when a human should look at this before it is saved.
+  bool get needsReview {
+    if (value.trim().isEmpty) return false;
+    return inherited || confidence < kOcrReviewThreshold;
+  }
+
+  factory OcrField.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return OcrField(value: '', confidence: 0);
+    return OcrField(
+      value: json['value']?.toString() ?? '',
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
+      inherited: json['inherited'] == true,
+    );
+  }
+
+  OcrField copyWith({String? value}) =>
+      OcrField(value: value ?? this.value, confidence: confidence, inherited: inherited);
+}
+
+/// One row of the register — one prospective baptism record.
+class BaptismalRegisterRow {
+  BaptismalRegisterRow({
+    required this.lineNo,
+    required this.fields,
+    this.selected = true,
+  });
+
+  String lineNo;
+  final Map<String, OcrField> fields;
+  bool selected;
+
+  OcrField field(String key) => fields[key] ?? OcrField(value: '', confidence: 0);
+
+  void setValue(String key, String value) {
+    fields[key] = field(key).copyWith(value: value);
+  }
+
+  factory BaptismalRegisterRow.fromJson(Map<String, dynamic> json) {
+    final rawFields = json['fields'];
+    final map = <String, OcrField>{};
+    for (final key in baptismalFieldKeys) {
+      final raw = rawFields is Map ? rawFields[key] : null;
+      map[key] = OcrField.fromJson(
+        raw is Map ? Map<String, dynamic>.from(raw) : null,
+      );
+    }
+    return BaptismalRegisterRow(
+      lineNo: json['lineNo']?.toString() ?? '',
+      fields: map,
+    );
+  }
+}
+
+/// A whole scanned spread.
+class BaptismalOcrScan {
+  BaptismalOcrScan({
+    required this.scanId,
+    required this.rows,
+    required this.rotation,
+    required this.warnings,
+  });
+
+  final String scanId;
+  final List<BaptismalRegisterRow> rows;
+  final int rotation;
+  final List<String> warnings;
+
+  factory BaptismalOcrScan.fromJson(Map<String, dynamic> json) {
+    final rawRows = json['rows'];
+    return BaptismalOcrScan(
+      scanId: json['scanId']?.toString() ?? '',
+      rotation: (json['rotation'] as num?)?.toInt() ?? 0,
+      warnings: (json['warnings'] as List?)?.map((w) => w.toString()).toList() ?? const [],
+      rows: rawRows is List
+          ? rawRows
+              .whereType<Map>()
+              .map((r) => BaptismalRegisterRow.fromJson(Map<String, dynamic>.from(r)))
+              .toList()
+          : <BaptismalRegisterRow>[],
+    );
+  }
+}
