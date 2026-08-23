@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "jest"
+    "test": "jest",
+    "record:vision-fixtures": "node scripts/record_vision_fixture.js"
   },
   "dependencies": {
     "@google-cloud/vision": "^4.3.3",
