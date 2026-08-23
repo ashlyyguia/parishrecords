@@ -2,8 +2,19 @@ const express = require('express');
 const request = require('supertest');
 const { createBaptismalOcrRouter } = require('./baptismal_ocr_firestore');
 
-const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(16, 1)]);
+// A genuine, decodable tiny JPEG -- generated the same way
+// `baptismal_image_preprocess.test.js` does (sharp({ create: {...} })), so
+// the route's real `isDecodableImage` (sharp(buffer).metadata()) probe
+// accepts it. Built once in beforeAll since sharp encoding is async.
+let JPEG;
 const b64 = (buf) => buf.toString('base64');
+
+beforeAll(async () => {
+  const sharp = require('sharp');
+  JPEG = await sharp({
+    create: { width: 40, height: 30, channels: 3, background: { r: 200, g: 60, b: 60 } },
+  }).jpeg().toBuffer();
+});
 
 function appWith(overrides = {}, role = 'admin') {
   const app = express();
@@ -11,7 +22,17 @@ function appWith(overrides = {}, role = 'admin') {
     // Stand in for verifyFirebaseToken so tests need no Firebase.
     verifyToken: (req, _res, next) => { req.user = { uid: 'u1', role }; next(); },
     recognize: async () => ({ words: [{ text: 'X', vertices: [], confidence: 1 }], fullText: 'X' }),
-    extract: () => ({ rows: [{ index: 0, lineNo: '1', fields: {} }], rotation: 0, gutterX: 500, columns: { left: [], right: [] }, warnings: [] }),
+    extract: () => ({
+      rows: [{
+        index: 0,
+        lineNo: '1',
+        fields: { givenName: { value: 'Juan', confidence: 0.9, inherited: false } },
+      }],
+      rotation: 0,
+      gutterX: 500,
+      columns: { left: [{ key: 'givenName', x0: 0, x1: 100, matched: true }], right: [] },
+      warnings: ['GUTTER_UNCONFIRMED'],
+    }),
     ...overrides,
   }));
   return app;
@@ -26,6 +47,22 @@ describe('POST /api/ocr/baptismal/scan', () => {
     expect(res.body.data.scanId).toBe('s1');
     expect(res.body.data.rows).toHaveLength(1);
     expect(res.body.data.rotation).toBe(0);
+
+    // Full response-shape contract for Task 11's Flutter client -- not just
+    // the three fields above.
+    const { data } = res.body;
+    expect(data.columns).toEqual({
+      left: [{ key: 'givenName', x0: 0, x1: 100, matched: true }],
+      right: [],
+    });
+    expect(data.gutterX).toBe(500);
+    expect(data.warnings).toEqual(['GUTTER_UNCONFIRMED']);
+
+    const row = data.rows[0];
+    expect(row.lineNo).toBe('1');
+    expect(row.fields).toBeTruthy();
+    const field = row.fields.givenName;
+    expect(field).toEqual({ value: 'Juan', confidence: 0.9, inherited: false });
   });
 
   test('rejects a parishioner', async () => {
@@ -90,6 +127,35 @@ describe('POST /api/ocr/baptismal/scan', () => {
       .post('/api/ocr/baptismal/scan').send({ scanId: 's1', imageBase64: b64(JPEG) });
     expect(JSON.stringify(res.body)).not.toContain('imageBase64');
   });
+
+  test('never echoes cell values when a later step fails after recognition and extraction both succeed', async () => {
+    // The existing "never echoes cell values" test above throws inside
+    // recognize(), before any cell data exists in memory -- it cannot prove
+    // the no-leak property. Here, recognition succeeds and extraction
+    // succeeds in the sense that it computes real cell values before a
+    // downstream failure occurs (attached to the thrown error, standing in
+    // for e.g. a later serialization/audit step that references the
+    // extracted rows) -- this is the path where an actual leak could occur.
+    const secretValue = 'Maria Santos Cruz';
+    const extract = () => {
+      const rows = [{
+        index: 0,
+        lineNo: '1',
+        fields: { givenName: { value: secretValue, confidence: 0.95, inherited: false } },
+      }];
+      const err = new Error('downstream failure after extraction computed real values');
+      err.rows = rows;
+      throw err;
+    };
+    const res = await request(appWith({ extract }))
+      .post('/api/ocr/baptismal/scan').send({ scanId: 's1', imageBase64: b64(JPEG) });
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe('INTERNAL_ERROR');
+    expect(res.body.success).toBe(false);
+    const serialized = JSON.stringify(res.body);
+    expect(serialized).not.toContain(secretValue);
+    expect(serialized).not.toContain('imageBase64');
+  });
 });
 
 describe('POST /api/ocr/baptismal/scan edge cases', () => {
@@ -117,13 +183,19 @@ describe('POST /api/ocr/baptismal/scan edge cases', () => {
     expect(res.status).toBe(400);
   });
 
-  test('maps an extractor error with no .code to VISION_UNAVAILABLE (502)', async () => {
+  test('maps an extractor error with no .code to INTERNAL_ERROR (500), not VISION_UNAVAILABLE', async () => {
+    // An uncoded error from extractBaptismalRows is an internal bug, not a
+    // Vision-availability problem -- mislabelling it as VISION_UNAVAILABLE
+    // would misdirect debugging (see fix round: this used to default to
+    // VISION_UNAVAILABLE/502).
     const res = await request(appWith({
       extract: () => { throw new Error('totally unexpected'); },
     })).post('/api/ocr/baptismal/scan').send({ scanId: 's1', imageBase64: b64(JPEG) });
-    expect(res.status).toBe(502);
-    expect(res.body.code).toBe('VISION_UNAVAILABLE');
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe('INTERNAL_ERROR');
     expect(res.body.success).toBe(false);
+    // No-leak property: the underlying error message must never appear.
+    expect(JSON.stringify(res.body)).not.toContain('totally unexpected');
   });
 
   test('rejects a magic-valid but undecodable stub with IMAGE_INVALID and never calls Vision', async () => {
@@ -139,6 +211,28 @@ describe('POST /api/ocr/baptismal/scan edge cases', () => {
     expect(res.body.code).toBe('IMAGE_INVALID');
     expect(recognize).not.toHaveBeenCalled();
   });
+
+  test('rejects a magic-valid stub with garbage body (FF D8 FF FF FF FF) with IMAGE_INVALID and never calls Vision', async () => {
+    // Magic bytes alone (FF D8 FF) are valid, and there are bytes past the
+    // signature, but the body is not a real JPEG structure -- the real
+    // decode probe (sharp metadata) must still reject it before Vision is
+    // ever touched.
+    const stub = Buffer.from([0xff, 0xd8, 0xff, 0xff, 0xff, 0xff]);
+    const recognize = jest.fn(async () => ({ words: [], fullText: '' }));
+    const res = await request(appWith({ recognize })).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(stub) });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('IMAGE_INVALID');
+    expect(recognize).not.toHaveBeenCalled();
+  });
+
+  test('a genuine decodable image passes the decodability probe and reaches Vision', async () => {
+    const recognize = jest.fn(async () => ({ words: [{ text: 'X', vertices: [], confidence: 1 }], fullText: 'X' }));
+    const res = await request(appWith({ recognize })).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(JPEG) });
+    expect(res.status).toBe(200);
+    expect(recognize).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('body size ordering', () => {
@@ -147,11 +241,12 @@ describe('body size ordering', () => {
   // reaches our handler. The router must own a 20mb parser and be mounted
   // ahead of the global one.
   test('accepts a base64 body over 10MB', async () => {
-    // 8MB of image bytes -> ~10.9MB of base64, past the global 10mb limit.
-    const image = Buffer.concat([
-      Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
-      Buffer.alloc(8 * 1024 * 1024, 1),
-    ]);
+    // A genuine decodable JPEG (so the real isDecodableImage probe passes),
+    // padded with trailing bytes after its EOI marker to reach ~8MB of
+    // total image bytes -> ~10.9MB of base64, past the global 10mb limit.
+    // sharp's metadata() only reads the header, so trailing padding after a
+    // structurally-complete JPEG doesn't affect decodability.
+    const image = Buffer.concat([JPEG, Buffer.alloc(8 * 1024 * 1024 - JPEG.length, 1)]);
     const res = await request(appWith()).post('/api/ocr/baptismal/scan')
       .send({ scanId: 's1', imageBase64: b64(image) });
     expect(res.status).toBe(200);

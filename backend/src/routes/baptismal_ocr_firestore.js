@@ -4,7 +4,11 @@ const { body, validationResult } = require('express-validator');
 const { verifyFirebaseToken } = require('../middleware/auth');
 const { recognizeWords } = require('../services/baptismal_ocr_service');
 const { extractBaptismalRows } = require('../services/baptismal_register_layout');
-const { sniffImageType, preprocessForOcr } = require('../services/baptismal_image_preprocess');
+const {
+  sniffImageType,
+  preprocessForOcr,
+  MAX_INPUT_PIXELS,
+} = require('../services/baptismal_image_preprocess');
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const ACCEPTED = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -17,6 +21,7 @@ const STATUS_BY_CODE = {
   VISION_UNAVAILABLE: 502,
   NO_TEXT_FOUND: 422,
   LAYOUT_UNRECOGNIZED: 422,
+  INTERNAL_ERROR: 500,
 };
 
 const MESSAGE_BY_CODE = {
@@ -27,35 +32,56 @@ const MESSAGE_BY_CODE = {
   VISION_UNAVAILABLE: 'Could not reach the OCR service. Check your connection and retry.',
   NO_TEXT_FOUND: 'No readable text was found. Retake the photo with better lighting and framing.',
   LAYOUT_UNRECOGNIZED: 'This page does not look like a baptismal register. Check the photo and retry.',
+  INTERNAL_ERROR: 'Something went wrong while processing this scan. Try again, and contact an administrator if it persists.',
 };
 
-/**
- * Byte length of each format's magic-byte signature, as matched by
- * `sniffImageType`. A buffer that is no longer than its own signature
- * matched the magic bytes but carries no payload whatsoever past them --
- * e.g. a bare 3-byte `FF D8 FF` JPEG stub. That is unambiguously not a
- * decodable image, and it is cheap to catch before ever handing the buffer
- * to `preprocessForOcr` (which silently falls back to the original buffer on
- * any decode failure, so its output alone can't distinguish "decoded fine"
- * from "gave up") or to Vision (a paid, rate-limited API call).
- *
- * This is deliberately a length check, not a real decode (e.g.
- * `sharp(buffer).metadata()`). A real decode throws identically for a
- * genuinely truncated/synthetic buffer -- including this very route's own
- * "valid JPEG" test fixture, `FF D8 FF E0` followed by 16 arbitrary filler
- * bytes, which is not a structurally valid JPEG either -- and for an
- * actually-malicious stub. It cannot tell the two apart, so it would reject
- * legitimate-looking test/dev uploads exactly as hard as garbage. Requiring
- * *some* payload past the signature is the cheap signal that actually
- * discriminates a bare magic-bytes-only stub from anything else, without
- * spending decode time or a Vision call on input that could not possibly be
- * an image.
- */
-const SIGNATURE_LENGTH = { 'image/jpeg': 3, 'image/png': 8, 'image/webp': 12 };
+// Logged once per process (not per request) so a broken sharp install
+// doesn't flood the logs while the decodability gate silently degrades.
+let sharpUnavailableWarnedInRoute = false;
 
-function looksDecodable(buffer, mime) {
-  const sigLen = SIGNATURE_LENGTH[mime];
-  return typeof sigLen === 'number' && buffer.length > sigLen;
+/**
+ * Cheap, real decodability probe run BEFORE `preprocessForOcr`/Vision.
+ *
+ * `sniffImageType` only checks magic bytes, so a magic-valid-but-garbage
+ * buffer (e.g. a bare `FF D8 FF` stub, or `FF D8 FF FF FF FF`) would
+ * otherwise sail through and burn a paid Vision call before failing later.
+ * `preprocessForOcr` can't be used as that signal either: it swallows its
+ * own decode errors and returns the original buffer unchanged, so a
+ * successful call there proves nothing about decodability.
+ *
+ * This calls `sharp(buffer).metadata()`, which parses just the image header
+ * (no full pixel decode) -- cheap enough to run on every upload before
+ * Vision is ever touched. `limitInputPixels` is passed through so a header
+ * declaring an enormous width/height (a decompression-bomb style payload)
+ * is rejected here rather than only being caught later inside
+ * `preprocessForOcr`.
+ *
+ * If the `sharp` native module itself is unavailable in this environment,
+ * the probe can't run at all; rather than hard-failing every upload because
+ * of a broken deploy, this degrades the same way `preprocessForOcr` does --
+ * warn once and let the buffer through unprobed.
+ */
+async function isDecodableImage(buffer) {
+  let sharp;
+  try {
+    sharp = require('sharp');
+  } catch (e) {
+    if (!sharpUnavailableWarnedInRoute) {
+      console.error('[baptismal-ocr] sharp unavailable, skipping decodability probe: ' + (e?.message));
+      sharpUnavailableWarnedInRoute = true;
+    }
+    return true;
+  }
+  try {
+    const meta = await sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
+    return Boolean(meta && meta.width > 0 && meta.height > 0);
+  } catch (e) {
+    // Any decode failure (corrupt header, premature EOF, oversized pixel
+    // count blocked by limitInputPixels, etc.) means "not decodable" -- the
+    // specific reason doesn't change the outcome, so it's intentionally not
+    // inspected or logged here (see fail()'s single generic log line).
+    return false;
+  }
 }
 
 function requireStaffOrAdmin(req, res, next) {
@@ -116,7 +142,7 @@ function createBaptismalOcrRouter(deps = {}) {
       const mime = sniffImageType(buffer);
       if (!mime || !ACCEPTED.has(mime)) return fail(res, 'IMAGE_INVALID', scanId);
 
-      if (!looksDecodable(buffer, mime)) return fail(res, 'IMAGE_INVALID', scanId);
+      if (!(await isDecodableImage(buffer))) return fail(res, 'IMAGE_INVALID', scanId);
 
       try {
         const prepared = await preprocess(buffer);
@@ -142,7 +168,14 @@ function createBaptismalOcrRouter(deps = {}) {
           },
         });
       } catch (e) {
-        const code = e && STATUS_BY_CODE[e.code] ? e.code : 'VISION_UNAVAILABLE';
+        // An error with a recognized .code (VISION_*, NO_TEXT_FOUND,
+        // LAYOUT_UNRECOGNIZED, ...) is mapped to its specific status. An
+        // uncoded error is an internal bug (e.g. in extractBaptismalRows),
+        // not a Vision-availability problem -- defaulting it to
+        // VISION_UNAVAILABLE would misdirect debugging, so it maps to
+        // INTERNAL_ERROR/500 instead. Never include e.message in the
+        // response body (no-leak property).
+        const code = e && STATUS_BY_CODE[e.code] ? e.code : 'INTERNAL_ERROR';
         return fail(res, code, scanId);
       }
     },
