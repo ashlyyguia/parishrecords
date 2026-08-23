@@ -10,7 +10,7 @@ void main() {
 
     test('flags inherited values for review even at high confidence', () {
       expect(
-        OcrField(value: 'FR. ARCAPA', confidence: 0.99, inherited: true).needsReview,
+        OcrField(value: 'FR. TESTMIN', confidence: 0.99, inherited: true).needsReview,
         isTrue,
       );
     });
@@ -42,12 +42,12 @@ void main() {
       final row = BaptismalRegisterRow(
         lineNo: '1',
         fields: {
-          'minister': OcrField(value: 'FR. ARCAPA', confidence: 0.99, inherited: true),
+          'minister': OcrField(value: 'FR. TESTMIN', confidence: 0.99, inherited: true),
         },
       );
       expect(row.field('minister').needsReview, isTrue);
 
-      row.setValue('minister', 'FR. ARCAPA JR.');
+      row.setValue('minister', 'FR. TESTMIN JR.');
 
       final edited = row.field('minister');
       expect(edited.needsReview, isFalse);
@@ -72,7 +72,7 @@ void main() {
     });
 
     test('setValue to the same string still counts as reviewed', () {
-      final field = OcrField(value: 'FR. ARCAPA', confidence: 0.99, inherited: true);
+      final field = OcrField(value: 'FR. TESTMIN', confidence: 0.99, inherited: true);
       final confirmed = field.copyWith(value: field.value);
       expect(confirmed.value, field.value);
       expect(confirmed.edited, isTrue);
@@ -96,7 +96,7 @@ void main() {
           'index': 0,
           'lineNo': '1',
           'fields': {
-            'nameOfChild': {'value': 'JEZL ANTOINETTE', 'confidence': 0.71, 'inherited': false},
+            'nameOfChild': {'value': 'TESTA SAMPLE', 'confidence': 0.71, 'inherited': false},
             'dateOfBaptism': {'value': '12 MAY 2016', 'confidence': 0.0, 'inherited': true},
           },
         },
@@ -110,7 +110,7 @@ void main() {
       expect(scan.warnings, ['LAYOUT_UNCERTAIN']);
       expect(scan.rows, hasLength(1));
       expect(scan.rows.first.lineNo, '1');
-      expect(scan.rows.first.field('nameOfChild').value, 'JEZL ANTOINETTE');
+      expect(scan.rows.first.field('nameOfChild').value, 'TESTA SAMPLE');
       expect(scan.rows.first.field('dateOfBaptism').inherited, isTrue);
     });
 

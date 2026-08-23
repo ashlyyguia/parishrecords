@@ -63,7 +63,15 @@ This writes `backend/test/fixtures/vision-img_3120.json`,
 images in `attachments/` (a bound Baptismal Register spread photographed at
 90°, 180°, and 180° rotation respectively). Each fixture is the normalized
 word list (`{ words }`), not the raw Vision payload — small and stable across
-Vision API/library version bumps. Commit the resulting JSON files.
+Vision API/library version bumps.
+
+**Do NOT commit the resulting JSON files.** They are a full OCR
+transcription of three real register spreads — real children's names, birth
+and baptism dates, parents, sponsors and residences. `backend/test/fixtures/`
+is listed in `.gitignore` specifically to keep this output out of version
+control; leave it there. Keep the recorded fixtures local only, and treat
+them with the same care as the source images in `attachments/` (also
+gitignored).
 
 **Note for whoever runs this**: `backend/scripts/record_vision_fixture.js`
 cannot be executed in the development/CI environment used to build this task
@@ -85,6 +93,25 @@ hand before shipping. Use the three real sample images in `attachments/`:
       are not mixed with dates, and dates are not mixed with ministers.
 - [ ] The rotated pages (all three samples) produce the same rows, in the
       same order, as an upright photo of the same spread would.
+
+### Known limitation: `parents` and `sponsors` are not sub-column-split
+The printed register has two physical sub-columns under `NAME OF PARENTS`
+(father, then mother) and under `SPONSORS`, but `assignCells` in
+`backend/src/services/baptismal_register_layout.js` calibrates and reads each
+of those as a SINGLE combined band -- there is no sub-column split anywhere
+in the pipeline. Both names land in one field as a plain space-joined blob
+(e.g. "JUAN DELA CRUZ MARIA SANTOS"), with no `/` separator and no way to
+tell programmatically where the father's name ends and the mother's begins.
+- [ ] Confirm this by hand on all three sample images: the `parents` and
+      `sponsors` cells contain both names run together, not split.
+- [ ] A reviewer must manually re-type these two fields as
+      "Father / Mother" (matching `ManualRegisterNotes._parentsValue`'s
+      expected `"father / mother"` format) before saving, every time.
+- [ ] Follow-up (not yet implemented): teach `assignCells` to track each
+      sub-column's own x-range so it can split `parents`/`sponsors`
+      correctly, instead of guessing via an x-midpoint split (which risks
+      mis-assigning a name to the wrong parent -- worse than the current
+      honest, visibly-unsplit blob).
 
 ### Review-state tinting and editing
 - [ ] Low-confidence cells are tinted amber.

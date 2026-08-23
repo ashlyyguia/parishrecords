@@ -11,24 +11,24 @@ void main() {
         scanId: 'scan-1',
         imagePath: 'baptism_scans/2026/scan-1.jpg',
         fields: const {
-          'nameOfChild': 'JEZL ANTOINETTE HITUTUAAN',
+          'nameOfChild': 'TESTA SAMPLE FAMILYONE',
           'placeAndBirthDate': '19 FEBRUARY 2001',
           'legitimacy': 'L',
-          'parents': 'LITA / HITUTUAAN',
-          'residentsOf': 'P-2 CANITOAN',
+          'parents': 'PARENTA / FAMILYONE',
+          'residentsOf': 'ZONE-1 TESTVILLE',
           'dateOfBaptism': '12 MAY 2016',
-          'minister': 'FR. PABLITO ARCAPA',
-          'sponsors': 'JOMARIE / POL',
+          'minister': 'FR. TEST CLERIC',
+          'sponsors': 'SPONSORA / ONE',
           'observations': 'Married to X',
         },
       );
 
   test('carries every register column including the two new ones', () {
     final map = build();
-    expect(map['nameOfChild'], 'JEZL ANTOINETTE HITUTUAAN');
+    expect(map['nameOfChild'], 'TESTA SAMPLE FAMILYONE');
     expect(map['legitimacy'], 'L');
     expect(map['observations'], 'Married to X');
-    expect(map['minister'], 'FR. PABLITO ARCAPA');
+    expect(map['minister'], 'FR. TEST CLERIC');
     expect(map['volNo'], '4');
     expect(map['lineNo'], '1');
   });
@@ -50,10 +50,10 @@ void main() {
 
   test('converts to a RegisterOcrEntry through the existing path', () {
     final entry = ManualRegisterNotes.entryFromMap(build());
-    expect(entry.name, 'JEZL ANTOINETTE HITUTUAAN');
+    expect(entry.name, 'TESTA SAMPLE FAMILYONE');
     expect(entry.baptismDateText, '12 MAY 2016');
-    expect(entry.minister, 'FR. PABLITO ARCAPA');
-    expect(entry.parents, 'LITA / HITUTUAAN');
+    expect(entry.minister, 'FR. TEST CLERIC');
+    expect(entry.parents, 'PARENTA / FAMILYONE');
   });
 
   test('omitted optional fields become empty strings, not null', () {

@@ -32,7 +32,7 @@ describe('resolveVisionCredentials', () => {
 describe('recognizeWords', () => {
   const visionResponse = {
     fullTextAnnotation: {
-      text: 'JEZL ANTOINETTE',
+      text: 'TESTA SAMPLE',
       pages: [{
         blocks: [{
           paragraphs: [{
@@ -40,12 +40,12 @@ describe('recognizeWords', () => {
               {
                 confidence: 0.93,
                 boundingBox: { vertices: [{x:120,y:100},{x:180,y:100},{x:180,y:122},{x:120,y:122}] },
-                symbols: [{ text: 'J' }, { text: 'E' }, { text: 'Z' }, { text: 'L' }],
+                symbols: 'TESTA'.split('').map((t) => ({ text: t })),
               },
               {
                 confidence: 0.71,
                 boundingBox: { vertices: [{x:190,y:100},{x:300,y:100},{x:300,y:122},{x:190,y:122}] },
-                symbols: 'ANTOINETTE'.split('').map((t) => ({ text: t })),
+                symbols: 'SAMPLE'.split('').map((t) => ({ text: t })),
               },
             ],
           }],
@@ -56,14 +56,27 @@ describe('recognizeWords', () => {
 
   const fakeClient = (response) => ({ documentTextDetection: async () => [response] });
 
+  // FIX 12: Philippine registers are full of Spanish/Tagalog/Cebuano proper
+  // nouns; an English-only hint biases Vision away from reading them
+  // correctly.
+  test('requests both English and Filipino language hints from Vision', async () => {
+    const documentTextDetection = jest.fn().mockResolvedValue([visionResponse]);
+    await recognizeWords(Buffer.from('x'), { client: { documentTextDetection } });
+    expect(documentTextDetection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageContext: { languageHints: ['en', 'fil'] },
+      }),
+    );
+  });
+
   test('normalizes words to text + vertices + confidence', async () => {
     const { words, fullText } = await recognizeWords(Buffer.from('x'), { client: fakeClient(visionResponse) });
-    expect(fullText).toBe('JEZL ANTOINETTE');
+    expect(fullText).toBe('TESTA SAMPLE');
     expect(words).toHaveLength(2);
-    expect(words[0].text).toBe('JEZL');
+    expect(words[0].text).toBe('TESTA');
     expect(words[0].confidence).toBeCloseTo(0.93);
     expect(words[0].vertices[0]).toEqual({ x: 120, y: 100 });
-    expect(words[1].text).toBe('ANTOINETTE');
+    expect(words[1].text).toBe('SAMPLE');
   });
 
   test('throws NO_TEXT_FOUND on an empty annotation', async () => {

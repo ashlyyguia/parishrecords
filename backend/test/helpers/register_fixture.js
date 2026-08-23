@@ -84,36 +84,42 @@ function rotateWord(w, rotation) {
   };
 }
 
+// Synthetic sample data. These are NOT real register transcriptions -- every
+// name, parent, sponsor, minister and residence below is a deliberately
+// obvious placeholder, chosen so nothing here can be mistaken for (or reverse
+// -engineered into) an actual parishioner's record. Only the geometry (page
+// size, gutter, header/row positions, column x-centers below) mirrors the
+// real sample scan; the handwriting CONTENT does not.
 const SAMPLE_ROWS = [
   {
     no: '1',
-    nameOfChild: ['JEZL', 'ANTOINETTE', 'HITUTUAAN'],
+    nameOfChild: ['TESTA', 'SAMPLE', 'FAMILYONE'],
     placeAndBirthDate: ['19', 'FEBRUARY', '2001'],
-    parents: ['LITA', 'HITUTUAAN'],
-    residentsOf: ['P-2', 'CANITOAN'],
+    parents: ['PARENTA', 'FAMILYONE'],
+    residentsOf: ['ZONE-1', 'TESTVILLE'],
     dateOfBaptism: ['12', 'MAY', '2016'],
-    minister: ['FR.', 'PABLITO', 'ARCAPA'],
-    sponsors: ['JOMARIE', 'POL'],
+    minister: ['FR.', 'TEST', 'CLERIC'],
+    sponsors: ['SPONSORA', 'ONE'],
   },
   {
     no: '2',
-    nameOfChild: ['JULLIE', 'PACITO'],
+    nameOfChild: ['TESTB', 'FAMILYTWO'],
     placeAndBirthDate: ['7', 'OCTOBER', '2010'],
-    parents: ['LYRA', 'PACITO'],
-    residentsOf: ['PUROK', '4'],
+    parents: ['PARENTB', 'FAMILYTWO'],
+    residentsOf: ['ZONE-2', 'TESTVILLE'],
     dateOfBaptism: ['12', 'MAY', '2016'],
-    minister: ['FR.', 'PABLITO', 'ARCAPA'],
-    sponsors: ['ANIGTA', 'POL'],
+    minister: ['FR.', 'TEST', 'CLERIC'],
+    sponsors: ['SPONSORB', 'TWO'],
   },
   {
     no: '3',
-    nameOfChild: ['JOMAR', 'HITUTUAAN'],
+    nameOfChild: ['TESTC', 'FAMILYONE'],
     placeAndBirthDate: ['10', 'JANUARY', '2010'],
-    parents: ['LUISA', 'CARBALLO'],
-    residentsOf: ['UPPER', 'ILIGAN'],
+    parents: ['PARENTC', 'MAIDENNAME'],
+    residentsOf: ['ZONE-3', 'TESTVILLE'],
     dateOfBaptism: ['22', 'MAY', '2016'],
-    minister: ['FR.', 'PABLITO', 'ARCAPA'],
-    sponsors: ['EDGAR', 'LULLAO'],
+    minister: ['FR.', 'TEST', 'CLERIC'],
+    sponsors: ['SPONSORC', 'THREE'],
   },
 ];
 
