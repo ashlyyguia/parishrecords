@@ -20,6 +20,7 @@
     "helmet": "^7.0.0",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^8.0.0",
+    "sharp": "^0.33.5",
     "swagger-ui-express": "^5.0.0",
     "uuid": "^9.0.0"
   },
