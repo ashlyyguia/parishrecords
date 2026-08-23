@@ -3,7 +3,7 @@ const {
   LEFT_COLUMNS, RIGHT_COLUMNS,
 } = require('./baptismal_register_layout');
 const {
-  buildRegisterFixture, GUTTER_X0, GUTTER_X1, FIRST_ROW_Y, ROW_H,
+  buildRegisterFixture, GUTTER_X0, GUTTER_X1, FIRST_ROW_Y, ROW_H, COLUMN_X,
 } = require('../../test/helpers/register_fixture');
 
 describe('boxOf', () => {
@@ -199,7 +199,15 @@ describe('calibrateColumns', () => {
   // header-to-data gap for a naive gap-sweep to find. The boundary must
   // still land below the header row, never above it.
   test('matches every header on a page with no data rows below them', () => {
-    const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 0, rows: 0 }).words);
+    const built = buildRegisterFixture({ rotation: 0, rows: 0 });
+    // Guard the premise: `rows: 0` must actually mean zero data rows (a
+    // prior fixture bug treated 0 as falsy and silently substituted the
+    // default 3 sample rows, which let this test pass without ever
+    // exercising the true header-only, no-data-below case its name claims).
+    expect(built.rowCount).toBe(0);
+    expect(built.words.some((w) => boxOf(w).cy >= FIRST_ROW_Y)).toBe(false);
+
+    const { words } = normalizeOrientation(built.words);
     const { left, right } = splitSpread(words);
     const leftResult = calibrateColumns(left, LEFT_COLUMNS);
     const rightResult = calibrateColumns(right, RIGHT_COLUMNS);
@@ -221,10 +229,14 @@ describe('calibrateColumns', () => {
   });
 
   test('matches every header on a header-only page with no page titles either', () => {
+    const built = buildRegisterFixture({ rotation: 0, rows: 0 });
+    // Same premise guard as above: confirm this page genuinely has zero
+    // data rows before filtering out the page titles.
+    expect(built.rowCount).toBe(0);
+    expect(built.words.some((w) => boxOf(w).cy >= FIRST_ROW_Y)).toBe(false);
+
     const { words } = normalizeOrientation(
-      buildRegisterFixture({ rotation: 0, rows: 0 }).words.filter(
-        (w) => w.text !== 'Baptismal' && w.text !== 'Register',
-      ),
+      built.words.filter((w) => w.text !== 'Baptismal' && w.text !== 'Register'),
     );
     const { left } = splitSpread(words);
     const { columns, warnings } = calibrateColumns(left, LEFT_COLUMNS);
@@ -757,14 +769,10 @@ describe('detectRows', () => {
   // anchor to and nothing to fall back onto either; the honest result is
   // zero rows, not a crash or a spurious row conjured from header text.
   test('returns no rows for a page with zero data rows', () => {
-    // register_fixture's `rows` option treats 0 as falsy and silently
-    // defaults to its sample rows (a pre-existing quirk in shared fixture
-    // code this task must not touch — see helpers/register_fixture.js), so
-    // a genuinely header-only page is built here by filtering out
-    // everything at or below the first data row's y instead.
-    const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 0 }).words);
-    const headerOnly = words.filter((w) => boxOf(w).cy < FIRST_ROW_Y);
-    const left = splitSpread(headerOnly).left;
+    const built = buildRegisterFixture({ rotation: 0, rows: 0 });
+    expect(built.rowCount).toBe(0);
+    const { words } = normalizeOrientation(built.words);
+    const left = splitSpread(words).left;
     const { columns, headerMaxY } = calibrateColumns(left, LEFT_COLUMNS);
     const { rows } = detectRows(left, columns, headerMaxY);
     expect(rows).toEqual([]);
@@ -786,6 +794,64 @@ describe('detectRows', () => {
     expect(rows[0].y1).toBeGreaterThan(rows[0].y0);
     expect(Number.isNaN(rows[0].y0)).toBe(false);
     expect(Number.isNaN(rows[0].y1)).toBe(false);
+  });
+
+  /**
+   * Builds a 6-row page where every row's NO.-column digit has been erased
+   * except the rows at `keepIndices` (0-based) — simulating faded/damaged
+   * ink that took out most of the line-number column while leaving the
+   * rest of those rows' handwriting (name, dates, etc.) legible. Used to
+   * test the anchor/fallback corroboration check: a sparse or lone NO.
+   * anchor must not be trusted at face value when the rest of the page's
+   * words evidently contain many more rows than that.
+   */
+  function sixRowPageWithSparseNoColumn(keepIndices) {
+    const built = buildRegisterFixture({ rotation: 0, rows: 6 });
+    const keepCys = new Set(keepIndices.map((r) => FIRST_ROW_Y + r * ROW_H));
+    const filtered = built.words.filter((w) => {
+      const b = boxOf(w);
+      const isNoColumnDigit = b.cx === COLUMN_X.no && /^\d{1,3}$/.test(w.text);
+      return !isNoColumnDigit || keepCys.has(b.cy);
+    });
+    const { words } = normalizeOrientation(filtered);
+    const left = splitSpread(words).left;
+    const { columns, headerMaxY } = calibrateColumns(left, LEFT_COLUMNS);
+    return { left, columns, headerMaxY };
+  }
+
+  // Corroboration finding: a lone surviving NO. anchor on a 6-row page must
+  // not be trusted as proof the page only has one row. Every other row's
+  // non-NO. cells are still there for the fallback y-clustering to find, so
+  // the pipeline must notice the mismatch and recover all 6 rows (via the
+  // fallback) instead of confidently — and silently — returning 1.
+  test('does not silently collapse to 1 row when only one NO. anchor survives on a 6-row page', () => {
+    const { left, columns, headerMaxY } = sixRowPageWithSparseNoColumn([0]);
+    const { rows, warnings } = detectRows(left, columns, headerMaxY);
+    expect(rows).toHaveLength(6);
+    expect(warnings).toContain('ROW_ANCHOR_FALLBACK');
+  });
+
+  // Same finding, with 2 of 6 NO. anchors surviving instead of 1: still a
+  // small fraction of the page's evident row count, so it must not be
+  // trusted at face value either.
+  test('does not silently return only 2 rows when just 2 of 6 NO. anchors survive', () => {
+    const { left, columns, headerMaxY } = sixRowPageWithSparseNoColumn([0, 3]);
+    const { rows, warnings } = detectRows(left, columns, headerMaxY);
+    expect(rows).toHaveLength(6);
+    expect(warnings).toContain('ROW_ANCHOR_FALLBACK');
+  });
+
+  // Control: when every NO. anchor on a 6-row page is legible, corroboration
+  // must be a no-op — same rows, same lineNo values, no warning. (Also
+  // covered by 'anchors rows on the NO. column' above; asserted again here,
+  // co-located with the sparse-anchor tests, so the full corroboration
+  // matrix — 6-of-6, 2-of-6, 1-of-6 — reads together.)
+  test('all anchors legible on a 6-row page: unchanged behaviour, no warning', () => {
+    const { left, columns, headerMaxY } = leftPage();
+    const { rows, warnings } = detectRows(left, columns, headerMaxY);
+    expect(rows).toHaveLength(6);
+    expect(rows.map((r) => r.lineNo)).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(warnings).toEqual([]);
   });
 
   // Edge case: real handwritten registers are not evenly ruled. Row bands

@@ -134,7 +134,7 @@ const COLUMN_X = {
  */
 function buildRegisterFixture(opts = {}) {
   const rotation = opts.rotation || 0;
-  const rowCount = opts.rows || SAMPLE_ROWS.length;
+  const rowCount = opts.rows ?? SAMPLE_ROWS.length;
   const omitHeaders = new Set(opts.omitHeaders || []);
   const confidence = typeof opts.confidence === 'number' ? opts.confidence : 0.9;
 

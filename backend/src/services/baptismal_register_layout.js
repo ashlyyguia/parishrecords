@@ -433,13 +433,27 @@ function clusterByY(items, tolerance) {
  * row, rather than inferring row boundaries from wherever handwritten data
  * happens to sit.
  *
- * Fallback: when fewer than one lineNo digit can be matched (the column
- * itself is unreadable — smudged, cropped, or genuinely blank), clusters
- * every word on the page by y instead. This is noisier — a row with unusually
- * wide handwriting can span more than one visual cluster, or a stray mark can
+ * Fallback: when no lineNo digit can be matched (the column itself is
+ * unreadable — smudged, cropped, or genuinely blank), clusters every word on
+ * the page by y instead. This is noisier — a row with unusually wide
+ * handwriting can span more than one visual cluster, or a stray mark can
  * create a spurious one — so it always warns `ROW_ANCHOR_FALLBACK` and
  * cannot recover a `lineNo` value (there was nothing legible to read one
  * from).
+ *
+ * Corroboration: one or more lineNo anchors is not automatically trusted at
+ * face value. `anchors.length` alone can't distinguish a genuine one-row
+ * page from a many-row page whose NO. column is mostly illegible except for
+ * one surviving/misread digit — both yield exactly one anchor. So the
+ * fallback y-clustering is always computed too (over every data word, not
+ * just the NO. column) and compared against the anchor clusters: if it
+ * finds MORE row-like bands than the anchors account for, the anchors are
+ * treated as a sparse fragment of a bigger page rather than the whole page,
+ * and the fallback's row count is used instead (still warning
+ * `ROW_ANCHOR_FALLBACK`). This trades away the sparse anchors' partial
+ * `lineNo` information, but the alternative — confidently returning far
+ * fewer rows than the page evidently contains — silently drops real
+ * baptismal records, which is worse.
  *
  * `headerMaxY` must be the boundary `calibrateColumns` already computed for
  * this same page (its returned `headerMaxY`) — recomputing it here from a
@@ -483,22 +497,44 @@ function detectRows(pageWords, columns, headerMaxY) {
     );
   }
 
+  const dataBoxes = boxes.filter((b) => b.cy > headerMaxY);
+  // Fallback y-clustering over EVERY data word, not just the NO. column.
+  // This doubles as a corroborating signal for the anchor path below: a
+  // register row leaves handwriting in several columns even when its NO.
+  // digit is faded past recognition, so the number of row-like y-bands this
+  // finds is a reasonable independent estimate of how many rows the page
+  // actually has.
+  const fallbackClusters = clusterByY(dataBoxes, tolerance);
+
   // A single legible digit is still a trustworthy anchor for a genuinely
   // one-row page — requiring two would force a page with exactly one data
   // row into the noisier fallback path and silently discard the very lineNo
-  // value it correctly read.
+  // value it correctly read. But `anchors.length` alone can't tell that
+  // case apart from a many-row page whose NO. column is mostly illegible
+  // except for one surviving (or misread) digit — both produce exactly one
+  // anchor. Corroborate: cluster the anchors themselves and compare against
+  // `fallbackClusters` computed above. If the page-wide clustering finds
+  // MORE row-like bands than the anchors account for, the anchors are a
+  // sparse fragment of a bigger register, not the whole page — trusting
+  // them alone would silently drop every row they missed, which is exactly
+  // the failure this function exists to avoid. In that case, use the
+  // fallback's row count instead (lineNo unrecoverable, same as the
+  // zero-anchor case) rather than confidently returning too few rows.
   let clusters;
   if (anchors.length >= 1) {
-    clusters = clusterByY(anchors, tolerance).map((c) => ({
-      cy: c.cy,
-      lineNo: c.members[0].text,
-    }));
+    const anchorClusters = clusterByY(anchors, tolerance);
+    if (fallbackClusters.length > anchorClusters.length) {
+      warnings.push('ROW_ANCHOR_FALLBACK');
+      clusters = fallbackClusters.map((c) => ({ cy: c.cy, lineNo: null }));
+    } else {
+      clusters = anchorClusters.map((c) => ({
+        cy: c.cy,
+        lineNo: c.members[0].text,
+      }));
+    }
   } else {
     warnings.push('ROW_ANCHOR_FALLBACK');
-    clusters = clusterByY(
-      boxes.filter((b) => b.cy > headerMaxY),
-      tolerance,
-    ).map((c) => ({ cy: c.cy, lineNo: null }));
+    clusters = fallbackClusters.map((c) => ({ cy: c.cy, lineNo: null }));
   }
 
   if (clusters.length === 0) return { rows: [], warnings };
