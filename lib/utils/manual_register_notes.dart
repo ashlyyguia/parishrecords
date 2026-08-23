@@ -208,6 +208,43 @@ class ManualRegisterNotes {
     };
   }
 
+  /// Notes payload for a row verified through the Vision baptismal OCR flow.
+  ///
+  /// Additive relative to [toNotesMap]: adds `legitimacy`, `observations` and
+  /// scan provenance. Keeps `source` recognisable to [isManualBaptismMap] via
+  /// the `nameOfChild` key, so existing readers and the flat register editor
+  /// keep working.
+  static Map<String, dynamic> toBaptismalOcrNotesMap({
+    required String volNo,
+    required String seriesNo,
+    required String lineNo,
+    required Map<String, String> fields,
+    required String scanId,
+    String? imagePath,
+    String status = 'official',
+  }) {
+    String at(String key) => (fields[key] ?? '').trim();
+    return {
+      'source': 'baptismal_ocr_vision',
+      'status': status,
+      'sacramentType': 'baptism',
+      'volNo': volNo,
+      'seriesNo': seriesNo,
+      'lineNo': lineNo,
+      'nameOfChild': at('nameOfChild'),
+      'placeAndBirthDate': at('placeAndBirthDate'),
+      'legitimacy': at('legitimacy'),
+      'parents': at('parents'),
+      'residentsOf': at('residentsOf'),
+      'dateOfBaptism': at('dateOfBaptism'),
+      'minister': at('minister'),
+      'sponsors': at('sponsors'),
+      'observations': at('observations'),
+      'ocrScanId': scanId,
+      'originalImagePath': imagePath,
+    };
+  }
+
   static RegisterMarriageEntry marriageEntryFromMap(
     Map<String, dynamic> data, {
     String? id,
