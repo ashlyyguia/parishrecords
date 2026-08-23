@@ -101,4 +101,89 @@ void main() {
     expect(baptismDateOf(row(date: '12 MAY 2016')), DateTime(2016, 5, 12));
     expect(baptismDateOf(row(date: 'nonsense')), isNull);
   });
+
+  test('does not block when the birth date equals the baptism date', () {
+    final issues = validateBaptismalRows(
+      [row(date: '12 MAY 2016', birth: '12 MAY 2016')],
+      now: now,
+    );
+    expect(issues, isEmpty);
+  });
+
+  test('does not flag a duplicate when one of the pair is unselected', () {
+    final issues = validateBaptismalRows(
+      [row(lineNo: '1'), row(lineNo: '2', selected: false)],
+      now: now,
+    );
+    expect(issues, isEmpty);
+  });
+
+  test('does not flag same name with different baptism dates as duplicate', () {
+    final issues = validateBaptismalRows(
+      [row(lineNo: '1', date: '12 MAY 2016'), row(lineNo: '2', date: '13 MAY 2016')],
+      now: now,
+    );
+    expect(issues.where((i) => !i.blocking), isEmpty);
+  });
+
+  test('treats names differing only by case and surrounding whitespace as duplicates', () {
+    final issues = validateBaptismalRows(
+      [
+        row(lineNo: '1', name: 'Jezl Antoinette'),
+        row(lineNo: '2', name: '  JEZL ANTOINETTE  '),
+      ],
+      now: now,
+    );
+    final dupIssues = issues.where((i) => !i.blocking).toList();
+    expect(dupIssues, hasLength(1));
+    expect(dupIssues.single.field, 'nameOfChild');
+    expect(dupIssues.single.rowIndex, 1);
+  });
+
+  test('an empty row list has no issues', () {
+    expect(validateBaptismalRows([], now: now), isEmpty);
+  });
+
+  test('a list where every row is unselected has no issues', () {
+    final issues = validateBaptismalRows(
+      [row(lineNo: '1', selected: false), row(lineNo: '2', name: '', selected: false)],
+      now: now,
+    );
+    expect(issues, isEmpty);
+  });
+
+  test('ignores existing non-baptism records for duplicate purposes', () {
+    final existing = [
+      ParishRecord(
+        id: '1', type: RecordType.marriage,
+        name: 'jezl antoinette', date: DateTime(2016, 5, 12),
+      ),
+      ParishRecord(
+        id: '2', type: RecordType.funeral,
+        name: 'jezl antoinette', date: DateTime(2016, 5, 12),
+      ),
+      ParishRecord(
+        id: '3', type: RecordType.confirmation,
+        name: 'jezl antoinette', date: DateTime(2016, 5, 12),
+      ),
+    ];
+    final issues = validateBaptismalRows([row()], existing: existing, now: now);
+    expect(issues, isEmpty);
+  });
+
+  test('a row with both a missing name and an unparseable date reports both issues', () {
+    final issues = validateBaptismalRows(
+      [row(name: '  ', date: 'sometime in may')],
+      now: now,
+    );
+    expect(issues, hasLength(2));
+
+    final nameIssue = issues.singleWhere((i) => i.field == 'nameOfChild');
+    expect(nameIssue.blocking, isTrue);
+    expect(nameIssue.rowIndex, 0);
+
+    final dateIssue = issues.singleWhere((i) => i.field == 'dateOfBaptism');
+    expect(dateIssue.blocking, isTrue);
+    expect(dateIssue.rowIndex, 0);
+  });
 }
