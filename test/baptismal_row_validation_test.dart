@@ -4,7 +4,7 @@ import 'package:parishrecord/models/record.dart';
 import 'package:parishrecord/services/baptismal_row_validation.dart';
 
 BaptismalRegisterRow row({
-  String name = 'JEZL ANTOINETTE',
+  String name = 'TESTA SAMPLE',
   String date = '12 MAY 2016',
   String birth = '19 FEBRUARY 2001',
   bool selected = true,
@@ -79,7 +79,7 @@ void main() {
     final existing = [
       ParishRecord(
         id: '1', type: RecordType.baptism,
-        name: 'jezl antoinette', date: DateTime(2016, 5, 12),
+        name: 'testa sample', date: DateTime(2016, 5, 12),
       ),
     ];
     final issues = validateBaptismalRows([row()], existing: existing, now: now);
@@ -100,6 +100,39 @@ void main() {
   test('baptismDateOf parses the register format', () {
     expect(baptismDateOf(row(date: '12 MAY 2016')), DateTime(2016, 5, 12));
     expect(baptismDateOf(row(date: 'nonsense')), isNull);
+  });
+
+  // FIX 11 regression: `RegisterOcrParser._safeDate` builds dates with
+  // `DateTime(y, m, d)`, which silently ROLLS OVER an invalid day instead of
+  // rejecting it -- `DateTime(2016, 2, 31)` comes back as 2 March 2016, not
+  // an error. An OCR misread of "31 FEBRUARY 2016" would otherwise validate
+  // cleanly and save as the wrong calendar date with no warning anywhere.
+  // `register_ocr_parser.dart` is on the do-not-modify list, so the guard
+  // lives in `baptismal_row_validation.dart`'s `baptismDateOf` instead.
+  test('baptismDateOf rejects "31 FEBRUARY 2016" instead of silently rolling over to March', () {
+    expect(baptismDateOf(row(date: '31 FEBRUARY 2016')), isNull);
+  });
+
+  test('blocks "31 FEBRUARY 2016" as a baptism date rather than saving 2 March 2016', () {
+    final issues = validateBaptismalRows([row(date: '31 FEBRUARY 2016')], now: now);
+    final dateIssue = issues.singleWhere((i) => i.field == 'dateOfBaptism');
+    expect(dateIssue.blocking, isTrue);
+  });
+
+  test('baptismDateOf rejects "32 MAY 2016" (no valid day 32 in any month)', () {
+    expect(baptismDateOf(row(date: '32 MAY 2016')), isNull);
+  });
+
+  test('blocks "32 MAY 2016" as a baptism date', () {
+    final issues = validateBaptismalRows([row(date: '32 MAY 2016')], now: now);
+    final dateIssue = issues.singleWhere((i) => i.field == 'dateOfBaptism');
+    expect(dateIssue.blocking, isTrue);
+  });
+
+  // Control: a genuinely valid written date must still round-trip cleanly --
+  // the guard must not reject legitimate dates.
+  test('does not reject a genuinely valid written date', () {
+    expect(baptismDateOf(row(date: '29 FEBRUARY 2016')), DateTime(2016, 2, 29));
   });
 
   test('does not block when the birth date equals the baptism date', () {
@@ -129,8 +162,8 @@ void main() {
   test('treats names differing only by case and surrounding whitespace as duplicates', () {
     final issues = validateBaptismalRows(
       [
-        row(lineNo: '1', name: 'Jezl Antoinette'),
-        row(lineNo: '2', name: '  JEZL ANTOINETTE  '),
+        row(lineNo: '1', name: 'Testa Sample'),
+        row(lineNo: '2', name: '  TESTA SAMPLE  '),
       ],
       now: now,
     );
@@ -156,15 +189,15 @@ void main() {
     final existing = [
       ParishRecord(
         id: '1', type: RecordType.marriage,
-        name: 'jezl antoinette', date: DateTime(2016, 5, 12),
+        name: 'testa sample', date: DateTime(2016, 5, 12),
       ),
       ParishRecord(
         id: '2', type: RecordType.funeral,
-        name: 'jezl antoinette', date: DateTime(2016, 5, 12),
+        name: 'testa sample', date: DateTime(2016, 5, 12),
       ),
       ParishRecord(
         id: '3', type: RecordType.confirmation,
-        name: 'jezl antoinette', date: DateTime(2016, 5, 12),
+        name: 'testa sample', date: DateTime(2016, 5, 12),
       ),
     ];
     final issues = validateBaptismalRows([row()], existing: existing, now: now);
