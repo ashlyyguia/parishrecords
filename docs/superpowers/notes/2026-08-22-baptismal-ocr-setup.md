@@ -13,11 +13,25 @@
      when `GOOGLE_CLOUD_VISION_CREDENTIALS_JSON` is not set, and that account
      already lives in the same GCP project, so it only needs the API enabled
      as in step 1.
-   - **Dedicated service account** (tighter scoping): IAM & Admin → Service
-     Accounts → Create service account → grant it the **Cloud Vision AI
-     User** role → Keys → Add key → JSON. Collapse the downloaded key file to
-     a single line (e.g. `jq -c . key.json`) and set it as
+   - **Dedicated service account** (tighter scoping): this codebase calls the
+     classic Cloud Vision API (`vision.googleapis.com`) via `@google-cloud/vision`
+     — do **not** grant a "Vision AI" role (`roles/visionai.*`); those belong
+     to the separate Vision AI / Vertex AI Vision product and do not apply
+     here. For the classic Vision API, what actually matters is (a) the API
+     is enabled on the project (step 1) and (b) the service account has a
+     role that includes the `serviceusage.services.use` permission, e.g.
+     `roles/serviceusage.serviceUsageConsumer`, or a broader role such as
+     Editor that already includes it. We have not pinned down whether a
+     narrower Vision-specific predefined role exists for this API — if you
+     find the IAM role picker doesn't have anything more specific, granting
+     `roles/serviceusage.serviceUsageConsumer` (IAM & Admin → Service Accounts
+     → Create service account → grant that role → Keys → Add key → JSON) is
+     the documented-safe choice. Collapse the downloaded key file to a single
+     line (e.g. `jq -c . key.json`) and set it as
      `GOOGLE_CLOUD_VISION_CREDENTIALS_JSON`.
+     **If you just want it working with the least ceremony, use the "reuse
+     the Firebase service account" option above instead** — it already has
+     project access, so this whole IAM-role question doesn't come up.
 3. Where to set the env var:
    - **Locally**: add the chosen variable (`GOOGLE_CLOUD_VISION_CREDENTIALS_JSON`
      or `FIREBASE_SERVICE_ACCOUNT_JSON`) to `backend/.env`, single-line JSON,

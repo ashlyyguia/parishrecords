@@ -19,6 +19,15 @@ const { preprocessForOcr } = require('../src/services/baptismal_image_preprocess
 const ATTACHMENTS = path.join(__dirname, '..', '..', 'attachments');
 const OUT_DIR = path.join(__dirname, '..', 'test', 'fixtures');
 
+// Thrown errors already embed their code as a "CODE: message" prefix
+// (see baptismal_ocr_service.js's codedError helper and Node's own fs
+// errors, e.g. ENOENT). Only prepend the code again if it isn't already
+// there, so we don't print it twice.
+function describeError(e) {
+  if (e.code && e.message.startsWith(`${e.code}:`)) return e.message;
+  return `${e.code || 'ERROR'}: ${e.message}`;
+}
+
 async function main() {
   if (!process.env.GOOGLE_CLOUD_VISION_CREDENTIALS_JSON &&
       !process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
@@ -38,18 +47,32 @@ async function main() {
     process.exit(1);
   }
 
+  let succeeded = 0;
+  let failed = 0;
+
   for (const file of files) {
-    const buffer = fs.readFileSync(path.join(ATTACHMENTS, file));
-    const prepared = await preprocessForOcr(buffer);
-    const { words } = await recognizeWords(prepared);
-    const name = path.basename(file).replace(/\.[^.]+$/, '').toLowerCase();
-    const out = path.join(OUT_DIR, `vision-${name}.json`);
-    fs.writeFileSync(out, JSON.stringify({ words }, null, 2));
-    console.log(`${file}: ${words.length} words -> ${path.relative(process.cwd(), out)}`);
+    try {
+      const buffer = fs.readFileSync(path.join(ATTACHMENTS, file));
+      const prepared = await preprocessForOcr(buffer);
+      const { words } = await recognizeWords(prepared);
+      const name = path.basename(file).replace(/\.[^.]+$/, '').toLowerCase();
+      const out = path.join(OUT_DIR, `vision-${name}.json`);
+      fs.writeFileSync(out, JSON.stringify({ words }, null, 2));
+      console.log(`${file}: ${words.length} words -> ${path.relative(process.cwd(), out)}`);
+      succeeded += 1;
+    } catch (e) {
+      console.error(`${file}: FAILED (${describeError(e)})`);
+      failed += 1;
+    }
+  }
+
+  console.log(`\nDone: ${succeeded} succeeded, ${failed} failed.`);
+  if (failed > 0) {
+    process.exitCode = 1;
   }
 }
 
 main().catch((e) => {
-  console.error(`Failed (${e.code || 'ERROR'}): ${e.message}`);
+  console.error(`Failed: ${describeError(e)}`);
   process.exit(1);
 });
