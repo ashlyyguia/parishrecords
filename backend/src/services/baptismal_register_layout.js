@@ -650,6 +650,164 @@ function assignCells(pageWords, columns, rows) {
   return { cells: outCells, dropped };
 }
 
+const ALL_KEYS = [
+  ...LEFT_COLUMNS.map((c) => c.key).filter((k) => k !== 'lineNo'),
+  ...RIGHT_COLUMNS.map((c) => c.key),
+];
+
+const DITTO = /^(-?\s*do\s*-?|["”]|,,|-{2,})$/i;
+
+function isEmptyCell(field) {
+  const v = (field && field.value ? field.value : '').trim();
+  return v === '' || DITTO.test(v);
+}
+
+/** Joins left- and right-page cells into whole register rows by index. */
+function joinPages(leftCells, rightCells, leftRows) {
+  const warnings = [];
+  const count = Math.max(leftCells.length, rightCells.length);
+  if (leftCells.length !== rightCells.length) warnings.push('ROW_COUNT_MISMATCH');
+
+  const rows = [];
+  for (let i = 0; i < count; i += 1) {
+    const fields = {};
+    for (const key of ALL_KEYS) fields[key] = { value: '', confidence: 0, inherited: false };
+    Object.assign(fields, normalizeCells(leftCells[i]), normalizeCells(rightCells[i]));
+    rows.push({
+      index: i,
+      lineNo: (leftRows && leftRows[i] && leftRows[i].lineNo) || String(i + 1),
+      fields,
+    });
+  }
+  return { rows, warnings };
+}
+
+function normalizeCells(cells) {
+  if (!cells) return {};
+  const out = {};
+  for (const key of Object.keys(cells)) {
+    if (key === 'lineNo') continue;
+    out[key] = {
+      value: cells[key].value,
+      confidence: cells[key].confidence,
+      inherited: false,
+    };
+  }
+  return out;
+}
+
+/**
+ * Carries `minister` and `dateOfBaptism` down into empty or ditto cells.
+ *
+ * Deliberately narrow: these are the only two columns the register repeats
+ * down a batch. Every inherited value is tagged so the reviewer can see it
+ * was carried, not read.
+ */
+function applyFillDown(rows) {
+  const carried = { minister: null, dateOfBaptism: null };
+  let filled = 0;
+
+  const out = rows.map((row) => {
+    const fields = { ...row.fields };
+    for (const key of ['dateOfBaptism', 'minister']) {
+      const field = fields[key] || { value: '', confidence: 0 };
+      if (!isEmptyCell(field)) {
+        carried[key] = field.value.trim();
+        fields[key] = { ...field, inherited: false };
+      } else if (carried[key]) {
+        fields[key] = { value: carried[key], confidence: 0, inherited: true };
+        filled += 1;
+      } else {
+        fields[key] = { ...field, inherited: false };
+      }
+    }
+    return { ...row, fields };
+  });
+
+  return { rows: out, filled };
+}
+
+/**
+ * Threshold share of a page's words that must be dropped by `assignCells`
+ * (fell in no row band or no column band) before `MANY_WORDS_UNPLACED` is
+ * raised.
+ *
+ * `assignCells` always counts header words above the first row band as
+ * dropped, so even a cleanly calibrated page has a non-zero baseline drop
+ * ratio — and that baseline is NOT small: the header row is a fixed ~15-word
+ * cost, so on a sparse page (few data rows) it dominates the total. The
+ * reference fixture's default 3-row page peaks at ~39% dropped on its
+ * busier (5-column) side from the header baseline alone, across all four
+ * rotations. 0.5 sits comfortably above that with margin, so it never fires
+ * on a clean page, while still catching the case this warning exists for:
+ * roughly half or more of a page's words landing nowhere, which a header
+ * baseline alone cannot produce — that takes a badly calibrated or badly
+ * skewed scan actually failing to place real handwriting.
+ */
+const MANY_WORDS_UNPLACED_RATIO = 0.5;
+
+function isManyWordsUnplaced(totalWords, dropped) {
+  return totalWords > 0 && dropped / totalWords > MANY_WORDS_UNPLACED_RATIO;
+}
+
+/**
+ * Full pipeline: raw Vision words in, register rows out.
+ * @throws {Error} with .code = 'LAYOUT_UNRECOGNIZED'
+ */
+function extractBaptismalRows(words) {
+  const oriented = normalizeOrientation(words);
+  const spread = splitSpread(oriented.words);
+
+  const leftCal = calibrateColumns(spread.left, LEFT_COLUMNS);
+  const rightCal = calibrateColumns(spread.right, RIGHT_COLUMNS);
+
+  const matchedCount =
+    leftCal.columns.filter((c) => c.matched).length +
+    rightCal.columns.filter((c) => c.matched).length;
+  if (matchedCount < 3) {
+    const err = new Error(
+      'LAYOUT_UNRECOGNIZED: this does not look like a baptismal register page',
+    );
+    err.code = 'LAYOUT_UNRECOGNIZED';
+    throw err;
+  }
+
+  const leftRows = detectRows(spread.left, leftCal.columns, leftCal.headerMaxY);
+  const rightRows = detectRows(spread.right, rightCal.columns, rightCal.headerMaxY);
+
+  const left = assignCells(spread.left, leftCal.columns, leftRows.rows);
+  const right = assignCells(spread.right, rightCal.columns, rightRows.rows);
+
+  const joined = joinPages(left.cells, right.cells, leftRows.rows);
+  const { rows } = applyFillDown(joined.rows);
+
+  const unplacedWarnings =
+    isManyWordsUnplaced(spread.left.length, left.dropped) ||
+    isManyWordsUnplaced(spread.right.length, right.dropped)
+      ? ['MANY_WORDS_UNPLACED']
+      : [];
+
+  const warnings = [
+    ...new Set([
+      ...leftCal.warnings,
+      ...rightCal.warnings,
+      ...leftRows.warnings,
+      ...rightRows.warnings,
+      ...joined.warnings,
+      ...unplacedWarnings,
+      ...(spread.confirmed ? [] : ['GUTTER_UNCONFIRMED']),
+    ]),
+  ];
+
+  return {
+    rows,
+    rotation: oriented.rotation,
+    gutterX: spread.gutterX,
+    columns: { left: leftCal.columns, right: rightCal.columns },
+    warnings,
+  };
+}
+
 module.exports = {
   boxOf,
   wordAngle,
@@ -660,4 +818,7 @@ module.exports = {
   calibrateColumns,
   detectRows,
   assignCells,
+  joinPages,
+  applyFillDown,
+  extractBaptismalRows,
 };

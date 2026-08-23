@@ -1,6 +1,7 @@
 const {
   boxOf, normalizeOrientation, splitSpread, calibrateColumns, detectRows,
-  LEFT_COLUMNS, RIGHT_COLUMNS, assignCells,
+  LEFT_COLUMNS, RIGHT_COLUMNS, assignCells, joinPages, applyFillDown,
+  extractBaptismalRows,
 } = require('./baptismal_register_layout');
 const {
   buildRegisterFixture, GUTTER_X0, GUTTER_X1, FIRST_ROW_Y, ROW_H, COLUMN_X,
@@ -1253,5 +1254,218 @@ describe('assignCells', () => {
         }
       }
     });
+  });
+});
+
+describe('applyFillDown', () => {
+  const row = (over) => ({
+    lineNo: '1',
+    fields: {
+      nameOfChild: { value: 'A', confidence: 0.9 },
+      dateOfBaptism: { value: '', confidence: 0 },
+      minister: { value: '', confidence: 0 },
+      sponsors: { value: '', confidence: 0 },
+      ...over,
+    },
+  });
+
+  test('fills empty minister and date from the row above, tagged inherited', () => {
+    const rows = [
+      row({ dateOfBaptism: { value: '12 MAY 2016', confidence: 0.9 }, minister: { value: 'FR. ARCAPA', confidence: 0.9 } }),
+      row(),
+    ];
+    const { rows: out, filled } = applyFillDown(rows);
+    expect(out[1].fields.dateOfBaptism.value).toBe('12 MAY 2016');
+    expect(out[1].fields.dateOfBaptism.inherited).toBe(true);
+    expect(out[1].fields.minister.inherited).toBe(true);
+    expect(out[0].fields.dateOfBaptism.inherited).toBe(false);
+    expect(filled).toBe(2);
+  });
+
+  test('treats a ditto mark as empty', () => {
+    const rows = [
+      row({ minister: { value: 'FR. ARCAPA', confidence: 0.9 } }),
+      row({ minister: { value: '-do-', confidence: 0.5 } }),
+    ];
+    expect(applyFillDown(rows).rows[1].fields.minister.value).toBe('FR. ARCAPA');
+  });
+
+  test('never fills sponsors or names', () => {
+    const rows = [
+      row({ sponsors: { value: 'JOMARIE POL', confidence: 0.9 } }),
+      row(),
+    ];
+    const out = applyFillDown(rows).rows;
+    expect(out[1].fields.sponsors.value).toBe('');
+    expect(out[1].fields.nameOfChild.value).toBe('A');
+  });
+
+  test('leaves a real value alone', () => {
+    const rows = [
+      row({ minister: { value: 'FR. ARCAPA', confidence: 0.9 } }),
+      row({ minister: { value: 'FR. JEZON', confidence: 0.9 } }),
+    ];
+    expect(applyFillDown(rows).rows[1].fields.minister.value).toBe('FR. JEZON');
+    expect(applyFillDown(rows).rows[1].fields.minister.inherited).toBe(false);
+  });
+
+  // Edge cases beyond the brief: Tasks 4-6 each needed a fix round for the
+  // analogous cases in their own function, so these are covered here too
+  // before this feature is considered done.
+  test('leaves the first row empty when there is nothing above to carry', () => {
+    const rows = [row(), row()];
+    const out = applyFillDown(rows).rows;
+    expect(out[0].fields.dateOfBaptism.value).toBe('');
+    expect(out[0].fields.dateOfBaptism.inherited).toBe(false);
+    expect(out[1].fields.dateOfBaptism.value).toBe('');
+    expect(out[1].fields.dateOfBaptism.inherited).toBe(false);
+  });
+
+  test('leaves a ditto mark in the very first row untouched — there is nothing above to carry', () => {
+    const rows = [
+      row({ minister: { value: '-do-', confidence: 0.5 } }),
+      row({ minister: { value: 'FR. ARCAPA', confidence: 0.9 } }),
+    ];
+    const out = applyFillDown(rows).rows;
+    expect(out[0].fields.minister.value).toBe('-do-');
+    expect(out[0].fields.minister.inherited).toBe(false);
+    // The second row's real value must not be disturbed by the leading ditto.
+    expect(out[1].fields.minister.value).toBe('FR. ARCAPA');
+  });
+
+  test('does not crash on a row whose fields object is missing minister/dateOfBaptism keys entirely', () => {
+    const rows = [
+      { lineNo: '1', fields: { nameOfChild: { value: 'A', confidence: 0.9 } } },
+      row({ minister: { value: 'FR. ARCAPA', confidence: 0.9 } }),
+      { lineNo: '3', fields: {} },
+    ];
+    const out = applyFillDown(rows).rows;
+    expect(out[0].fields.minister.value).toBe('');
+    expect(out[0].fields.minister.inherited).toBe(false);
+    expect(out[2].fields.minister.value).toBe('FR. ARCAPA');
+    expect(out[2].fields.minister.inherited).toBe(true);
+  });
+});
+
+describe('joinPages', () => {
+  test('joins left and right by row index', () => {
+    const left = [{ nameOfChild: { value: 'A', confidence: 0.9 } }];
+    const right = [{ minister: { value: 'FR. X', confidence: 0.8 } }];
+    const { rows, warnings } = joinPages(left, right, [{ lineNo: '1' }]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].lineNo).toBe('1');
+    expect(rows[0].fields.nameOfChild.value).toBe('A');
+    expect(rows[0].fields.minister.value).toBe('FR. X');
+    expect(warnings).toEqual([]);
+  });
+
+  test('warns and joins the overlap on a row-count mismatch', () => {
+    const left = [{ nameOfChild: { value: 'A', confidence: 1 } }, { nameOfChild: { value: 'B', confidence: 1 } }];
+    const right = [{ minister: { value: 'FR. X', confidence: 1 } }];
+    const { rows, warnings } = joinPages(left, right, [{ lineNo: '1' }, { lineNo: '2' }]);
+    expect(warnings).toContain('ROW_COUNT_MISMATCH');
+    expect(rows).toHaveLength(2);
+    expect(rows[1].fields.minister.value).toBe('');
+  });
+
+  test('handles one side having zero rows without crashing, joining on the overlap', () => {
+    const left = [{ nameOfChild: { value: 'A', confidence: 1 } }, { nameOfChild: { value: 'B', confidence: 1 } }];
+    const right = [];
+    const { rows, warnings } = joinPages(left, right, [{ lineNo: '1' }, { lineNo: '2' }]);
+    expect(warnings).toContain('ROW_COUNT_MISMATCH');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].fields.nameOfChild.value).toBe('A');
+    expect(rows[0].fields.minister.value).toBe('');
+    expect(rows[1].fields.minister.value).toBe('');
+  });
+});
+
+describe('extractBaptismalRows', () => {
+  test('extracts a full spread end to end', () => {
+    const { words } = buildRegisterFixture({ rows: 3, rotation: 0 });
+    const out = extractBaptismalRows(words);
+    expect(out.rotation).toBe(0);
+    expect(out.rows).toHaveLength(3);
+    expect(out.rows[0].fields.nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
+    expect(out.rows[0].fields.dateOfBaptism.value).toBe('12 MAY 2016');
+    expect(out.rows[0].fields.parents.value).toBe('LITA HITUTUAAN');
+    expect(out.rows[0].lineNo).toBe('1');
+  });
+
+  test('produces identical field values regardless of page rotation', () => {
+    const upright = extractBaptismalRows(buildRegisterFixture({ rows: 3, rotation: 0 }).words);
+    for (const rotation of [90, 180, 270]) {
+      const rotated = extractBaptismalRows(buildRegisterFixture({ rows: 3, rotation }).words);
+      expect(rotated.rows.map((r) => r.fields.nameOfChild.value))
+        .toEqual(upright.rows.map((r) => r.fields.nameOfChild.value));
+      expect(rotated.rotation).toBe(rotation);
+    }
+  });
+
+  test('throws LAYOUT_UNRECOGNIZED when nothing looks like a register', () => {
+    const junk = [
+      { text: 'HELLO', vertices: [{x:0,y:0},{x:50,y:0},{x:50,y:20},{x:0,y:20}], confidence: 0.9 },
+      { text: 'WORLD', vertices: [{x:60,y:0},{x:110,y:0},{x:110,y:20},{x:60,y:20}], confidence: 0.9 },
+    ];
+    try {
+      extractBaptismalRows(junk);
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e.code).toBe('LAYOUT_UNRECOGNIZED');
+    }
+  });
+
+  // MANY_WORDS_UNPLACED: assignCells always counts header words above the
+  // first row band as dropped, so a clean page has a non-zero baseline drop
+  // ratio (see the threshold's own doc comment in the source for the actual
+  // measured baseline across rotations). This must not fire on that baseline.
+  test('does not warn MANY_WORDS_UNPLACED on a clean fixture page', () => {
+    const { words } = buildRegisterFixture({ rows: 3, rotation: 0 });
+    const out = extractBaptismalRows(words);
+    expect(out.warnings).not.toContain('MANY_WORDS_UNPLACED');
+  });
+
+  // Simulates a badly calibrated/skewed scan by adding a batch of extra
+  // words positioned above the first row band (alongside the real headers)
+  // that are not header tokens themselves. assignCells drops any word whose
+  // center falls outside every row band regardless of what it says, so these
+  // land nowhere — same mechanism a real skewed scan would trip, without
+  // having to fake a whole skewed geometry. The added words are deliberately
+  // plain text that cannot match any column-header token, so header
+  // matching/calibration and lineNo-anchored row detection are unaffected;
+  // only the dropped-word count changes.
+  test('warns MANY_WORDS_UNPLACED when most of a page\'s words land outside every row band', () => {
+    const { words } = buildRegisterFixture({ rows: 3, rotation: 0 });
+    const junk = [];
+    for (let i = 0; i < 40; i += 1) {
+      junk.push(mkWord(`ZZQQ${i}`, 50 + (i % 20) * 45, 5 + Math.floor(i / 20) * 10));
+    }
+    const out = extractBaptismalRows(words.concat(junk));
+    expect(out.warnings).toContain('MANY_WORDS_UNPLACED');
+    // The real rows must still come through correctly despite the junk.
+    expect(out.rows).toHaveLength(3);
+    expect(out.rows[0].fields.nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
+  });
+
+  // Edge case beyond the brief: one side of the spread has zero detected
+  // rows (e.g. a page whose data rows are blank or unreadable) while the
+  // other has real rows. Must not crash, and must still surface the
+  // resulting row-count mismatch as a warning.
+  test('handles one page having zero rows without crashing', () => {
+    const { words } = buildRegisterFixture({ rows: 3, rotation: 0 });
+    // Strip every right-page data-row word (residentsOf/dateOfBaptism/
+    // minister/sponsors), leaving only its headers and title — the right
+    // page then has no rows to detect, while the left page keeps its 3.
+    const stripped = words.filter((w) => {
+      const b = boxOf(w);
+      const isRightPageDataRow = b.cx > GUTTER_X1 && b.cy >= FIRST_ROW_Y - ROW_H / 2;
+      return !isRightPageDataRow;
+    });
+
+    const out = extractBaptismalRows(stripped);
+    expect(out.warnings).toContain('ROW_COUNT_MISMATCH');
+    expect(out.rows).toHaveLength(3);
+    expect(out.rows[0].fields.nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
+    expect(out.rows[0].fields.minister.value).toBe('');
   });
 });
