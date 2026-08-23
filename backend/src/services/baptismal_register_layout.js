@@ -562,6 +562,65 @@ function detectRows(pageWords, columns, headerMaxY) {
   return { rows, warnings };
 }
 
+/**
+ * Assigns every word to exactly one (row, column) cell by box center.
+ *
+ * A word whose center falls outside every row band or every column band is
+ * dropped — that is deliberate. Guessing is worse than an empty field the
+ * reviewer can see and fill in.
+ *
+ * Sub-column note: `nameOfChild`, `parents` and `sponsors` are physically two
+ * sub-columns each on the printed register, but they are calibrated and
+ * assigned here as a single band; the ` / ` separator between the
+ * sub-columns is applied in Task 7, where the sub-column geometry is known.
+ *
+ * @param {Array} pageWords - words for a single (already split) page, in the
+ *   same normalized/rotated frame as the `columns` and `rows` passed in.
+ * @param {Array<{key,x0,x1}>} columns - calibrated column bands from
+ *   `calibrateColumns`.
+ * @param {Array<{index,y0,y1}>} rows - detected row bands from `detectRows`.
+ * @returns {Array<Record<string, {value: string, confidence: number}>>} one
+ *   entry per row, keyed by column key.
+ */
+function assignCells(pageWords, columns, rows) {
+  const cells = rows.map(() => {
+    const row = {};
+    for (const col of columns) row[col.key] = { words: [] };
+    return row;
+  });
+
+  for (const w of pageWords || []) {
+    const b = boxOf(w);
+    const rowIndex = rows.findIndex((r) => b.cy >= r.y0 && b.cy < r.y1);
+    if (rowIndex === -1) continue;
+    const col = columns.find((c) => b.cx >= c.x0 && b.cx < c.x1);
+    if (!col) continue;
+    cells[rowIndex][col.key].words.push({ text: w.text, confidence: w.confidence, box: b });
+  }
+
+  return cells.map((row) => {
+    const out = {};
+    for (const key of Object.keys(row)) {
+      const items = row[key].words;
+      if (items.length === 0) {
+        out[key] = { value: '', confidence: 0 };
+        continue;
+      }
+      // Reading order: group into lines by y, then left-to-right within a line.
+      const lineTolerance = medianHeight(items.map((i) => i.box)) * 0.7;
+      const sorted = [...items].sort((a, b) => {
+        if (Math.abs(a.box.cy - b.box.cy) > lineTolerance) return a.box.cy - b.box.cy;
+        return a.box.cx - b.box.cx;
+      });
+      const value = sorted.map((i) => i.text).join(' ').replace(/\s+/g, ' ').trim();
+      const confidence =
+        sorted.reduce((sum, i) => sum + (i.confidence || 0), 0) / sorted.length;
+      out[key] = { value, confidence };
+    }
+    return out;
+  });
+}
+
 module.exports = {
   boxOf,
   wordAngle,
@@ -571,4 +630,5 @@ module.exports = {
   RIGHT_COLUMNS,
   calibrateColumns,
   detectRows,
+  assignCells,
 };

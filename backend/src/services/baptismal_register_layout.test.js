@@ -1,6 +1,6 @@
 const {
   boxOf, normalizeOrientation, splitSpread, calibrateColumns, detectRows,
-  LEFT_COLUMNS, RIGHT_COLUMNS,
+  LEFT_COLUMNS, RIGHT_COLUMNS, assignCells,
 } = require('./baptismal_register_layout');
 const {
   buildRegisterFixture, GUTTER_X0, GUTTER_X1, FIRST_ROW_Y, ROW_H, COLUMN_X,
@@ -911,5 +911,180 @@ describe('detectRows', () => {
     } catch (err) {
       expect(err.message).toMatch(/headerMaxY/);
     }
+  });
+});
+
+/** Builds a single synthetic word with an explicit center, for adversarial
+ * cell-boundary cases that the fixture's regular row/column geometry can't
+ * express on its own. Mirrors register_fixture.js's internal `word()`. */
+function mkWord(text, cx, cy, confidence = 0.9) {
+  const w = Math.max(24, text.length * 9);
+  const h = 22;
+  const x0 = Math.round(cx - w / 2);
+  const y0 = Math.round(cy - h / 2);
+  return {
+    text,
+    vertices: [
+      { x: x0, y: y0 }, { x: x0 + w, y: y0 },
+      { x: x0 + w, y: y0 + h }, { x: x0, y: y0 + h },
+    ],
+    confidence,
+  };
+}
+
+describe('assignCells', () => {
+  const setup = () => {
+    const { words } = normalizeOrientation(buildRegisterFixture({ rows: 3 }).words);
+    const { left, right } = splitSpread(words);
+    const leftCal = calibrateColumns(left, LEFT_COLUMNS);
+    const rightCal = calibrateColumns(right, RIGHT_COLUMNS);
+    return {
+      left, right, leftCols: leftCal.columns, rightCols: rightCal.columns,
+      leftRows: detectRows(left, leftCal.columns, leftCal.headerMaxY).rows,
+      rightRows: detectRows(right, rightCal.columns, rightCal.headerMaxY).rows,
+    };
+  };
+
+  test('places handwriting in the correct left-page columns', () => {
+    const s = setup();
+    const cells = assignCells(s.left, s.leftCols, s.leftRows);
+    expect(cells).toHaveLength(3);
+    expect(cells[0].nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
+    expect(cells[0].placeAndBirthDate.value).toBe('19 FEBRUARY 2001');
+    expect(cells[0].parents.value).toBe('LITA HITUTUAAN');
+    expect(cells[1].nameOfChild.value).toBe('JULLIE PACITO');
+  });
+
+  test('places handwriting in the correct right-page columns', () => {
+    const s = setup();
+    const cells = assignCells(s.right, s.rightCols, s.rightRows);
+    expect(cells[0].dateOfBaptism.value).toBe('12 MAY 2016');
+    expect(cells[0].minister.value).toBe('FR. PABLITO ARCAPA');
+    expect(cells[2].dateOfBaptism.value).toBe('22 MAY 2016');
+  });
+
+  test('averages word confidence per cell', () => {
+    const { words } = normalizeOrientation(
+      buildRegisterFixture({ rows: 1, confidence: 0.4 }).words,
+    );
+    const { left } = splitSpread(words);
+    const cal = calibrateColumns(left, LEFT_COLUMNS);
+    const rows = detectRows(left, cal.columns, cal.headerMaxY).rows;
+    const cells = assignCells(left, cal.columns, rows);
+    expect(cells[0].nameOfChild.confidence).toBeCloseTo(0.4, 2);
+  });
+
+  test('leaves an unwritten column empty rather than guessing', () => {
+    const s = setup();
+    const cells = assignCells(s.left, s.leftCols, s.leftRows);
+    expect(cells[0].legitimacy.value).toBe('');
+    expect(cells[0].legitimacy.confidence).toBe(0);
+  });
+
+  test('never assigns header words to a data row', () => {
+    const s = setup();
+    const cells = assignCells(s.left, s.leftCols, s.leftRows);
+    const all = cells.map((c) => Object.values(c).map((f) => f.value).join(' ')).join(' ');
+    expect(all).not.toContain('CHILD');
+    expect(all).not.toContain('PARENTS');
+  });
+
+  // Edge case: a page with rows/columns calibrated but literally no words to
+  // place (e.g. every word failed OCR, or a blank page was scanned). Every
+  // cell in every row must come back empty rather than throwing.
+  test('returns an all-empty grid when there are no words at all', () => {
+    const s = setup();
+    const cells = assignCells([], s.leftCols, s.leftRows);
+    expect(cells).toHaveLength(s.leftRows.length);
+    for (const row of cells) {
+      for (const key of Object.keys(row)) {
+        expect(row[key]).toEqual({ value: '', confidence: 0 });
+      }
+    }
+  });
+
+  // Edge case: a row band that calibration/detection produced but that has
+  // no handwriting in it at all (e.g. a skipped register line). Its
+  // neighbours must be unaffected and it must not crash or silently borrow
+  // words from an adjacent row.
+  test('leaves every cell in a wordless row empty without disturbing its neighbours', () => {
+    const s = setup();
+    // Drop every word that falls in row 1's band, but keep rows 0 and 2 fed.
+    const row1 = s.leftRows[1];
+    const words = s.left.filter((w) => {
+      const b = boxOf(w);
+      return !(b.cy >= row1.y0 && b.cy < row1.y1);
+    });
+    const cells = assignCells(words, s.leftCols, s.leftRows);
+    expect(cells).toHaveLength(3);
+    for (const key of Object.keys(cells[1])) {
+      expect(cells[1][key]).toEqual({ value: '', confidence: 0 });
+    }
+    // Row 0 (unaffected) still reads normally.
+    expect(cells[0].nameOfChild.value).toBe('JEZL ANTOINETTE HITUTUAAN');
+    // Row 2 (unaffected) still reads normally too — row 1 being empty must
+    // not shift row 2's words up into row 1 or otherwise corrupt it.
+    expect(cells[2].nameOfChild.value).toBe('JOMAR HITUTUAAN');
+  });
+
+  // Edge case: row bands are half-open [y0, y1) and column bands are
+  // half-open [x0, x1) (see the boundary math in calibrateColumns/
+  // detectRows). A word whose center lands exactly on a shared boundary must
+  // land in exactly one band — the one starting there — never both, and
+  // never neither.
+  test('assigns a word sitting exactly on a row boundary to the row that starts there', () => {
+    const s = setup();
+    const boundaryY = s.leftRows[0].y1; // === leftRows[1].y0 by construction
+    const col = s.leftCols.find((c) => c.key === 'nameOfChild');
+    const cx = (col.x0 + col.x1) / 2;
+    const boundaryWord = mkWord('ONBOUNDARY', cx, boundaryY);
+
+    const cells = assignCells([boundaryWord], s.leftCols, s.leftRows);
+
+    expect(cells[0].nameOfChild.value).toBe('');
+    expect(cells[1].nameOfChild.value).toBe('ONBOUNDARY');
+  });
+
+  test('assigns a word sitting exactly on a column boundary to the column that starts there', () => {
+    const s = setup();
+    const nameCol = s.leftCols.find((c) => c.key === 'nameOfChild');
+    const placeCol = s.leftCols.find((c) => c.key === 'placeAndBirthDate');
+    const boundaryX = nameCol.x1; // === placeCol.x0 by construction
+    const row = s.leftRows[0];
+    const cy = (row.y0 + row.y1) / 2;
+    const boundaryWord = mkWord('ONBOUNDARY', boundaryX, cy);
+
+    const cells = assignCells([boundaryWord], s.leftCols, s.leftRows);
+
+    expect(cells[0].nameOfChild.value).not.toContain('ONBOUNDARY');
+    expect(cells[0].placeAndBirthDate.value).toBe('ONBOUNDARY');
+  });
+
+  // Edge case: a single cell whose handwriting overflows onto a second
+  // visual line within the same row/column band (common for a long name or
+  // a wrapped note). Reading order must be top line left-to-right, then
+  // bottom line left-to-right — not simply sorted by x, which would
+  // interleave the two lines.
+  test('reads a two-line cell top-to-bottom then left-to-right within each line', () => {
+    const s = setup();
+    const row = s.leftRows[1]; // a middle row, bounded on both sides
+    const col = s.leftCols.find((c) => c.key === 'nameOfChild');
+    const topCy = row.y0 + (row.y1 - row.y0) * 0.25;
+    const bottomCy = row.y0 + (row.y1 - row.y0) * 0.75;
+    const leftCx = col.x0 + (col.x1 - col.x0) * 0.3;
+    const rightCx = col.x0 + (col.x1 - col.x0) * 0.7;
+
+    // Deliberately out of reading order in the input array, so the test
+    // actually exercises the sort rather than passing by accident.
+    const words = [
+      mkWord('RIGHT2', rightCx, bottomCy),
+      mkWord('LEFT1', leftCx, topCy),
+      mkWord('RIGHT1', rightCx, topCy),
+      mkWord('LEFT2', leftCx, bottomCy),
+    ];
+
+    const cells = assignCells(words, s.leftCols, s.leftRows);
+
+    expect(cells[1].nameOfChild.value).toBe('LEFT1 RIGHT1 LEFT2 RIGHT2');
   });
 });
