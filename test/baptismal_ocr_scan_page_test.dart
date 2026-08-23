@@ -453,17 +453,19 @@ void main() {
   testWidgets(
     'the uploader\'s returned value is what lands in the saved draft\'s imagePath',
     (tester) async {
-      // _defaultUpload (production) resolves this to a Firebase Storage
-      // download URL via ref.getDownloadURL(), not the bare ref.fullPath --
-      // existing screens (record_detail_screen.dart, record_form_screen.dart)
-      // can only render a real URL/local file path, not a bare Storage path.
-      // This test locks in the wiring: whatever the uploader returns must be
-      // exactly what ends up in RegisterRecordDraft.imagePath, so a future
-      // regression back to a bare path would be caught here even though the
-      // real Firebase Storage call itself can't run in a widget test.
-      const uploadedUrl =
-          'https://firebasestorage.googleapis.com/v0/b/x/o/'
-          'baptism_scans%2Fs1.jpg?alt=media&token=abc123';
+      // _defaultUpload (production) deliberately stores the bare
+      // ref.fullPath, NOT a ref.getDownloadURL() -- a download URL carries a
+      // long-lived bearer token (`...?alt=media&token=...`) baked into the
+      // URL itself, and firestore.rules lets any signed-in user read
+      // baptism_records, so storing a tokenized URL there would let every
+      // parishioner open the full-resolution photo of an entire register
+      // spread (roughly ten families' records, mostly minors) with no auth
+      // check at all. This test locks in the wiring: whatever the uploader
+      // returns must be exactly what ends up in RegisterRecordDraft.imagePath,
+      // so a future "helpful" switch to a download URL would be caught here
+      // even though the real Firebase Storage call itself can't run in a
+      // widget test.
+      const uploadedUrl = 'baptism_scans/s1.jpg';
       List<RegisterRecordDraft>? captured;
       await tester.pumpWidget(
         harness(
