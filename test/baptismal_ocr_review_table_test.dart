@@ -11,7 +11,7 @@ import 'package:parishrecord/widgets/baptismal_ocr_review_table.dart';
 // exercises the "low confidence, not yet reviewed" scenario the way real OCR
 // output would arrive (edited stays false until a human touches the cell).
 BaptismalRegisterRow makeRow({
-  String name = 'JEZL',
+  String name = 'TESTA',
   double confidence = 0.9,
   String lineNo = '1',
 }) {
@@ -40,7 +40,7 @@ void main() {
     expect(find.textContaining('Name of Child'), findsOneWidget);
     expect(find.textContaining('Date of Baptism'), findsOneWidget);
     expect(find.text('Observations'), findsOneWidget);
-    expect(find.text('JEZL'), findsOneWidget);
+    expect(find.text('TESTA'), findsOneWidget);
   });
 
   testWidgets('reports edits through onChanged', (tester) async {
@@ -97,7 +97,43 @@ void main() {
       onChanged: (_, _, _) {},
       onSelectedChanged: (_, _) {},
     )));
-    expect(find.text('Line 1'), findsOneWidget);
+    expect(find.text('Line'), findsOneWidget);
+    final field = tester.widget<TextFormField>(
+      find.byKey(const ValueKey('line-no-0')),
+    );
+    expect(field.initialValue, '1');
+  });
+
+  // FIX 8 regression: `lineNo` used to render as static `Text`, even though
+  // it can be fabricated (a sequential fallback) when the printed NO. column
+  // is unreadable -- and the warning copy tells the reviewer to "verify each
+  // row's line number matches the physical register", something static text
+  // structurally prevents. It must be editable, wired through the same kind
+  // of callback as every other field.
+  testWidgets('reports line number edits through onLineNoChanged', (tester) async {
+    final edits = <List<Object>>[];
+    await tester.pumpWidget(harness(BaptismalOcrReviewTable(
+      rows: [makeRow()],
+      issues: const [],
+      onChanged: (_, _, _) {},
+      onSelectedChanged: (_, _) {},
+      onLineNoChanged: (i, v) => edits.add([i, v]),
+    )));
+    await tester.enterText(find.byKey(const ValueKey('line-no-0')), '47');
+    expect(edits.last, [0, '47']);
+  });
+
+  testWidgets('the line number field is disabled when no onLineNoChanged is provided', (tester) async {
+    await tester.pumpWidget(harness(BaptismalOcrReviewTable(
+      rows: [makeRow()],
+      issues: const [],
+      onChanged: (_, _, _) {},
+      onSelectedChanged: (_, _) {},
+    )));
+    final field = tester.widget<TextFormField>(
+      find.byKey(const ValueKey('line-no-0')),
+    );
+    expect(field.enabled, isFalse);
   });
 
   testWidgets('marks required fields with a visible and accessible marker', (tester) async {
@@ -107,7 +143,7 @@ void main() {
     // that mechanism alone silently drops the marker for the common case
     // of a filled-in row — exactly what this test pins down.
     await tester.pumpWidget(harness(BaptismalOcrReviewTable(
-      rows: [makeRow(name: 'JEZL')],
+      rows: [makeRow(name: 'TESTA')],
       issues: const [],
       onChanged: (_, _, _) {},
       onSelectedChanged: (_, _) {},
@@ -141,7 +177,8 @@ void main() {
       onChanged: (_, _, _) {},
       onSelectedChanged: (_, _) {},
     )));
-    expect(find.textContaining('Line '), findsOneWidget);
+    expect(find.text('Line'), findsOneWidget);
+    expect(find.byKey(const ValueKey('line-no-0')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

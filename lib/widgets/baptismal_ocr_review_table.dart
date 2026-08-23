@@ -25,6 +25,7 @@ class BaptismalOcrReviewTable extends StatelessWidget {
     required this.issues,
     required this.onChanged,
     required this.onSelectedChanged,
+    this.onLineNoChanged,
     this.highlightedRow,
     this.onRowTap,
   });
@@ -33,6 +34,14 @@ class BaptismalOcrReviewTable extends StatelessWidget {
   final List<RowIssue> issues;
   final void Function(int rowIndex, String field, String value) onChanged;
   final void Function(int rowIndex, bool selected) onSelectedChanged;
+
+  /// Edits the row's `lineNo`. `lineNo` is read off the printed NO. column
+  /// and falls back to a fabricated sequential value (`"1"`, `"2"`, ...)
+  /// when that column is unreadable -- a spread starting at physical
+  /// register line 47 would otherwise silently save as lines 1-9. It is what
+  /// a clerk uses to find the physical entry, so it must be correctable like
+  /// every other field, not rendered as static text.
+  final void Function(int rowIndex, String value)? onLineNoChanged;
   final int? highlightedRow;
   final void Function(int rowIndex)? onRowTap;
 
@@ -94,9 +103,27 @@ class BaptismalOcrReviewTable extends StatelessWidget {
                     value: row.selected,
                     onChanged: (v) => onSelectedChanged(index, v ?? false),
                   ),
-                  Text(
-                    'Line ${row.lineNo}',
-                    style: Theme.of(context).textTheme.titleSmall,
+                  Text('Line', style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 72,
+                    child: TextFormField(
+                      key: ValueKey('line-no-$index'),
+                      initialValue: row.lineNo,
+                      enabled: onLineNoChanged != null,
+                      onChanged: onLineNoChanged == null
+                          ? null
+                          : (v) => onLineNoChanged!(index, v),
+                      style: Theme.of(context).textTheme.titleSmall,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
