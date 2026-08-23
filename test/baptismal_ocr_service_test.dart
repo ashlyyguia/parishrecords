@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -98,5 +99,155 @@ void main() {
       svc.scan(scanId: 's1', bytes: bytes, idToken: null),
       throwsA(isA<BaptismalOcrFailure>().having((f) => f.code, 'code', 'UNAUTHENTICATED')),
     );
+  });
+
+  group('OcrRecovery mapping', () {
+    test('retry category: VISION_QUOTA, VISION_UNAVAILABLE, INTERNAL_ERROR, NETWORK, BAD_RESPONSE', () async {
+      Future<void> expectRetry(BaptismalOcrService svc, String expectedCode) {
+        return expectLater(
+          svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+          throwsA(isA<BaptismalOcrFailure>()
+              .having((f) => f.code, 'code', expectedCode)
+              .having((f) => f.recovery, 'recovery', OcrRecovery.retry)
+              .having((f) => f.retryable, 'retryable', true)),
+        );
+      }
+
+      await expectRetry(
+        serviceReturning(429, {'success': false, 'code': 'VISION_QUOTA', 'message': 'm'}),
+        'VISION_QUOTA',
+      );
+      await expectRetry(
+        serviceReturning(503, {'success': false, 'code': 'VISION_UNAVAILABLE', 'message': 'm'}),
+        'VISION_UNAVAILABLE',
+      );
+      await expectRetry(
+        serviceReturning(500, {'success': false, 'code': 'INTERNAL_ERROR', 'message': 'm'}),
+        'INTERNAL_ERROR',
+      );
+      await expectRetry(
+        BaptismalOcrService(client: MockClient((_) async => throw http.ClientException('offline'))),
+        'NETWORK',
+      );
+      await expectRetry(
+        BaptismalOcrService(client: MockClient((_) async => http.Response('not json', 502))),
+        'BAD_RESPONSE',
+      );
+    });
+
+    test('differentImage category: NO_TEXT_FOUND, IMAGE_INVALID, IMAGE_TOO_LARGE, LAYOUT_UNRECOGNIZED', () async {
+      Future<void> expectDifferentImage(String code) {
+        final svc = serviceReturning(400, {'success': false, 'code': code, 'message': 'm'});
+        return expectLater(
+          svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+          throwsA(isA<BaptismalOcrFailure>()
+              .having((f) => f.code, 'code', code)
+              .having((f) => f.recovery, 'recovery', OcrRecovery.differentImage)
+              .having((f) => f.retryable, 'retryable', false)),
+        );
+      }
+
+      await expectDifferentImage('NO_TEXT_FOUND');
+      await expectDifferentImage('IMAGE_INVALID');
+      await expectDifferentImage('IMAGE_TOO_LARGE');
+      await expectDifferentImage('LAYOUT_UNRECOGNIZED');
+    });
+
+    test('signIn category: UNAUTHENTICATED', () async {
+      final svc = serviceReturning(200, {'success': true, 'data': {}});
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: bytes, idToken: null),
+        throwsA(isA<BaptismalOcrFailure>()
+            .having((f) => f.code, 'code', 'UNAUTHENTICATED')
+            .having((f) => f.recovery, 'recovery', OcrRecovery.signIn)
+            .having((f) => f.retryable, 'retryable', false)),
+      );
+    });
+
+    test('contactAdmin category: VISION_AUTH', () async {
+      final svc = serviceReturning(500, {
+        'success': false, 'code': 'VISION_AUTH', 'message': 'not configured',
+      });
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+        throwsA(isA<BaptismalOcrFailure>()
+            .having((f) => f.code, 'code', 'VISION_AUTH')
+            .having((f) => f.recovery, 'recovery', OcrRecovery.contactAdmin)
+            .having((f) => f.retryable, 'retryable', false)),
+      );
+    });
+  });
+
+  group('edge cases', () {
+    test('200 with {success:true} and no data key is BAD_RESPONSE', () async {
+      final svc = serviceReturning(200, {'success': true});
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+        throwsA(isA<BaptismalOcrFailure>().having((f) => f.code, 'code', 'BAD_RESPONSE')),
+      );
+    });
+
+    test('200 with data present but not a Map (a list) is BAD_RESPONSE', () async {
+      final svc = serviceReturning(200, {'success': true, 'data': [1, 2, 3]});
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+        throwsA(isA<BaptismalOcrFailure>().having((f) => f.code, 'code', 'BAD_RESPONSE')),
+      );
+    });
+
+    test('200 with data present but not a Map (a string) is BAD_RESPONSE', () async {
+      final svc = serviceReturning(200, {'success': true, 'data': 'oops'});
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+        throwsA(isA<BaptismalOcrFailure>().having((f) => f.code, 'code', 'BAD_RESPONSE')),
+      );
+    });
+
+    test('non-200 with valid JSON but no code field falls back to BAD_RESPONSE', () async {
+      final svc = serviceReturning(500, {'success': false, 'message': 'something broke'});
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+        throwsA(isA<BaptismalOcrFailure>()
+            .having((f) => f.code, 'code', 'BAD_RESPONSE')
+            .having((f) => f.message, 'message', 'something broke')),
+      );
+    });
+
+    test('empty imageBase64 is sent as-is and left to the backend to reject as IMAGE_INVALID', () async {
+      late http.Request captured;
+      final svc = BaptismalOcrService(client: MockClient((req) async {
+        captured = req;
+        return http.Response(
+          jsonEncode({'success': false, 'code': 'IMAGE_INVALID', 'message': 'empty image'}),
+          400,
+        );
+      }));
+      final empty = Uint8List(0);
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: empty, idToken: 't'),
+        throwsA(isA<BaptismalOcrFailure>()
+            .having((f) => f.code, 'code', 'IMAGE_INVALID')
+            .having((f) => f.recovery, 'recovery', OcrRecovery.differentImage)),
+      );
+      // Pin the documented decision: the client does not pre-validate empty
+      // bytes client-side. It still sends the request with an empty
+      // base64 body and defers rejection to the backend.
+      final sentBody = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(sentBody['imageBase64'], '');
+    });
+
+    test('a short injected timeout against a client that never completes maps to a retryable NETWORK failure', () async {
+      final neverCompletes = Completer<http.Response>();
+      final svc = BaptismalOcrService(
+        client: MockClient((_) => neverCompletes.future),
+        timeout: const Duration(milliseconds: 50),
+      );
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+        throwsA(isA<BaptismalOcrFailure>()
+            .having((f) => f.code, 'code', 'NETWORK')
+            .having((f) => f.retryable, 'retryable', true)),
+      );
+    });
   });
 }

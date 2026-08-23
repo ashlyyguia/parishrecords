@@ -7,18 +7,47 @@ import 'package:http/http.dart' as http;
 import '../config/backend.dart';
 import '../models/baptismal_register_row.dart';
 
-/// A scan failure the UI can act on: show [message], offer retry when
-/// [retryable].
+/// How the UI should help the user recover from a [BaptismalOcrFailure].
+///
+/// A single `retryable` bool cannot express what the UI needs: some
+/// failures are worth retrying with the same image, some never will be no
+/// matter how many times the same bytes are resubmitted, and some aren't
+/// about the image at all.
+enum OcrRecovery {
+  /// Transient condition (server or network). Retrying with the exact same
+  /// image bytes may well succeed.
+  retry,
+
+  /// These bytes will never produce a usable scan. The user must supply a
+  /// different photo; retrying the same upload will fail identically.
+  differentImage,
+
+  /// The caller has no valid session. The user must sign in again before
+  /// scanning can proceed.
+  signIn,
+
+  /// A server-side misconfiguration the user cannot fix themselves.
+  contactAdmin,
+}
+
+/// A scan failure the UI can act on: show [message], and use [recovery] to
+/// decide what action to offer (retry / new photo / sign in / contact
+/// admin).
 class BaptismalOcrFailure implements Exception {
   const BaptismalOcrFailure({
     required this.code,
     required this.message,
-    required this.retryable,
+    required this.recovery,
   });
 
   final String code;
   final String message;
-  final bool retryable;
+  final OcrRecovery recovery;
+
+  /// True only when retrying with the same image bytes may succeed.
+  /// Derived from [recovery]; kept for existing callers that only need a
+  /// bool (e.g. Task 15's retry button).
+  bool get retryable => recovery == OcrRecovery.retry;
 
   @override
   String toString() => 'BaptismalOcrFailure($code): $message';
@@ -29,22 +58,40 @@ class BaptismalOcrFailure implements Exception {
 /// Vision credentials live on the server; this client only ever sees the
 /// extracted rows.
 class BaptismalOcrService {
-  BaptismalOcrService({http.Client? client}) : _client = client ?? http.Client();
+  BaptismalOcrService({
+    http.Client? client,
+    Duration timeout = const Duration(seconds: 60),
+  })  : _client = client ?? http.Client(),
+        _timeout = timeout;
 
   final http.Client _client;
-  static const Duration _timeout = Duration(seconds: 60);
+  final Duration _timeout;
 
-  // Codes where retrying the same image cannot help (server misconfiguration
-  // or a defect in the submitted image/page itself). Everything else --
-  // including VISION_QUOTA, VISION_UNAVAILABLE, NO_TEXT_FOUND, and
-  // INTERNAL_ERROR -- is a transient condition where a retry may succeed,
-  // so it is retryable by omission from this set.
-  static const Set<String> _permanent = {
-    'VISION_AUTH',
-    'IMAGE_INVALID',
-    'IMAGE_TOO_LARGE',
-    'LAYOUT_UNRECOGNIZED',
-    'UNAUTHENTICATED',
+  // Maps every backend/client error code to how the UI should help the user
+  // recover. NO_TEXT_FOUND, IMAGE_INVALID, IMAGE_TOO_LARGE, and
+  // LAYOUT_UNRECOGNIZED are about the submitted bytes specifically -- Vision
+  // is deterministic on identical input, so re-running OCR on the same
+  // upload fails identically every time; the user must supply a different
+  // photo. VISION_QUOTA, VISION_UNAVAILABLE, INTERNAL_ERROR, NETWORK, and
+  // BAD_RESPONSE are transient (server load, connectivity, a flaky
+  // response) and a same-image retry may well succeed. UNAUTHENTICATED
+  // means there is no valid session. VISION_AUTH means the server's Vision
+  // credentials are misconfigured -- nothing the user can do about that.
+  // Any code not listed here (an unrecognized/future server code) defaults
+  // to `retry`, matching prior behavior of treating unknown codes as
+  // possibly-transient.
+  static const Map<String, OcrRecovery> _recoveryByCode = {
+    'VISION_QUOTA': OcrRecovery.retry,
+    'VISION_UNAVAILABLE': OcrRecovery.retry,
+    'INTERNAL_ERROR': OcrRecovery.retry,
+    'NETWORK': OcrRecovery.retry,
+    'BAD_RESPONSE': OcrRecovery.retry,
+    'NO_TEXT_FOUND': OcrRecovery.differentImage,
+    'IMAGE_INVALID': OcrRecovery.differentImage,
+    'IMAGE_TOO_LARGE': OcrRecovery.differentImage,
+    'LAYOUT_UNRECOGNIZED': OcrRecovery.differentImage,
+    'UNAUTHENTICATED': OcrRecovery.signIn,
+    'VISION_AUTH': OcrRecovery.contactAdmin,
   };
 
   static const Map<String, String> _fallbackMessages = {
@@ -120,7 +167,7 @@ class BaptismalOcrService {
     return BaptismalOcrFailure(
       code: code,
       message: serverMessage ?? _fallbackMessages[code] ?? 'OCR failed. Please retry.',
-      retryable: !_permanent.contains(code),
+      recovery: _recoveryByCode[code] ?? OcrRecovery.retry,
     );
   }
 }
