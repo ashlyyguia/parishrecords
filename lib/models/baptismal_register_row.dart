@@ -33,29 +33,54 @@ const double kOcrReviewThreshold = 0.60;
 /// One extracted cell: the text, how sure OCR was, and whether it was carried
 /// down from the row above rather than actually read.
 class OcrField {
-  OcrField({required this.value, required this.confidence, this.inherited = false});
+  OcrField({
+    required this.value,
+    required this.confidence,
+    this.inherited = false,
+    this.edited = false,
+  });
 
   String value;
   final double confidence;
   final bool inherited;
 
+  /// True once a human has confirmed or corrected this field via [setValue]
+  /// (or a [copyWith] that supplies a new value). Client-side only: never
+  /// sent to the backend, never expected from [fromJson].
+  final bool edited;
+
   /// True when a human should look at this before it is saved.
+  ///
+  /// An edited field is never flagged: a human has already looked at it,
+  /// which is the whole point of the review step. Otherwise, an empty field
+  /// is never flagged (empty-and-required is a validation concern, handled
+  /// separately); non-empty fields are flagged when inherited or low
+  /// confidence.
   bool get needsReview {
+    if (edited) return false;
     if (value.trim().isEmpty) return false;
     return inherited || confidence < kOcrReviewThreshold;
   }
 
   factory OcrField.fromJson(Map<String, dynamic>? json) {
     if (json == null) return OcrField(value: '', confidence: 0);
+    final rawConfidence = json['confidence'];
     return OcrField(
       value: json['value']?.toString() ?? '',
-      confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
+      confidence: rawConfidence is num ? rawConfidence.toDouble() : 0,
       inherited: json['inherited'] == true,
     );
   }
 
-  OcrField copyWith({String? value}) =>
-      OcrField(value: value ?? this.value, confidence: confidence, inherited: inherited);
+  /// Returns a copy of this field. Supplying [value] marks the result as
+  /// [edited] — a human has reviewed/confirmed the value, even if it is
+  /// unchanged from the original.
+  OcrField copyWith({String? value}) => OcrField(
+    value: value ?? this.value,
+    confidence: confidence,
+    inherited: inherited,
+    edited: value != null ? true : edited,
+  );
 }
 
 /// One row of the register — one prospective baptism record.
@@ -108,10 +133,14 @@ class BaptismalOcrScan {
 
   factory BaptismalOcrScan.fromJson(Map<String, dynamic> json) {
     final rawRows = json['rows'];
+    final rawRotation = json['rotation'];
+    final rawWarnings = json['warnings'];
     return BaptismalOcrScan(
       scanId: json['scanId']?.toString() ?? '',
-      rotation: (json['rotation'] as num?)?.toInt() ?? 0,
-      warnings: (json['warnings'] as List?)?.map((w) => w.toString()).toList() ?? const [],
+      rotation: rawRotation is num ? rawRotation.toInt() : 0,
+      warnings: rawWarnings is List
+          ? rawWarnings.map((w) => w.toString()).toList()
+          : const [],
       rows: rawRows is List
           ? rawRows
               .whereType<Map>()
