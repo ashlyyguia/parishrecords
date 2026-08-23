@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:parishrecord/models/record.dart';
 import 'package:parishrecord/models/register_ocr_entry.dart';
 import 'package:parishrecord/screens/admin/pages/baptismal_ocr_scan_page.dart';
 import 'package:parishrecord/services/baptismal_ocr_service.dart';
@@ -81,7 +82,7 @@ final _png = Uint8List.fromList([
   0x82,
 ]);
 
-Map<String, dynamic> _scanBody({String name = 'JEZL ANTOINETTE'}) => {
+Map<String, dynamic> _scanBody({String name = 'TESTA SAMPLE'}) => {
   'success': true,
   'data': {
     'scanId': 's1',
@@ -114,6 +115,7 @@ Widget harness({
   Future<Uint8List?> Function(BuildContext)? picker,
   Future<String?> Function(String scanId, Uint8List bytes)? uploader,
   Future<int> Function(List<RegisterRecordDraft>)? saveRecords,
+  List<ParishRecord> Function()? existingRecords,
 }) {
   return ProviderScope(
     child: MaterialApp(
@@ -132,6 +134,10 @@ Widget harness({
         // build() runs. Injecting the save action directly is the only way
         // to exercise the save path without Firebase.
         saveRecords: saveRecords,
+        // Same rationale as saveRecords: recordsProvider's default touches
+        // live Firestore, so tests inject a fixed list here. Defaults to an
+        // empty list (no pre-existing records) when unset.
+        existingRecords: existingRecords ?? () => const [],
       ),
     ),
   );
@@ -171,7 +177,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Scan / Process OCR'));
     await tester.pumpAndSettle();
-    expect(find.text('JEZL ANTOINETTE'), findsOneWidget);
+    expect(find.text('TESTA SAMPLE'), findsOneWidget);
     expect(find.textContaining('Save'), findsWidgets);
   });
 
@@ -208,6 +214,47 @@ void main() {
     );
     expect(saveButton.onPressed, isNotNull);
   });
+
+  // FIX 7 regression: the page used to call `validateBaptismalRows(_rows)`
+  // with no `existing` argument, which defaults to `const []` -- so
+  // cross-record duplicate detection only ever saw rows from the CURRENT
+  // scan. Scanning the same register page twice produced silent duplicate
+  // records. The page now reads existing records (injected here to avoid
+  // touching the live `recordsProvider`) and must flag a row that matches
+  // one already on file by name and date.
+  testWidgets(
+    'flags a duplicate against a pre-existing record, not just within the same scan',
+    (tester) async {
+      await tester.pumpWidget(
+        harness(
+          service: serviceReturning(200, _scanBody(name: 'TESTA SAMPLE')),
+          existingRecords: () => [
+            ParishRecord(
+              id: 'existing-1',
+              type: RecordType.baptism,
+              name: 'TESTA SAMPLE',
+              date: DateTime(2016, 5, 12),
+            ),
+          ],
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('pick-image')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Scan / Process OCR'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('A baptism for this name and date already exists.'),
+        findsOneWidget,
+      );
+      // A duplicate is a non-blocking warning -- the reviewer may knowingly
+      // override it -- so Save must still be enabled.
+      final saveButton = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('save-rows')),
+      );
+      expect(saveButton.onPressed, isNotNull);
+    },
+  );
 
   testWidgets('shows a retryable error and keeps the image', (tester) async {
     await tester.pumpWidget(
@@ -372,7 +419,7 @@ void main() {
     await tester.pumpAndSettle();
     // Landed on review with the row intact — the failed upload did not
     // block OCR from proceeding.
-    expect(find.text('JEZL ANTOINETTE'), findsOneWidget);
+    expect(find.text('TESTA SAMPLE'), findsOneWidget);
   });
 
   testWidgets('a save that throws shows an error and stays on review', (
@@ -400,7 +447,7 @@ void main() {
     expect(find.textContaining('Save failed'), findsOneWidget);
     // Still on the review step with the row intact — a failed save must
     // not lose the user's work.
-    expect(find.text('JEZL ANTOINETTE'), findsOneWidget);
+    expect(find.text('TESTA SAMPLE'), findsOneWidget);
   });
 
   testWidgets(

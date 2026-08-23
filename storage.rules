@@ -28,6 +28,15 @@ service firebase.storage {
       allow write: if isAdmin() || isStaff();
     }
 
+    // Baptismal register scan archives: contain full-resolution photos of
+    // register spreads -- typically ~10 children's records per page, many
+    // of them minors. Read AND write are restricted to admin/staff only
+    // (unlike announcements, this must never be publicly readable).
+    match /baptism_scans/{allPaths=**} {
+      allow read: if isAdmin() || isStaff();
+      allow write: if isAdmin() || isStaff();
+    }
+
     // Default deny
     match /{allPaths=**} {
       allow read, write: if false;

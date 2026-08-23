@@ -60,11 +60,20 @@ class BaptismalOcrScanPage extends ConsumerStatefulWidget {
     this.imageUploader,
     this.idTokenProvider,
     this.saveRecords,
+    this.existingRecords,
   });
 
   final BaptismalOcrService? ocrService;
   final Future<Uint8List?> Function(BuildContext context)? imagePicker;
   final Future<String?> Function(String scanId, Uint8List bytes)? imageUploader;
+
+  /// Resolves the existing records to check new rows against for cross-scan
+  /// duplicates (see [validateBaptismalRows]'s `existing` parameter).
+  /// Defaults to `ref.read(recordsProvider)` when null -- left null in
+  /// production. Scanning the same register page twice without this check
+  /// previously produced silent duplicate records, because
+  /// `validateBaptismalRows(_rows)` only ever saw rows from the CURRENT scan.
+  final List<ParishRecord> Function()? existingRecords;
 
   /// Resolves the Firebase ID token to send with the scan request.
   ///
@@ -105,6 +114,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
   Uint8List? _bytes;
   String _scanId = '';
   String? _imagePath;
+  bool _archiveFailed = false;
   List<BaptismalRegisterRow> _rows = [];
   List<String> _warnings = const [];
   BaptismalOcrFailure? _failure;
@@ -121,7 +131,18 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     super.dispose();
   }
 
-  List<RowIssue> get _issues => validateBaptismalRows(_rows);
+  /// Existing records to check for cross-scan duplicates against. Defaults
+  /// to the live `recordsProvider` in production; tests inject a fixed list
+  /// via [BaptismalOcrScanPage.existingRecords] so this stays reachable
+  /// without touching Firebase (see [saveRecords]'s COVERAGE NOTE for why
+  /// `RecordsNotifier` itself can't be exercised from a widget test).
+  List<ParishRecord> get _existingRecords =>
+      widget.existingRecords != null
+          ? widget.existingRecords!()
+          : ref.read(recordsProvider);
+
+  List<RowIssue> get _issues =>
+      validateBaptismalRows(_rows, existing: _existingRecords);
   bool get _canSave =>
       !_saving &&
       _rows.any((r) => r.selected) &&
@@ -145,6 +166,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
       _bytes = bytes;
       _scanId = _uuid.v4();
       _imagePath = null;
+      _archiveFailed = false;
       _failure = null;
       _rows = [];
       _warnings = const [];
@@ -153,24 +175,38 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
   }
 
   /// Archives the raw image to Firebase Storage when no test double was
-  /// injected. Follows the `putData` + `getDownloadURL` convention used by
-  /// `lib/services/events_repository.dart:48-53`.
+  /// injected.
   ///
-  /// `ref.fullPath` (the bare Storage path, e.g. `baptism_scans/<id>.jpg`)
-  /// is NOT renderable by anything downstream: `record_detail_screen.dart`
-  /// does `Image.file(File(rec.imagePath!))` and `record_form_screen.dart`
-  /// does `Image.network`/`Image.file` on it. A real download URL is the
-  /// only value that flows correctly into `Image.network`. `record.dart`
-  /// (`ParishRecord`/`RegisterRecordDraft`) has a single `imagePath` field
-  /// and that model is on the do-not-touch list for this task, so the URL
-  /// -- not a separate raw-path field -- is what gets stored.
+  /// Stores `ref.fullPath` (the bare Storage path, e.g.
+  /// `baptism_scans/<id>.jpg`) -- deliberately NOT `ref.getDownloadURL()`.
+  /// A Firebase Storage download URL carries a long-lived bearer token
+  /// (`...?alt=media&token=...`) baked into the URL itself, which lets
+  /// ANYONE who has that string open the file, completely bypassing
+  /// `storage.rules` (including the admin/staff-only read restriction on
+  /// `baptism_scans/**`). `firestore.rules` grants
+  /// `allow get, list: if isSignedIn()` on `baptism_records` -- i.e. every
+  /// signed-in parishioner, not just staff/admin -- so a download URL stored
+  /// on that document would let any parishioner who can read one baptism
+  /// record open the FULL-RESOLUTION photo of the entire register spread it
+  /// came from: roughly ten other families' names, dates, sponsors, and
+  /// residences, most of them minors. Storing the bare path instead means a
+  /// reader needs a fresh `getDownloadURL()` call of their own, which Storage
+  /// rules gate on being signed in AND admin/staff -- exactly the intended
+  /// access boundary.
+  ///
+  /// Trade-off: `record_detail_screen.dart`'s `Image.file`/`record_form_
+  /// screen.dart`'s `Image.network` calls expect a directly renderable
+  /// path/URL, so displaying this archived scan later requires resolving a
+  /// fresh, properly-scoped download URL from `ref.fullPath` at render time
+  /// (for an authorized admin/staff viewer) rather than rendering
+  /// `imagePath` directly -- tracked as a follow-up; out of scope here.
   Future<String?> _defaultUpload(String scanId, Uint8List bytes) async {
     try {
       final ref = FirebaseStorage.instance.ref().child(
         'baptism_scans/$scanId.jpg',
       );
       await ref.putData(bytes);
-      return await ref.getDownloadURL();
+      return ref.fullPath;
     } catch (_) {
       return null;
     }
@@ -187,15 +223,22 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     // Archive the ORIGINAL bytes first, so a failed scan never loses the
     // upload and a retry costs no re-upload. A failed upload must never
     // block OCR from proceeding -- the scan is still useful even if the
-    // archive copy didn't make it to Storage.
-    if (_imagePath == null) {
+    // archive copy didn't make it to Storage. It must also never be SILENT:
+    // previously a failed upload just left `_imagePath` null with no signal
+    // anywhere in the UI, so a reviewer could save a record believing the
+    // original page image was archived when it never was. `_archiveFailed`
+    // drives a non-blocking notice in the review step instead.
+    if (_imagePath == null && !_archiveFailed) {
       try {
-        _imagePath = await (widget.imageUploader ?? _defaultUpload)(
+        final uploaded = await (widget.imageUploader ?? _defaultUpload)(
           _scanId,
           bytes,
         );
+        _imagePath = uploaded;
+        _archiveFailed = uploaded == null;
       } catch (_) {
         _imagePath = null;
+        _archiveFailed = true;
       }
     }
 
@@ -496,6 +539,37 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     );
   }
 
+  /// Non-blocking notice: the original page photo could not be archived to
+  /// Storage. Saving still proceeds -- the reviewed data is what matters --
+  /// but this must never be silent, or a clerk who later needs to re-check
+  /// the physical register has no way to know the image isn't there.
+  Widget _archiveFailedNotice(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('archive-failed-notice'),
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outline),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_outlined, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'The original page photo could not be archived. The reviewed '
+              'data below will still save normally.',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _reviewStep() {
     final issues = _issues;
     final blocking = issues.where((i) => i.blocking).length;
@@ -504,6 +578,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     return Column(
       children: [
         if (_warnings.isNotEmpty) _warningsPanel(context),
+        if (_archiveFailed) _archiveFailedNotice(context),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(
@@ -545,6 +620,8 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
                     },
                     onSelectedChanged: (i, v) =>
                         setState(() => _rows[i].selected = v),
+                    onLineNoChanged: (i, value) =>
+                        setState(() => _rows[i].lineNo = value),
                   ),
           ),
         ),
