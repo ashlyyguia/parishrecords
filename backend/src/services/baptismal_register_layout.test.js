@@ -1333,9 +1333,9 @@ describe('applyFillDown', () => {
   test('leaves a real value alone', () => {
     const rows = [
       row({ minister: { value: 'FR. TESTMIN', confidence: 0.9 } }),
-      row({ minister: { value: 'FR. JEZON', confidence: 0.9 } }),
+      row({ minister: { value: 'FR. TEST SECOND', confidence: 0.9 } }),
     ];
-    expect(applyFillDown(rows).rows[1].fields.minister.value).toBe('FR. JEZON');
+    expect(applyFillDown(rows).rows[1].fields.minister.value).toBe('FR. TEST SECOND');
     expect(applyFillDown(rows).rows[1].fields.minister.inherited).toBe(false);
   });
 
