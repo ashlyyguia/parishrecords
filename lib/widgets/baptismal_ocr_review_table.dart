@@ -118,6 +118,8 @@ class BaptismalOcrReviewTable extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final field = row.field(key);
     final issue = _issueFor(rowIndex, key);
+    final fieldLabel = baptismalFieldLabels[key] ?? key;
+    final isRequired = baptismalRequiredFields.contains(key);
 
     Color? fill;
     if (issue != null && issue.blocking) {
@@ -137,7 +139,20 @@ class BaptismalOcrReviewTable extends StatelessWidget {
         minLines: 1,
         maxLines: 3,
         decoration: InputDecoration(
-          labelText: baptismalFieldLabels[key],
+          // A required field's label carries the asterisk visibly (matches
+          // the register's own convention) but the glyph alone is not the
+          // accessible signal: `excludeSemantics` drops the raw "<label> *"
+          // text node from the semantics tree and replaces it with an
+          // explicit "<label>, required" announcement, mirroring how the
+          // inherited/needsReview icons below pair a visual mark with a
+          // real tooltip string instead of relying on shape/colour alone.
+          label: isRequired
+              ? Semantics(
+                  label: '$fieldLabel, required',
+                  excludeSemantics: true,
+                  child: Text('$fieldLabel *'),
+                )
+              : Text(fieldLabel),
           filled: fill != null,
           fillColor: fill,
           isDense: true,
