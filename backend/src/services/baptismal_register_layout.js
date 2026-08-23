@@ -289,12 +289,12 @@ function findHeaderCenter(pageWords, tokens, band) {
 
 /**
  * Calibrates column x-bands for one page.
- * @returns {{columns: Array<{key,x0,x1,matched}>, warnings: string[]}}
+ * @returns {{columns: Array<{key,x0,x1,matched}>, warnings: string[], headerMaxY: number}}
  */
 function calibrateColumns(pageWords, columnDefs) {
   const warnings = [];
   if (!pageWords || pageWords.length === 0) {
-    return { columns: [], warnings: ['LAYOUT_UNCERTAIN'] };
+    return { columns: [], warnings: ['LAYOUT_UNCERTAIN'], headerMaxY: 0 };
   }
 
   const boxes = pageWords.map(boxOf);
@@ -397,7 +397,133 @@ function calibrateColumns(pageWords, columnDefs) {
     return { key: c.key, x0, x1, matched: c.matched };
   });
 
-  return { columns, warnings };
+  return { columns, warnings, headerMaxY: band.headerMaxY };
+}
+
+/** Median box height, used to size the y-clustering tolerance. Falls back to
+ * a reasonable default when there are no boxes to measure. */
+function medianHeight(boxes) {
+  if (boxes.length === 0) return 20;
+  const hs = boxes.map((b) => b.h).sort((a, b) => a - b);
+  return hs[Math.floor(hs.length / 2)] || 20;
+}
+
+/** Groups y-centers into clusters no more than `tolerance` apart. */
+function clusterByY(items, tolerance) {
+  const sorted = [...items].sort((a, b) => a.cy - b.cy);
+  const clusters = [];
+  for (const it of sorted) {
+    const last = clusters[clusters.length - 1];
+    if (last && it.cy - last.cy <= tolerance) {
+      last.members.push(it);
+      last.cy = (last.cy * (last.members.length - 1) + it.cy) / last.members.length;
+    } else {
+      clusters.push({ cy: it.cy, members: [it] });
+    }
+  }
+  return clusters;
+}
+
+/**
+ * Detects row y-bands.
+ *
+ * Primary anchor: the numerals printed in the lineNo ("NO.") column, each
+ * one clustered by y-position into a single row anchor. This is trustworthy
+ * because it reads the same printed sequence a human would use to find a
+ * row, rather than inferring row boundaries from wherever handwritten data
+ * happens to sit.
+ *
+ * Fallback: when fewer than one lineNo digit can be matched (the column
+ * itself is unreadable — smudged, cropped, or genuinely blank), clusters
+ * every word on the page by y instead. This is noisier — a row with unusually
+ * wide handwriting can span more than one visual cluster, or a stray mark can
+ * create a spurious one — so it always warns `ROW_ANCHOR_FALLBACK` and
+ * cannot recover a `lineNo` value (there was nothing legible to read one
+ * from).
+ *
+ * `headerMaxY` must be the boundary `calibrateColumns` already computed for
+ * this same page (its returned `headerMaxY`) — recomputing it here from a
+ * different signal (e.g. a fixed top-of-page ratio) is exactly the bug Task 4
+ * fixed for column calibration; reusing the one true boundary keeps row
+ * detection and column calibration looking at the same header/data split.
+ *
+ * @param {Array} pageWords - words for a single (already split) page.
+ * @param {Array} columns - calibrated column bands from `calibrateColumns`.
+ * @param {number} headerMaxY - header/data boundary from `calibrateColumns`.
+ * @returns {{rows: Array<{index:number,lineNo:string|null,y0:number,y1:number}>, warnings: string[]}}
+ */
+function detectRows(pageWords, columns, headerMaxY) {
+  const warnings = [];
+  if (!pageWords || pageWords.length === 0) return { rows: [], warnings };
+
+  // No silent fallback: a caller that forgets to pass calibrateColumns'
+  // headerMaxY would otherwise compare every word's y against `undefined`
+  // (always false), silently degrading to "every word is a row anchor
+  // candidate" instead of failing loudly. That's a wrong header/data split
+  // masquerading as a working one, which is worse than an explicit crash.
+  if (typeof headerMaxY !== 'number' || Number.isNaN(headerMaxY)) {
+    throw new Error(
+      "detectRows requires the numeric headerMaxY calibrateColumns returned for this same page — got " +
+        String(headerMaxY),
+    );
+  }
+
+  const lineNoCol = (columns || []).find((c) => c.key === 'lineNo');
+  const boxes = pageWords.map((w) => ({ ...boxOf(w), text: w.text }));
+  const tolerance = medianHeight(boxes) * 0.9;
+
+  let anchors = [];
+  if (lineNoCol) {
+    anchors = boxes.filter(
+      (b) =>
+        b.cx >= lineNoCol.x0 &&
+        b.cx < lineNoCol.x1 &&
+        b.cy > headerMaxY &&
+        /^\d{1,3}$/.test(b.text),
+    );
+  }
+
+  // A single legible digit is still a trustworthy anchor for a genuinely
+  // one-row page — requiring two would force a page with exactly one data
+  // row into the noisier fallback path and silently discard the very lineNo
+  // value it correctly read.
+  let clusters;
+  if (anchors.length >= 1) {
+    clusters = clusterByY(anchors, tolerance).map((c) => ({
+      cy: c.cy,
+      lineNo: c.members[0].text,
+    }));
+  } else {
+    warnings.push('ROW_ANCHOR_FALLBACK');
+    clusters = clusterByY(
+      boxes.filter((b) => b.cy > headerMaxY),
+      tolerance,
+    ).map((c) => ({ cy: c.cy, lineNo: null }));
+  }
+
+  if (clusters.length === 0) return { rows: [], warnings };
+
+  // Row bands are the midpoints between adjacent anchors; the first and last
+  // extend by half the median row pitch. With only one row there is no
+  // adjacent anchor to derive a pitch from, so fall back to twice the
+  // clustering tolerance as a reasonable single-row band height.
+  const pitch =
+    clusters.length > 1
+      ? (clusters[clusters.length - 1].cy - clusters[0].cy) / (clusters.length - 1)
+      : tolerance * 2;
+
+  const rows = clusters.map((c, i) => {
+    const prev = clusters[i - 1];
+    const next = clusters[i + 1];
+    return {
+      index: i,
+      lineNo: c.lineNo,
+      y0: prev ? (prev.cy + c.cy) / 2 : c.cy - pitch / 2,
+      y1: next ? (c.cy + next.cy) / 2 : c.cy + pitch / 2,
+    };
+  });
+
+  return { rows, warnings };
 }
 
 module.exports = {
@@ -408,4 +534,5 @@ module.exports = {
   LEFT_COLUMNS,
   RIGHT_COLUMNS,
   calibrateColumns,
+  detectRows,
 };

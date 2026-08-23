@@ -1,5 +1,6 @@
 const {
-  boxOf, normalizeOrientation, splitSpread, calibrateColumns, LEFT_COLUMNS, RIGHT_COLUMNS,
+  boxOf, normalizeOrientation, splitSpread, calibrateColumns, detectRows,
+  LEFT_COLUMNS, RIGHT_COLUMNS,
 } = require('./baptismal_register_layout');
 const {
   buildRegisterFixture, GUTTER_X0, GUTTER_X1, FIRST_ROW_Y, ROW_H,
@@ -711,6 +712,138 @@ describe('calibrateColumns', () => {
           }
         });
       }
+    }
+  });
+});
+
+describe('detectRows', () => {
+  const leftPage = (opts = {}) => {
+    const { words } = normalizeOrientation(buildRegisterFixture({ rows: 6, ...opts }).words);
+    const left = splitSpread(words).left;
+    const { columns, headerMaxY } = calibrateColumns(left, LEFT_COLUMNS);
+    return { left, columns, headerMaxY };
+  };
+
+  test('anchors rows on the NO. column', () => {
+    const { left, columns, headerMaxY } = leftPage();
+    const { rows, warnings } = detectRows(left, columns, headerMaxY);
+    expect(rows).toHaveLength(6);
+    expect(rows.map((r) => r.lineNo)).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(warnings).toEqual([]);
+  });
+
+  test('rows are ordered top to bottom and do not overlap', () => {
+    const { left, columns, headerMaxY } = leftPage();
+    const { rows } = detectRows(left, columns, headerMaxY);
+    for (let i = 1; i < rows.length; i += 1) {
+      expect(rows[i].y0).toBeGreaterThanOrEqual(rows[i - 1].y1 - 0.001);
+    }
+  });
+
+  test('falls back to y-clustering when the NO. column is unreadable', () => {
+    const { left, columns, headerMaxY } = leftPage({ omitNoColumn: true });
+    const { rows, warnings } = detectRows(left, columns, headerMaxY);
+    expect(warnings).toContain('ROW_ANCHOR_FALLBACK');
+    expect(rows).toHaveLength(6);
+    expect(rows[0].lineNo).toBe(null);
+  });
+
+  test('returns no rows for an empty page', () => {
+    expect(detectRows([], [], 0).rows).toEqual([]);
+  });
+
+  // Edge case: a header-only page (no data rows below it at all — a blank
+  // register page, or one cropped tight to the header). There is nothing to
+  // anchor to and nothing to fall back onto either; the honest result is
+  // zero rows, not a crash or a spurious row conjured from header text.
+  test('returns no rows for a page with zero data rows', () => {
+    // register_fixture's `rows` option treats 0 as falsy and silently
+    // defaults to its sample rows (a pre-existing quirk in shared fixture
+    // code this task must not touch — see helpers/register_fixture.js), so
+    // a genuinely header-only page is built here by filtering out
+    // everything at or below the first data row's y instead.
+    const { words } = normalizeOrientation(buildRegisterFixture({ rotation: 0 }).words);
+    const headerOnly = words.filter((w) => boxOf(w).cy < FIRST_ROW_Y);
+    const left = splitSpread(headerOnly).left;
+    const { columns, headerMaxY } = calibrateColumns(left, LEFT_COLUMNS);
+    const { rows } = detectRows(left, columns, headerMaxY);
+    expect(rows).toEqual([]);
+  });
+
+  // Edge case: exactly one data row. A naive "need at least 2 anchors to
+  // trust the column" rule (plausible if ported over too literally) would
+  // force this page onto the noisier fallback path and discard the one
+  // NO.-column digit that was actually read correctly.
+  test('anchors a single legitimate row without falling back', () => {
+    const { left, columns, headerMaxY } = leftPage({ rows: 1 });
+    const { rows, warnings } = detectRows(left, columns, headerMaxY);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].lineNo).toBe('1');
+    expect(warnings).toEqual([]);
+    // The row "pitch" is undefined with only one anchor; the band must still
+    // come out as a well-formed, positive-height interval, not NaN or
+    // inverted.
+    expect(rows[0].y1).toBeGreaterThan(rows[0].y0);
+    expect(Number.isNaN(rows[0].y0)).toBe(false);
+    expect(Number.isNaN(rows[0].y1)).toBe(false);
+  });
+
+  // Edge case: real handwritten registers are not evenly ruled. Row bands
+  // must track each row's own detected numeral, not an assumed uniform
+  // pitch, so a wide gap further down the page must not distort earlier
+  // rows or merge/misorder later ones.
+  test('handles uneven row spacing by anchoring each band to its own numeral', () => {
+    const built = buildRegisterFixture({ rotation: 0, rows: 3 });
+    const rowTwoCy = FIRST_ROW_Y + 1 * ROW_H;
+    const rowThreeCy = FIRST_ROW_Y + 2 * ROW_H;
+    const SHIFT = 500;
+
+    // Push row 3 (and all of its cells, which share its cy) far down the
+    // page: row1->row2 stays the fixture's normal 60px gap while row2->row3
+    // balloons to 560px.
+    const shiftedWords = built.words.map((w) => {
+      const b = boxOf(w);
+      if (b.cy !== rowThreeCy) return w;
+      return { ...w, vertices: w.vertices.map((v) => ({ x: v.x, y: v.y + SHIFT })) };
+    });
+
+    const { words } = normalizeOrientation(shiftedWords);
+    const left = splitSpread(words).left;
+    const { columns, headerMaxY } = calibrateColumns(left, LEFT_COLUMNS);
+    const { rows, warnings } = detectRows(left, columns, headerMaxY);
+
+    expect(warnings).toEqual([]);
+    expect(rows).toHaveLength(3);
+    expect(rows.map((r) => r.lineNo)).toEqual(['1', '2', '3']);
+    for (let i = 1; i < rows.length; i += 1) {
+      expect(rows[i].y0).toBeGreaterThanOrEqual(rows[i - 1].y1 - 0.001);
+    }
+    // The row2/row3 boundary sits at the midpoint of their real (shifted)
+    // detected positions, not glued near the tight row1/row2 gap.
+    const expectedBoundary = (rowTwoCy + rowThreeCy + SHIFT) / 2;
+    expect(rows[2].y0).toBeCloseTo(expectedBoundary, 0);
+  });
+
+  // A wrong or missing headerMaxY silently misroutes every row (see the
+  // header-band bug Task 4 fixed for column calibration) — it must fail
+  // loudly instead of guessing.
+  test('throws rather than silently guessing when headerMaxY is missing', () => {
+    const { left, columns } = leftPage();
+    try {
+      detectRows(left, columns);
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err.message).toMatch(/headerMaxY/);
+    }
+  });
+
+  test('throws rather than silently guessing when headerMaxY is NaN', () => {
+    const { left, columns } = leftPage();
+    try {
+      detectRows(left, columns, NaN);
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err.message).toMatch(/headerMaxY/);
     }
   });
 });
