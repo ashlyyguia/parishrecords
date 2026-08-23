@@ -72,7 +72,11 @@ async function recognizeWords(imageBuffer, options = {}) {
   try {
     const [result] = await client.documentTextDetection({
       image: { content: imageBuffer },
-      imageContext: { languageHints: ['en'] },
+      // 'fil' (Filipino) alongside 'en': Philippine baptismal registers are
+      // full of Spanish/Tagalog/Cebuano proper nouns (names, place names,
+      // barangay/purok labels) that an English-only hint biases Vision away
+      // from reading correctly.
+      imageContext: { languageHints: ['en', 'fil'] },
     });
     response = result;
   } catch (e) {

@@ -16,16 +16,24 @@ const MAX_EDGE = 4096;
  * PNG that declares e.g. 50000x50000 pixels forces a full-resolution decode
  * (gigabytes of raw pixels) before we ever get to resize it down.
  *
- * 40,000,000 px (40 MP) is chosen to comfortably clear legitimate register
- * scans/photos: a two-page legal-size spread (~17in x 14in) at 600 DPI is
- * ~21.4 MP, and even a fairly aggressive 800 DPI double-page scan is well
- * under 40 MP. It sits far below sharp's own undocumented default
- * (~268 MP / 16383x16383), which is the whole point — this project should
- * not depend on a library default that could silently change. A buffer
- * that exceeds this decodes to roughly 40M * 3-4 bytes/px (~120-160 MB) at
- * most before sharp aborts, which is a bounded and acceptable worst case.
+ * 80,000,000 px (80 MP) is chosen to comfortably clear legitimate register
+ * scans/photos, INCLUDING an ordinary phone photo: a 50 MP sensor (standard
+ * on mid-range phones as of this writing, and the picker requests
+ * `fullResolution: true`) shoots well within this. The previous 40 MP cap
+ * was derived from an arithmetic error — "a two-page legal-size spread
+ * (~17in x 14in) at 600 DPI is ~21.4 MP" understated the real number by 4x:
+ * 17in * 600dpi = 10,200px and 14in * 600dpi = 8,400px, so 10,200 * 8,400 =
+ * ~85.7 MP, not ~21.4 MP. That error meant the 40 MP cap rejected the exact
+ * scans it was supposed to allow, and rejected an 8000x6000 (48 MP) phone
+ * photo — 281 KB on disk, nowhere near the 10 MB byte cap — with a false
+ * "not a supported image" message. 80 MP still sits comfortably below
+ * sharp's own undocumented default (~268 MP / 16383x16383), which is the
+ * whole point — this project should not depend on a library default that
+ * could silently change. A buffer that exceeds this decodes to roughly
+ * 80M * 3-4 bytes/px (~240-320 MB) at most before sharp aborts, which is a
+ * bounded and acceptable worst case.
  */
-const MAX_INPUT_PIXELS = 40_000_000;
+const MAX_INPUT_PIXELS = 80_000_000;
 
 // Ensures the "sharp is unavailable" condition is logged once per process
 // rather than once per request, so a broken deploy (missing native binary)

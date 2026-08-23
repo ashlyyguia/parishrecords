@@ -26,7 +26,11 @@ const STATUS_BY_CODE = {
 
 const MESSAGE_BY_CODE = {
   IMAGE_INVALID: 'That file is not a supported image. Use JPEG, PNG, or WebP.',
-  IMAGE_TOO_LARGE: 'That image is larger than 10 MB. Please use a smaller photo.',
+  // Covers both trigger paths for this code: the 10MB byte cap AND the
+  // decode-time resolution cap (MAX_INPUT_PIXELS) -- the latter can be
+  // tripped by a photo that is nowhere near 10MB, so the message must not
+  // claim it's specifically about file size.
+  IMAGE_TOO_LARGE: 'That image is too large to process (either the file size or its resolution is over the limit). Please use a smaller or lower-resolution photo.',
   VISION_AUTH: 'OCR is not configured on the server. Contact an administrator.',
   VISION_QUOTA: 'The OCR service is rate-limited right now. Try again shortly.',
   VISION_UNAVAILABLE: 'Could not reach the OCR service. Check your connection and retry.',
@@ -38,6 +42,27 @@ const MESSAGE_BY_CODE = {
 // Logged once per process (not per request) so a broken sharp install
 // doesn't flood the logs while the decodability gate silently degrades.
 let sharpUnavailableWarnedInRoute = false;
+
+// `scanId` is client-supplied and only validated as a non-empty string
+// (express-validator's `.isString().trim().notEmpty()` has no length or
+// character bound), inside a request body allowed up to 20MB. Logging it
+// unbounded is both a log-injection vector (embedded CR/LF can forge fake
+// log lines) and an easy way to blow up log storage with a single
+// oversized field. This never affects behaviour -- only what reaches the
+// log -- so a caller can never observe the truncation/stripping.
+const MAX_LOGGED_SCAN_ID_LENGTH = 64;
+function sanitizeScanIdForLog(scanId) {
+  const s = typeof scanId === 'string' ? scanId : String(scanId);
+  return s.replace(/[\r\n]+/g, ' ').slice(0, MAX_LOGGED_SCAN_ID_LENGTH);
+}
+
+// The exact message sharp/libvips throws from `metadata()` when a header's
+// declared width*height exceeds `limitInputPixels` -- distinct from every
+// other decode failure (corrupt header, premature EOF, wrong format).
+// Verified against the installed sharp version; see
+// `baptismal_image_preprocess.test.js` for the harness that would catch a
+// message change on a sharp upgrade.
+const PIXEL_LIMIT_ERROR_MESSAGE = 'Input image exceeds pixel limit';
 
 /**
  * Cheap, real decodability probe run BEFORE `preprocessForOcr`/Vision.
@@ -60,6 +85,15 @@ let sharpUnavailableWarnedInRoute = false;
  * the probe can't run at all; rather than hard-failing every upload because
  * of a broken deploy, this degrades the same way `preprocessForOcr` does --
  * warn once and let the buffer through unprobed.
+ *
+ * @returns {Promise<{decodable: boolean, tooLarge: boolean}>} `tooLarge` is
+ *   only ever true when `decodable` is false -- it distinguishes "this is a
+ *   real image, just bigger than our resolution cap" (IMAGE_TOO_LARGE, a
+ *   true and actionable message: retake at a lower resolution) from every
+ *   other decode failure (IMAGE_INVALID: not a supported image at all). An
+ *   ordinary phone photo from a 50 MP sensor is a real, valid, well under
+ *   10 MB JPEG that used to hit this exact branch and be told -- falsely --
+ *   that its FORMAT wasn't supported.
  */
 async function isDecodableImage(buffer) {
   let sharp;
@@ -70,17 +104,19 @@ async function isDecodableImage(buffer) {
       console.error('[baptismal-ocr] sharp unavailable, skipping decodability probe: ' + (e?.message));
       sharpUnavailableWarnedInRoute = true;
     }
-    return true;
+    return { decodable: true, tooLarge: false };
   }
   try {
     const meta = await sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
-    return Boolean(meta && meta.width > 0 && meta.height > 0);
+    return { decodable: Boolean(meta && meta.width > 0 && meta.height > 0), tooLarge: false };
   } catch (e) {
-    // Any decode failure (corrupt header, premature EOF, oversized pixel
-    // count blocked by limitInputPixels, etc.) means "not decodable" -- the
-    // specific reason doesn't change the outcome, so it's intentionally not
-    // inspected or logged here (see fail()'s single generic log line).
-    return false;
+    // Every OTHER decode failure (corrupt header, premature EOF, wrong
+    // format, etc.) means "not decodable" for reasons unrelated to size --
+    // the specific reason doesn't change the outcome there, so it stays
+    // uninspected (see fail()'s single generic log line) except for this
+    // one pixel-limit case, which gets its own, honest error code.
+    const tooLarge = Boolean(e && e.message && e.message.includes(PIXEL_LIMIT_ERROR_MESSAGE));
+    return { decodable: false, tooLarge };
   }
 }
 
@@ -142,7 +178,19 @@ function createBaptismalOcrRouter(deps = {}) {
       const mime = sniffImageType(buffer);
       if (!mime || !ACCEPTED.has(mime)) return fail(res, 'IMAGE_INVALID', scanId);
 
-      if (!(await isDecodableImage(buffer))) return fail(res, 'IMAGE_INVALID', scanId);
+      const decodability = await isDecodableImage(buffer);
+      if (!decodability.decodable) {
+        // A pixel-limit rejection is a real, valid, well-under-10MB image --
+        // e.g. an 8000x6000 (48MP) phone photo at 281KB, from the 50MP
+        // sensors standard on the mid-range phones this app's picker targets
+        // (`fullResolution: true`). Telling that user "not a supported
+        // image, use JPEG/PNG/WebP" is simply false: the format is fine, the
+        // RESOLUTION is what tripped the cap. IMAGE_TOO_LARGE (with its
+        // resolution-aware message below) is the honest code for this case;
+        // every other decode failure is a genuine format/corruption problem
+        // and stays IMAGE_INVALID.
+        return fail(res, decodability.tooLarge ? 'IMAGE_TOO_LARGE' : 'IMAGE_INVALID', scanId);
+      }
 
       try {
         const prepared = await preprocess(buffer);
@@ -152,18 +200,24 @@ function createBaptismalOcrRouter(deps = {}) {
         // Log counts only -- never cell values or recognized text (records
         // of minors).
         console.log(
-          `[baptismal-ocr] scan=${scanId} words=${words.length} rows=${result.rows.length} ` +
+          `[baptismal-ocr] scan=${sanitizeScanIdForLog(scanId)} words=${words.length} rows=${result.rows.length} ` +
           `rotation=${result.rotation} warnings=${result.warnings.length} ms=${Date.now() - startedAt}`,
         );
 
+        // `columns`/`gutterX` are deliberately NOT included: nothing reads
+        // them (`BaptismalOcrScan.fromJson` on the Flutter side ignores both
+        // -- see lib/models/baptismal_register_row.dart), and they're in a
+        // normalized CONTENT-RELATIVE coordinate frame (see
+        // normalizeOrientation's doc comment in baptismal_register_layout.js)
+        // that isn't even usable for an image overlay without extra
+        // bookkeeping this pipeline doesn't do. Serializing them on every
+        // response is pure dead weight.
         return res.json({
           success: true,
           data: {
             scanId,
             rows: result.rows,
-            columns: result.columns,
             rotation: result.rotation,
-            gutterX: result.gutterX,
             warnings: result.warnings,
           },
         });
@@ -185,7 +239,7 @@ function createBaptismalOcrRouter(deps = {}) {
 }
 
 function fail(res, code, scanId) {
-  console.warn(`[baptismal-ocr] scan=${scanId} failed code=${code}`);
+  console.warn(`[baptismal-ocr] scan=${sanitizeScanIdForLog(scanId)} failed code=${code}`);
   return res.status(STATUS_BY_CODE[code] || 500).json({
     success: false,
     code,

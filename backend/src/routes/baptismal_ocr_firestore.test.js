@@ -1,6 +1,8 @@
+const zlib = require('zlib');
 const express = require('express');
 const request = require('supertest');
 const { createBaptismalOcrRouter } = require('./baptismal_ocr_firestore');
+const { MAX_INPUT_PIXELS } = require('../services/baptismal_image_preprocess');
 
 // A genuine, decodable tiny JPEG -- generated the same way
 // `baptismal_image_preprocess.test.js` does (sharp({ create: {...} })), so
@@ -15,6 +17,37 @@ beforeAll(async () => {
     create: { width: 40, height: 30, channels: 3, background: { r: 200, g: 60, b: 60 } },
   }).jpeg().toBuffer();
 });
+
+/**
+ * Builds a syntactically-complete but otherwise empty PNG that declares
+ * arbitrary pixel dimensions in its IHDR chunk -- mirrors
+ * `baptismal_image_preprocess.test.js`'s helper of the same shape. Used to
+ * exercise the real `isDecodableImage` pixel-limit branch through the route
+ * without needing an actual multi-hundred-megapixel file on disk.
+ */
+function makePngWithClaimedDimensions(width, height) {
+  const chunk = (type, data) => {
+    const typeAndData = Buffer.concat([Buffer.from(type), data]);
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length, 0);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32(typeAndData) >>> 0, 0);
+    return Buffer.concat([len, typeAndData, crc]);
+  };
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdrData = Buffer.alloc(13);
+  ihdrData.writeUInt32BE(width, 0);
+  ihdrData.writeUInt32BE(height, 4);
+  ihdrData[8] = 8; // bit depth
+  ihdrData[9] = 2; // color type: RGB
+  ihdrData[10] = 0; // compression
+  ihdrData[11] = 0; // filter
+  ihdrData[12] = 0; // interlace
+  const ihdr = chunk('IHDR', ihdrData);
+  const idat = chunk('IDAT', zlib.deflateSync(Buffer.alloc(0)));
+  const iend = chunk('IEND', Buffer.alloc(0));
+  return Buffer.concat([sig, ihdr, idat, iend]);
+}
 
 function appWith(overrides = {}, role = 'admin') {
   const app = express();
@@ -48,15 +81,17 @@ describe('POST /api/ocr/baptismal/scan', () => {
     expect(res.body.data.rows).toHaveLength(1);
     expect(res.body.data.rotation).toBe(0);
 
-    // Full response-shape contract for Task 11's Flutter client -- not just
-    // the three fields above.
+    // Full response-shape contract for the Flutter client -- not just the
+    // three fields above.
     const { data } = res.body;
-    expect(data.columns).toEqual({
-      left: [{ key: 'givenName', x0: 0, x1: 100, matched: true }],
-      right: [],
-    });
-    expect(data.gutterX).toBe(500);
     expect(data.warnings).toEqual(['GUTTER_UNCONFIRMED']);
+    // FIX 12: `columns`/`gutterX` are deliberately NOT serialized -- nothing
+    // reads them (`BaptismalOcrScan.fromJson` ignores both) and they sit in
+    // a content-relative coordinate frame that isn't usable for an image
+    // overlay as-is. `extract()` above still returns them (other callers of
+    // `extractBaptismalRows` may use them), but the ROUTE must not echo them.
+    expect(data.columns).toBeUndefined();
+    expect(data.gutterX).toBeUndefined();
 
     const row = data.rows[0];
     expect(row.lineNo).toBe('1');
@@ -232,6 +267,67 @@ describe('POST /api/ocr/baptismal/scan edge cases', () => {
       .send({ scanId: 's1', imageBase64: b64(JPEG) });
     expect(res.status).toBe(200);
     expect(recognize).toHaveBeenCalledTimes(1);
+  });
+
+  // FIX 5 regression: a genuine image whose HEADER declares dimensions past
+  // MAX_INPUT_PIXELS (an ordinary phone photo from a 50MP sensor, or an
+  // adversarial decompression-bomb-style header either way) must be told
+  // it's a RESOLUTION problem (IMAGE_TOO_LARGE), not falsely told its
+  // FORMAT isn't supported (IMAGE_INVALID) -- and must never reach Vision.
+  test('rejects an image whose declared dimensions exceed the pixel cap with IMAGE_TOO_LARGE, not IMAGE_INVALID', async () => {
+    const side = Math.ceil(Math.sqrt(MAX_INPUT_PIXELS)) + 1000;
+    const huge = makePngWithClaimedDimensions(side, side);
+    const recognize = jest.fn(async () => ({ words: [], fullText: '' }));
+
+    const res = await request(appWith({ recognize })).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(huge) });
+
+    expect(res.status).toBe(413);
+    expect(res.body.code).toBe('IMAGE_TOO_LARGE');
+    expect(res.body.success).toBe(false);
+    // The message must be honest about resolution, not claim an unsupported
+    // format -- this is a valid PNG, just over the resolution cap.
+    expect(res.body.message.toLowerCase()).not.toContain('supported image');
+    expect(recognize).not.toHaveBeenCalled();
+  });
+});
+
+describe('scanId logging (FIX 12)', () => {
+  // `scanId` is only validated as a non-empty string (no length/character
+  // bound) inside a request body allowed up to 20MB -- unbounded, it's both
+  // a log-injection vector (embedded CR/LF forging fake log lines) and a
+  // way to blow up log storage with one oversized field.
+  test('strips embedded CR/LF from scanId before logging on the success path', async () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const injected = 's1\n[FAKE] admin login succeeded\r\nscan=evil';
+      const res = await request(appWith()).post('/api/ocr/baptismal/scan')
+        .send({ scanId: injected, imageBase64: b64(JPEG) });
+      expect(res.status).toBe(200);
+      const logged = logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(logged).not.toContain('\n[FAKE]');
+      expect(logged).not.toContain('\r');
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  test('truncates an oversized scanId before logging on a failure path', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const huge = 'x'.repeat(5000);
+      const res = await request(appWith({
+        extract: () => { const e = new Error('nope'); e.code = 'LAYOUT_UNRECOGNIZED'; throw e; },
+      })).post('/api/ocr/baptismal/scan').send({ scanId: huge, imageBase64: b64(JPEG) });
+      expect(res.status).toBe(422);
+      const logged = warnSpy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(logged).not.toContain(huge);
+      // Some bounded prefix of the id may still appear -- just not the
+      // unbounded original.
+      expect(logged.length).toBeLessThan(huge.length);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
 
