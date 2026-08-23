@@ -343,7 +343,7 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                   label: const Text('Import CSV'),
                 ),
                 FilledButton.icon(
-                  onPressed: () => context.push('/admin/ocr/upload'),
+                  onPressed: () => context.push('/admin/records/ocr-baptism'),
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.cyan.shade700,
                     foregroundColor: Colors.white,
