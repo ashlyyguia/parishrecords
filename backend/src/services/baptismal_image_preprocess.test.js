@@ -159,4 +159,15 @@ describe('preprocessForOcr', () => {
     expect(out).toBe(huge); // identity fallback, not a decoded/re-encoded buffer
     expect(elapsedMs).toBeLessThan(5000); // fails fast at the header check, not after a full decode
   });
+
+  test('honors a maxEdge option', async () => {
+    const sharp = require('sharp');
+    const src = await sharp({
+      create: { width: 3000, height: 2000, channels: 3, background: { r: 128, g: 128, b: 128 } },
+    }).jpeg().toBuffer();
+
+    const out = await preprocessForOcr(src, { maxEdge: 1000, quality: 70 });
+    const meta = await sharp(out).metadata();
+    expect(Math.max(meta.width, meta.height)).toBeLessThanOrEqual(1000);
+  });
 });

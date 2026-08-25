@@ -80,7 +80,7 @@ function sniffImageType(buffer) {
  * handwriting. Returns the ORIGINAL buffer unchanged if sharp is unavailable
  * or fails — degraded accuracy beats a broken feature.
  */
-async function preprocessForOcr(buffer) {
+async function preprocessForOcr(buffer, { maxEdge = MAX_EDGE, quality = 92 } = {}) {
   let sharp;
   try {
     sharp = require('sharp');
@@ -94,11 +94,11 @@ async function preprocessForOcr(buffer) {
   try {
     return await sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS })
       .rotate() // honour EXIF orientation
-      .resize({ width: MAX_EDGE, height: MAX_EDGE, fit: 'inside', withoutEnlargement: true })
+      .resize({ width: maxEdge, height: maxEdge, fit: 'inside', withoutEnlargement: true })
       .grayscale()
       .normalize()
       .sharpen()
-      .jpeg({ quality: 92 })
+      .jpeg({ quality })
       .toBuffer();
   } catch (e) {
     logPreprocessFailure('pipeline', e);

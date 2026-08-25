@@ -13,6 +13,12 @@ const {
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const ACCEPTED = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+// OCR.space (registered free tier) caps uploads near 1 MB. A grayscale JPEG
+// at these bounds stays well under that while preserving enough detail for
+// Engine 1 to read register handwriting. Tuned against attachments/IMG_3120.
+const OCRSPACE_MAX_EDGE = 2500;
+const OCRSPACE_JPEG_QUALITY = 80;
+
 const STATUS_BY_CODE = {
   IMAGE_INVALID: 400,
   IMAGE_TOO_LARGE: 413,
@@ -193,7 +199,10 @@ function createBaptismalOcrRouter(deps = {}) {
       }
 
       try {
-        const prepared = await preprocess(buffer);
+        const prepared = await preprocess(buffer, {
+          maxEdge: OCRSPACE_MAX_EDGE,
+          quality: OCRSPACE_JPEG_QUALITY,
+        });
         const { words } = await recognize(prepared);
         const result = extract(words);
 
