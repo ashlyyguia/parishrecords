@@ -48,6 +48,18 @@ describe('callOcrSpace', () => {
     expect(captured.opts.body).toContain('isOverlayRequired=true');
   });
 
+  test('honors an explicit engine and defaults to 2', async () => {
+    const bodies = [];
+    const fakeFetch = async (url, opts) => {
+      bodies.push(opts.body);
+      return { ok: true, json: async () => ({ ParsedResults: [{ ParsedText: 'ok' }] }) };
+    };
+    await callOcrSpace('X', { apiKey: 'K', fetchImpl: fakeFetch, engine: '1' });
+    await callOcrSpace('X', { apiKey: 'K', fetchImpl: fakeFetch });
+    expect(bodies[0]).toContain('OCREngine=1');
+    expect(bodies[1]).toContain('OCREngine=2');
+  });
+
   test('throws on processing error', async () => {
     const fakeFetch = async () => ({ ok: true, json: async () => ({ IsErroredOnProcessing: true, ErrorMessage: ['bad'] }) });
     await expect(callOcrSpace('X', { apiKey: 'K', fetchImpl: fakeFetch })).rejects.toThrow('bad');

@@ -21,12 +21,12 @@ function overlayToCells(ocrSpaceJson) {
   return { text, cells };
 }
 
-async function callOcrSpace(imageBase64, { apiKey, fetchImpl = fetch } = {}) {
+async function callOcrSpace(imageBase64, { apiKey, fetchImpl = fetch, engine = '2' } = {}) {
   if (!apiKey) throw new Error('OCRSPACE_API_KEY is not configured');
   const params = new URLSearchParams();
   params.append('apikey', apiKey);
   params.append('base64Image', `data:image/jpeg;base64,${imageBase64}`);
-  params.append('OCREngine', '2');
+  params.append('OCREngine', String(engine));
   params.append('isOverlayRequired', 'true');
   params.append('scale', 'true');
   params.append('detectOrientation', 'true');
