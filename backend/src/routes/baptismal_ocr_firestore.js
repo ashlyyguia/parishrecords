@@ -16,9 +16,9 @@ const ACCEPTED = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const STATUS_BY_CODE = {
   IMAGE_INVALID: 400,
   IMAGE_TOO_LARGE: 413,
-  VISION_AUTH: 500,
-  VISION_QUOTA: 429,
-  VISION_UNAVAILABLE: 502,
+  OCR_AUTH: 500,
+  OCR_QUOTA: 429,
+  OCR_UNAVAILABLE: 502,
   NO_TEXT_FOUND: 422,
   LAYOUT_UNRECOGNIZED: 422,
   INTERNAL_ERROR: 500,
@@ -31,9 +31,9 @@ const MESSAGE_BY_CODE = {
   // tripped by a photo that is nowhere near 10MB, so the message must not
   // claim it's specifically about file size.
   IMAGE_TOO_LARGE: 'That image is too large to process (either the file size or its resolution is over the limit). Please use a smaller or lower-resolution photo.',
-  VISION_AUTH: 'OCR is not configured on the server. Contact an administrator.',
-  VISION_QUOTA: 'The OCR service is rate-limited right now. Try again shortly.',
-  VISION_UNAVAILABLE: 'Could not reach the OCR service. Check your connection and retry.',
+  OCR_AUTH: 'OCR is not configured on the server. Contact an administrator.',
+  OCR_QUOTA: 'The OCR service is rate-limited right now. Try again shortly.',
+  OCR_UNAVAILABLE: 'Could not reach the OCR service. Check your connection and retry.',
   NO_TEXT_FOUND: 'No readable text was found. Retake the photo with better lighting and framing.',
   LAYOUT_UNRECOGNIZED: 'This page does not look like a baptismal register. Check the photo and retry.',
   INTERNAL_ERROR: 'Something went wrong while processing this scan. Try again, and contact an administrator if it persists.',
@@ -218,15 +218,18 @@ function createBaptismalOcrRouter(deps = {}) {
             scanId,
             rows: result.rows,
             rotation: result.rotation,
-            warnings: result.warnings,
+            // OCR.space returns no per-word confidence, so the per-field
+            // low-confidence flag can't fire. Signal the review UI to show a
+            // scan-level "verify every field" banner instead.
+            warnings: [...result.warnings, 'CONFIDENCE_UNAVAILABLE'],
           },
         });
       } catch (e) {
-        // An error with a recognized .code (VISION_*, NO_TEXT_FOUND,
+        // An error with a recognized .code (OCR_*, NO_TEXT_FOUND,
         // LAYOUT_UNRECOGNIZED, ...) is mapped to its specific status. An
         // uncoded error is an internal bug (e.g. in extractBaptismalRows),
-        // not a Vision-availability problem -- defaulting it to
-        // VISION_UNAVAILABLE would misdirect debugging, so it maps to
+        // not an OCR-availability problem -- defaulting it to
+        // OCR_UNAVAILABLE would misdirect debugging, so it maps to
         // INTERNAL_ERROR/500 instead. Never include e.message in the
         // response body (no-leak property).
         const code = e && STATUS_BY_CODE[e.code] ? e.code : 'INTERNAL_ERROR';

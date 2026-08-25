@@ -84,7 +84,7 @@ describe('POST /api/ocr/baptismal/scan', () => {
     // Full response-shape contract for the Flutter client -- not just the
     // three fields above.
     const { data } = res.body;
-    expect(data.warnings).toEqual(['GUTTER_UNCONFIRMED']);
+    expect(data.warnings).toEqual(['GUTTER_UNCONFIRMED', 'CONFIDENCE_UNAVAILABLE']);
     // FIX 12: `columns`/`gutterX` are deliberately NOT serialized -- nothing
     // reads them (`BaptismalOcrScan.fromJson` ignores both) and they sit in
     // a content-relative coordinate frame that isn't usable for an image
@@ -137,9 +137,9 @@ describe('POST /api/ocr/baptismal/scan', () => {
   const failure = (code) => async () => { const e = new Error(code); e.code = code; throw e; };
 
   test.each([
-    ['VISION_AUTH', 500],
-    ['VISION_QUOTA', 429],
-    ['VISION_UNAVAILABLE', 502],
+    ['OCR_AUTH', 500],
+    ['OCR_QUOTA', 429],
+    ['OCR_UNAVAILABLE', 502],
     ['NO_TEXT_FOUND', 422],
   ])('maps %s to HTTP %i', async (code, status) => {
     const res = await request(appWith({ recognize: failure(code) }))
@@ -158,7 +158,7 @@ describe('POST /api/ocr/baptismal/scan', () => {
   });
 
   test('never echoes cell values in an error body', async () => {
-    const res = await request(appWith({ recognize: failure('VISION_QUOTA') }))
+    const res = await request(appWith({ recognize: failure('OCR_QUOTA') }))
       .post('/api/ocr/baptismal/scan').send({ scanId: 's1', imageBase64: b64(JPEG) });
     expect(JSON.stringify(res.body)).not.toContain('imageBase64');
   });
