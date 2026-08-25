@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -179,44 +178,6 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     });
   }
 
-  /// Archives the raw image to Firebase Storage when no test double was
-  /// injected.
-  ///
-  /// Stores `ref.fullPath` (the bare Storage path, e.g.
-  /// `baptism_scans/<id>.jpg`) -- deliberately NOT `ref.getDownloadURL()`.
-  /// A Firebase Storage download URL carries a long-lived bearer token
-  /// (`...?alt=media&token=...`) baked into the URL itself, which lets
-  /// ANYONE who has that string open the file, completely bypassing
-  /// `storage.rules` (including the admin/staff-only read restriction on
-  /// `baptism_scans/**`). `firestore.rules` grants
-  /// `allow get, list: if isSignedIn()` on `baptism_records` -- i.e. every
-  /// signed-in parishioner, not just staff/admin -- so a download URL stored
-  /// on that document would let any parishioner who can read one baptism
-  /// record open the FULL-RESOLUTION photo of the entire register spread it
-  /// came from: roughly ten other families' names, dates, sponsors, and
-  /// residences, most of them minors. Storing the bare path instead means a
-  /// reader needs a fresh `getDownloadURL()` call of their own, which Storage
-  /// rules gate on being signed in AND admin/staff -- exactly the intended
-  /// access boundary.
-  ///
-  /// Trade-off: `record_detail_screen.dart`'s `Image.file`/`record_form_
-  /// screen.dart`'s `Image.network` calls expect a directly renderable
-  /// path/URL, so displaying this archived scan later requires resolving a
-  /// fresh, properly-scoped download URL from `ref.fullPath` at render time
-  /// (for an authorized admin/staff viewer) rather than rendering
-  /// `imagePath` directly -- tracked as a follow-up; out of scope here.
-  Future<String?> _defaultUpload(String scanId, Uint8List bytes) async {
-    try {
-      final ref = FirebaseStorage.instance.ref().child(
-        'baptism_scans/$scanId.jpg',
-      );
-      await ref.putData(bytes);
-      return ref.fullPath;
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _runOcr() async {
     final bytes = _bytes;
     if (bytes == null) return;
@@ -225,20 +186,17 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
       _failure = null;
     });
 
-    // Archive the ORIGINAL bytes first, so a failed scan never loses the
-    // upload and a retry costs no re-upload. A failed upload must never
-    // block OCR from proceeding -- the scan is still useful even if the
-    // archive copy didn't make it to Storage. It must also never be SILENT:
-    // previously a failed upload just left `_imagePath` null with no signal
-    // anywhere in the UI, so a reviewer could save a record believing the
-    // original page image was archived when it never was. `_archiveFailed`
-    // drives a non-blocking notice in the review step instead.
-    if (_imagePath == null && !_archiveFailed) {
+    // The original page image is intentionally NOT archived to Firebase
+    // Storage in production: this deployment doesn't use Storage (its bucket
+    // has no web CORS policy, so a putData from a browser fails preflight and
+    // spammed the console with a CORS error on every scan). Records save
+    // without an archived original. Widget tests still inject [imageUploader]
+    // to exercise the imagePath path; when it fails there, `_archiveFailed`
+    // drives a non-blocking notice in the review step.
+    final uploader = widget.imageUploader;
+    if (_imagePath == null && !_archiveFailed && uploader != null) {
       try {
-        final uploaded = await (widget.imageUploader ?? _defaultUpload)(
-          _scanId,
-          bytes,
-        );
+        final uploaded = await uploader(_scanId, bytes);
         _imagePath = uploaded;
         _archiveFailed = uploaded == null;
       } catch (_) {

@@ -215,6 +215,32 @@ void main() {
     expect(find.text('Review these before saving'), findsOneWidget);
   });
 
+  testWidgets('does not attempt Storage archival when no uploader is configured', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: BaptismalOcrScanPage(
+            ocrService: serviceReturning(200, _scanBody()),
+            imagePicker: (_) async => _png,
+            imageUploader: null, // production: no Firebase Storage archival
+            idTokenProvider: () async => 'test-token',
+            saveRecords: (_) async => 1,
+            existingRecords: () => const [],
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('pick-image')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Scan / Process OCR'));
+    await tester.pumpAndSettle();
+
+    // OCR still reached the review step, and there is no "archive failed"
+    // notice because no archival was attempted (Storage is never touched).
+    expect(find.text('TESTA SAMPLE'), findsOneWidget);
+    expect(find.byKey(const ValueKey('archive-failed-notice')), findsNothing);
+  });
+
   testWidgets('blocks save while a required field is empty', (tester) async {
     await tester.pumpWidget(
       harness(service: serviceReturning(200, _scanBody(name: ''))),
