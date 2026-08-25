@@ -7,8 +7,17 @@
  * word overlay into the { text, vertices:[TL,TR,BR,BL], confidence } shape the
  * layout pipeline consumes.
  *
- * Engine 1 is required: it is the OCR.space engine that returns word bounding
- * boxes. Engines 2/3 return text only, which the geometry pipeline can't use.
+ * Engine selection (measured on real register pages, see
+ * scripts/probe_ocrspace.js):
+ *  - Engine 2 (default): returns word bounding boxes (TextOverlay) AND reads
+ *    Latin-script handwriting more accurately than Engine 1 — the best fit for
+ *    these registers.
+ *  - Engine 1: also returns boxes; kept as a fallback via OCRSPACE_ENGINE.
+ *  - Engine 3: unusable here — it times out (HTTP 504) or returns almost no
+ *    text (≈39 words vs ≈559 on the same page), so the geometry pipeline gets
+ *    nothing to work with.
+ * The geometry pipeline REQUIRES word boxes, so only an overlay-returning
+ * engine (1 or 2) is viable.
  */
 
 const { callOcrSpace, overlayToCells } = require('./ocrspace_service');
@@ -42,13 +51,17 @@ function mapOcrSpaceError(err) {
 async function recognizeWords(imageBuffer, options = {}) {
   const env = options.env || process.env;
   const apiKey = options.apiKey || env.OCRSPACE_API_KEY;
+  // Engine 2 by default: it returns the word boxes the layout pipeline needs
+  // and reads this handwriting better than Engine 1 (Engine 3 is unusable —
+  // see the module doc comment). Overridable via OCRSPACE_ENGINE.
+  const engine = options.engine || env.OCRSPACE_ENGINE || '2';
 
   let json;
   try {
     json = await callOcrSpace(imageBuffer.toString('base64'), {
       apiKey,
       fetchImpl: options.fetchImpl,
-      engine: '1',
+      engine,
     });
   } catch (e) {
     throw mapOcrSpaceError(e);

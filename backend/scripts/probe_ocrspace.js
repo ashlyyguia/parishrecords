@@ -14,11 +14,13 @@ const { extractBaptismalRows } = require('../src/services/baptismal_register_lay
 
 (async () => {
   const file = process.argv[2] || 'attachments/IMG_3120.jpeg';
+  const engine = process.argv[3] || '1';
   const raw = fs.readFileSync(file);
   const prepared = await preprocessForOcr(raw, { maxEdge: 2500, quality: 80 });
+  console.log(`engine: ${engine}`);
   console.log(`prepared bytes: ${prepared.length} (base64 ~${Math.round(prepared.length * 1.34 / 1024)}KB)`);
 
-  const { words } = await recognizeWords(prepared);
+  const { words } = await recognizeWords(prepared, { engine });
   console.log(`words with boxes: ${words.length}`); // Risk 1: must be > 0
 
   const result = extractBaptismalRows(words);
