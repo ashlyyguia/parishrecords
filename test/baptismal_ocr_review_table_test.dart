@@ -41,11 +41,11 @@ void main() {
     // with no suffix, which is no longer true for a required field.
     expect(find.textContaining('Name of Child'), findsOneWidget);
     expect(find.textContaining('Date of Baptism'), findsOneWidget);
-    expect(find.text('Observations'), findsOneWidget);
+    expect(find.text('Sponsors'), findsOneWidget);
     expect(find.text('TESTA'), findsOneWidget);
   });
 
-  testWidgets('renders a wide column table (No. -> Observations) on large screens', (tester) async {
+  testWidgets('renders a wide column table (No. -> Sponsors) on large screens', (tester) async {
     tester.view.physicalSize = const Size(1600, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -59,12 +59,12 @@ void main() {
       onLineNoChanged: (_, _) {},
     )));
 
-    // Column headers span No. -> Observations; it's a table, not cards; and
+    // Column headers span No. -> Sponsors; it's a table, not cards; and
     // the editable cell / select / line-no controls keep their keys so the
     // page's interactions still work in this layout.
     expect(find.text('No.'), findsOneWidget);
     expect(find.textContaining('Name of Child'), findsWidgets);
-    expect(find.text('Observations'), findsOneWidget);
+    expect(find.text('Sponsors'), findsOneWidget);
     expect(find.byType(Card), findsNothing);
     expect(find.byKey(const ValueKey('cell-0-nameOfChild')), findsOneWidget);
     expect(find.byKey(const ValueKey('row-select-0')), findsOneWidget);
@@ -185,7 +185,7 @@ void main() {
     final semantics = tester.getSemantics(find.text('Name of Child *'));
     expect(semantics.label, contains('required'));
     // Optional fields get no marker and no "required" semantics.
-    expect(find.text('Observations'), findsOneWidget);
+    expect(find.text('Sponsors'), findsOneWidget);
   });
 
   testWidgets('renders nothing for an empty rows list', (tester) async {

@@ -1,15 +1,20 @@
-/// Ordered field keys for a baptismal register row, matching the column
-/// order of the physical book (left page, then right page).
+/// Ordered field keys captured for a baptismal register row, matching the
+/// register columns the parish tracks: No. (lineNo, handled separately) then
+/// these left-to-right.
+///
+/// The physical book also has an "L or ILL" (legitimacy) column and an
+/// "Observations" column; they are intentionally NOT captured here — the
+/// backend still parses them, but they are not shown in the OCR review or
+/// saved. `toBaptismalOcrNotesMap` still writes them (as empty) so the notes
+/// schema stays backward-compatible.
 const List<String> baptismalFieldKeys = [
   'nameOfChild',
   'placeAndBirthDate',
-  'legitimacy',
   'parents',
   'residentsOf',
   'dateOfBaptism',
   'minister',
   'sponsors',
-  'observations',
 ];
 
 const Map<String, String> baptismalFieldLabels = {
