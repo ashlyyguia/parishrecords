@@ -8,13 +8,18 @@ import '../services/baptismal_row_validation.dart';
 /// Responsive by width:
 ///  * **Wide screens (>= [_wideBreakpoint]px)** — a columnar table whose
 ///    columns mirror the physical register left-to-right (No. → Observations),
-///    one register line per table row. This is the desktop/tablet review view.
+///    one register line per table row, with a pinned header, a visible
+///    horizontal scrollbar (so the last column is always reachable), and its
+///    own vertical scroll for the rows.
 ///  * **Narrow screens** — one card per register line, fields stacked
 ///    vertically, so it stays usable on a phone without horizontal scrolling
 ///    through ten columns.
 ///
-/// Both layouts share the same widget keys, flag colours, validation, and
-/// callbacks, so the hosting page (and its tests) work identically in either.
+/// Both layouts manage their own scrolling, so the widget expects a **bounded
+/// height** from its parent (e.g. an `Expanded`), not to be dropped inside a
+/// `SingleChildScrollView`. Both share the same widget keys, flag colours,
+/// validation, and callbacks, so the hosting page (and its tests) work
+/// identically in either.
 ///
 /// OCR on handwriting is never trusted outright — every cell here is
 /// editable, and three colours flag three different reasons a human should
@@ -26,7 +31,7 @@ import '../services/baptismal_row_validation.dart';
 ///  * amber — OCR read it, but with low confidence.
 /// Editing a field marks it [OcrField.edited], which turns the flag off —
 /// once a human has looked at a value it should stop nagging.
-class BaptismalOcrReviewTable extends StatelessWidget {
+class BaptismalOcrReviewTable extends StatefulWidget {
   const BaptismalOcrReviewTable({
     super.key,
     required this.rows,
@@ -53,6 +58,12 @@ class BaptismalOcrReviewTable extends StatelessWidget {
   final int? highlightedRow;
   final void Function(int rowIndex)? onRowTap;
 
+  @override
+  State<BaptismalOcrReviewTable> createState() =>
+      _BaptismalOcrReviewTableState();
+}
+
+class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
   /// Below this width the ten-column table can't fit, so the card layout is
   /// used instead. Above 800 (the default widget-test surface) so tests keep
   /// exercising the card layout unless they explicitly widen the view.
@@ -75,6 +86,25 @@ class BaptismalOcrReviewTable extends StatelessWidget {
   static const double _selectWidth = 44;
   static const double _lineNoWidth = 60;
 
+  // Separate controllers so each scrollbar attaches to exactly one view.
+  final _horizontal = ScrollController();
+  final _vertical = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontal.dispose();
+    _vertical.dispose();
+    super.dispose();
+  }
+
+  double get _totalWidth {
+    var w = _selectWidth + _lineNoWidth;
+    for (final key in baptismalFieldKeys) {
+      w += _columnWidths[key] ?? 140;
+    }
+    return w;
+  }
+
   /// Finds the issue to show for one cell.
   ///
   /// A field can theoretically collect more than one issue (e.g. a blocking
@@ -83,7 +113,7 @@ class BaptismalOcrReviewTable extends StatelessWidget {
   /// never shows a soft warning when saving is actually impossible.
   RowIssue? _issueFor(int rowIndex, String field) {
     RowIssue? found;
-    for (final issue in issues) {
+    for (final issue in widget.issues) {
       if (issue.rowIndex != rowIndex || issue.field != field) continue;
       if (issue.blocking) return issue;
       found ??= issue;
@@ -112,33 +142,49 @@ class BaptismalOcrReviewTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty) return const SizedBox.shrink();
+    if (widget.rows.isEmpty) return const SizedBox.shrink();
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth >= _wideBreakpoint) return _wideTable(context);
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var i = 0; i < rows.length; i++) _rowCard(context, i, rows[i]),
-          ],
-        );
+        return _cardsList(context);
       },
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Wide (desktop/tablet) layout: a columnar table, No. -> Observations.
+  // Wide (desktop/tablet) layout: a columnar table, No. -> Observations, with a
+  // pinned header and always-visible horizontal scrollbar.
   // ---------------------------------------------------------------------------
 
   Widget _wideTable(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _headerRow(context),
-          for (var i = 0; i < rows.length; i++) _tableRow(context, i, rows[i]),
-        ],
+    return Scrollbar(
+      controller: _horizontal,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: _horizontal,
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: _totalWidth,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _headerRow(context),
+              Expanded(
+                child: Scrollbar(
+                  controller: _vertical,
+                  thumbVisibility: true,
+                  child: ListView.builder(
+                    controller: _vertical,
+                    padding: EdgeInsets.zero,
+                    itemCount: widget.rows.length,
+                    itemBuilder: (context, i) =>
+                        _tableRow(context, i, widget.rows[i]),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -155,7 +201,7 @@ class BaptismalOcrReviewTable extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(width: _selectWidth),
+          const SizedBox(width: _selectWidth),
           _headerCell('No.', _lineNoWidth, style, required: false),
           for (final key in baptismalFieldKeys)
             _headerCell(
@@ -197,7 +243,7 @@ class BaptismalOcrReviewTable extends StatelessWidget {
 
   Widget _tableRow(BuildContext context, int index, BaptismalRegisterRow row) {
     final scheme = Theme.of(context).colorScheme;
-    final highlighted = highlightedRow == index;
+    final highlighted = widget.highlightedRow == index;
     return Container(
       key: ValueKey('row-$index'),
       decoration: BoxDecoration(
@@ -217,7 +263,7 @@ class BaptismalOcrReviewTable extends StatelessWidget {
             child: Checkbox(
               key: ValueKey('row-select-$index'),
               value: row.selected,
-              onChanged: (v) => onSelectedChanged(index, v ?? false),
+              onChanged: (v) => widget.onSelectedChanged(index, v ?? false),
             ),
           ),
           SizedBox(
@@ -227,10 +273,10 @@ class BaptismalOcrReviewTable extends StatelessWidget {
               child: TextFormField(
                 key: ValueKey('line-no-$index'),
                 initialValue: row.lineNo,
-                enabled: onLineNoChanged != null,
-                onChanged: onLineNoChanged == null
+                enabled: widget.onLineNoChanged != null,
+                onChanged: widget.onLineNoChanged == null
                     ? null
-                    : (v) => onLineNoChanged!(index, v),
+                    : (v) => widget.onLineNoChanged!(index, v),
                 style: Theme.of(context).textTheme.bodySmall,
                 decoration: const InputDecoration(
                   isDense: true,
@@ -262,7 +308,7 @@ class BaptismalOcrReviewTable extends StatelessWidget {
     Widget cell = TextFormField(
       key: ValueKey('cell-$rowIndex-$key'),
       initialValue: field.value,
-      onChanged: (v) => onChanged(rowIndex, key, v),
+      onChanged: (v) => widget.onChanged(rowIndex, key, v),
       minLines: 1,
       maxLines: 3,
       style: Theme.of(context).textTheme.bodySmall,
@@ -296,12 +342,21 @@ class BaptismalOcrReviewTable extends StatelessWidget {
   }
 
   // ---------------------------------------------------------------------------
-  // Narrow (phone) layout: one card per register line.
+  // Narrow (phone) layout: one card per register line, in its own scroll view.
   // ---------------------------------------------------------------------------
+
+  Widget _cardsList(BuildContext context) {
+    return ListView.builder(
+      controller: _vertical,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemCount: widget.rows.length,
+      itemBuilder: (context, i) => _rowCard(context, i, widget.rows[i]),
+    );
+  }
 
   Widget _rowCard(BuildContext context, int index, BaptismalRegisterRow row) {
     final scheme = Theme.of(context).colorScheme;
-    final highlighted = highlightedRow == index;
+    final highlighted = widget.highlightedRow == index;
 
     return Card(
       key: ValueKey('row-$index'),
@@ -316,7 +371,7 @@ class BaptismalOcrReviewTable extends StatelessWidget {
         ),
       ),
       child: InkWell(
-        onTap: onRowTap == null ? null : () => onRowTap!(index),
+        onTap: widget.onRowTap == null ? null : () => widget.onRowTap!(index),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -328,7 +383,8 @@ class BaptismalOcrReviewTable extends StatelessWidget {
                   Checkbox(
                     key: ValueKey('row-select-$index'),
                     value: row.selected,
-                    onChanged: (v) => onSelectedChanged(index, v ?? false),
+                    onChanged: (v) =>
+                        widget.onSelectedChanged(index, v ?? false),
                   ),
                   Text('Line', style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(width: 8),
@@ -337,10 +393,10 @@ class BaptismalOcrReviewTable extends StatelessWidget {
                     child: TextFormField(
                       key: ValueKey('line-no-$index'),
                       initialValue: row.lineNo,
-                      enabled: onLineNoChanged != null,
-                      onChanged: onLineNoChanged == null
+                      enabled: widget.onLineNoChanged != null,
+                      onChanged: widget.onLineNoChanged == null
                           ? null
-                          : (v) => onLineNoChanged!(index, v),
+                          : (v) => widget.onLineNoChanged!(index, v),
                       style: Theme.of(context).textTheme.titleSmall,
                       decoration: const InputDecoration(
                         isDense: true,
@@ -355,7 +411,8 @@ class BaptismalOcrReviewTable extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              for (final key in baptismalFieldKeys) _cell(context, index, row, key),
+              for (final key in baptismalFieldKeys)
+                _cell(context, index, row, key),
             ],
           ),
         ),
@@ -380,7 +437,7 @@ class BaptismalOcrReviewTable extends StatelessWidget {
       child: TextFormField(
         key: ValueKey('cell-$rowIndex-$key'),
         initialValue: field.value,
-        onChanged: (v) => onChanged(rowIndex, key, v),
+        onChanged: (v) => widget.onChanged(rowIndex, key, v),
         minLines: 1,
         maxLines: 3,
         decoration: InputDecoration(

@@ -196,8 +196,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('confidence-banner')), findsOneWidget);
-    // It must NOT be rendered inside the red "Review these before saving" panel.
-    expect(find.text('Review these before saving'), findsNothing);
+    // It must NOT be rendered inside the red layout-warnings panel.
+    expect(find.byKey(const ValueKey('warnings-panel')), findsNothing);
   });
 
   testWidgets('keeps CONFIDENCE_UNAVAILABLE out of the red warnings panel but still shows layout warnings', (tester) async {
@@ -212,7 +212,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('confidence-banner')), findsOneWidget);
-    expect(find.text('Review these before saving'), findsOneWidget);
+    // The collapsible layout-warnings panel is present (one layout warning).
+    expect(find.byKey(const ValueKey('warnings-panel')), findsOneWidget);
+    expect(find.textContaining('to review before saving'), findsOneWidget);
   });
 
   testWidgets('does not attempt Storage archival when no uploader is configured', (tester) async {

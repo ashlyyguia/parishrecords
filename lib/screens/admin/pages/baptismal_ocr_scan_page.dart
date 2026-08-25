@@ -460,44 +460,53 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     );
   }
 
+  /// Layout warnings, as a compact collapsible banner. Collapsed by default so
+  /// four wordy warnings don't swallow the whole review screen; the reviewer
+  /// taps to read the details. The count in the title is the at-a-glance
+  /// signal.
   Widget _warningsPanel(BuildContext context, List<String> codes) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: scheme.errorContainer.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: scheme.error),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: scheme.error),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Review these before saving',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: scheme.onErrorContainer,
-                    fontWeight: FontWeight.bold,
+      clipBehavior: Clip.antiAlias,
+      child: Theme(
+        // Drop the ExpansionTile's default top/bottom dividers so it reads as
+        // one banner rather than a bordered list section.
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          key: const ValueKey('warnings-panel'),
+          dense: true,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          iconColor: scheme.onErrorContainer,
+          collapsedIconColor: scheme.onErrorContainer,
+          leading: Icon(Icons.warning_amber_rounded, color: scheme.error),
+          title: Text(
+            '${codes.length} ${codes.length == 1 ? 'issue' : 'issues'} to review before saving',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: scheme.onErrorContainer,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          children: [
+            for (final code in codes)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '• ${baptismalOcrWarningCopy[code] ?? code}',
+                    style: TextStyle(color: scheme.onErrorContainer),
                   ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          for (final code in codes)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                '• ${baptismalOcrWarningCopy[code] ?? code}',
-                style: TextStyle(color: scheme.onErrorContainer),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -595,30 +604,33 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
-            child: _rows.isEmpty
-                ? const Padding(
+          // The review table manages its own scrolling (a pinned header plus
+          // horizontal + vertical scrollbars in the wide layout), so it gets a
+          // bounded Expanded rather than being nested in a SingleChildScrollView.
+          child: _rows.isEmpty
+              ? const Center(
+                  child: Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
                       'No rows were detected in this scan. Try a clearer '
                       'photo or a different page.',
                       textAlign: TextAlign.center,
                     ),
-                  )
-                : BaptismalOcrReviewTable(
-                    rows: _rows,
-                    issues: issues,
-                    highlightedRow: _highlightedRow,
-                    onRowTap: (i) => setState(() => _highlightedRow = i),
-                    onChanged: (i, field, value) {
-                      setState(() => _rows[i].setValue(field, value));
-                    },
-                    onSelectedChanged: (i, v) =>
-                        setState(() => _rows[i].selected = v),
-                    onLineNoChanged: (i, value) =>
-                        setState(() => _rows[i].lineNo = value),
                   ),
-          ),
+                )
+              : BaptismalOcrReviewTable(
+                  rows: _rows,
+                  issues: issues,
+                  highlightedRow: _highlightedRow,
+                  onRowTap: (i) => setState(() => _highlightedRow = i),
+                  onChanged: (i, field, value) {
+                    setState(() => _rows[i].setValue(field, value));
+                  },
+                  onSelectedChanged: (i, v) =>
+                      setState(() => _rows[i].selected = v),
+                  onLineNoChanged: (i, value) =>
+                      setState(() => _rows[i].lineNo = value),
+                ),
         ),
         SafeArea(
           child: Padding(

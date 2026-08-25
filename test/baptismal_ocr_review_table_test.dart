@@ -23,7 +23,9 @@ BaptismalRegisterRow makeRow({
   return BaptismalRegisterRow(lineNo: lineNo, fields: fields);
 }
 
-Widget harness(Widget child) => MaterialApp(home: Scaffold(body: SingleChildScrollView(child: child)));
+// The table now manages its own scrolling, so it needs a bounded height —
+// hand it the Scaffold body directly rather than an unbounded scroll view.
+Widget harness(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 void main() {
   testWidgets('renders a labelled editable field per column', (tester) async {
