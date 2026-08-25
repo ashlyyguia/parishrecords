@@ -53,9 +53,9 @@ class BaptismalOcrFailure implements Exception {
   String toString() => 'BaptismalOcrFailure($code): $message';
 }
 
-/// Sends register photos to the backend Vision proxy.
+/// Sends register photos to the backend OCR.space proxy.
 ///
-/// Vision credentials live on the server; this client only ever sees the
+/// The OCR.space key lives on the server; this client only ever sees the
 /// extracted rows.
 class BaptismalOcrService {
   BaptismalOcrService({
@@ -69,20 +69,20 @@ class BaptismalOcrService {
 
   // Maps every backend/client error code to how the UI should help the user
   // recover. NO_TEXT_FOUND, IMAGE_INVALID, IMAGE_TOO_LARGE, and
-  // LAYOUT_UNRECOGNIZED are about the submitted bytes specifically -- Vision
+  // LAYOUT_UNRECOGNIZED are about the submitted bytes specifically -- OCR
   // is deterministic on identical input, so re-running OCR on the same
   // upload fails identically every time; the user must supply a different
-  // photo. VISION_QUOTA, VISION_UNAVAILABLE, INTERNAL_ERROR, NETWORK, and
+  // photo. OCR_QUOTA, OCR_UNAVAILABLE, INTERNAL_ERROR, NETWORK, and
   // BAD_RESPONSE are transient (server load, connectivity, a flaky
   // response) and a same-image retry may well succeed. UNAUTHENTICATED
-  // means there is no valid session. VISION_AUTH means the server's Vision
-  // credentials are misconfigured -- nothing the user can do about that.
+  // means there is no valid session. OCR_AUTH means the server's OCR.space
+  // key is misconfigured -- nothing the user can do about that.
   // Any code not listed here (an unrecognized/future server code) defaults
   // to `retry`, matching prior behavior of treating unknown codes as
   // possibly-transient.
   static const Map<String, OcrRecovery> _recoveryByCode = {
-    'VISION_QUOTA': OcrRecovery.retry,
-    'VISION_UNAVAILABLE': OcrRecovery.retry,
+    'OCR_QUOTA': OcrRecovery.retry,
+    'OCR_UNAVAILABLE': OcrRecovery.retry,
     'INTERNAL_ERROR': OcrRecovery.retry,
     'NETWORK': OcrRecovery.retry,
     'BAD_RESPONSE': OcrRecovery.retry,
@@ -91,7 +91,7 @@ class BaptismalOcrService {
     'IMAGE_TOO_LARGE': OcrRecovery.differentImage,
     'LAYOUT_UNRECOGNIZED': OcrRecovery.differentImage,
     'UNAUTHENTICATED': OcrRecovery.signIn,
-    'VISION_AUTH': OcrRecovery.contactAdmin,
+    'OCR_AUTH': OcrRecovery.contactAdmin,
     'FORBIDDEN': OcrRecovery.contactAdmin,
   };
 

@@ -51,19 +51,19 @@ void main() {
 
   test('surfaces a typed failure with the server code', () async {
     final svc = serviceReturning(429, {
-      'success': false, 'code': 'VISION_QUOTA', 'message': 'rate limited',
+      'success': false, 'code': 'OCR_QUOTA', 'message': 'rate limited',
     });
     await expectLater(
       svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
       throwsA(isA<BaptismalOcrFailure>()
-          .having((f) => f.code, 'code', 'VISION_QUOTA')
+          .having((f) => f.code, 'code', 'OCR_QUOTA')
           .having((f) => f.retryable, 'retryable', true)),
     );
   });
 
-  test('marks VISION_AUTH as not retryable', () async {
+  test('marks OCR_AUTH as not retryable', () async {
     final svc = serviceReturning(500, {
-      'success': false, 'code': 'VISION_AUTH', 'message': 'not configured',
+      'success': false, 'code': 'OCR_AUTH', 'message': 'not configured',
     });
     await expectLater(
       svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
@@ -102,7 +102,7 @@ void main() {
   });
 
   group('OcrRecovery mapping', () {
-    test('retry category: VISION_QUOTA, VISION_UNAVAILABLE, INTERNAL_ERROR, NETWORK, BAD_RESPONSE', () async {
+    test('retry category: OCR_QUOTA, OCR_UNAVAILABLE, INTERNAL_ERROR, NETWORK, BAD_RESPONSE', () async {
       Future<void> expectRetry(BaptismalOcrService svc, String expectedCode) {
         return expectLater(
           svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
@@ -114,12 +114,12 @@ void main() {
       }
 
       await expectRetry(
-        serviceReturning(429, {'success': false, 'code': 'VISION_QUOTA', 'message': 'm'}),
-        'VISION_QUOTA',
+        serviceReturning(429, {'success': false, 'code': 'OCR_QUOTA', 'message': 'm'}),
+        'OCR_QUOTA',
       );
       await expectRetry(
-        serviceReturning(503, {'success': false, 'code': 'VISION_UNAVAILABLE', 'message': 'm'}),
-        'VISION_UNAVAILABLE',
+        serviceReturning(503, {'success': false, 'code': 'OCR_UNAVAILABLE', 'message': 'm'}),
+        'OCR_UNAVAILABLE',
       );
       await expectRetry(
         serviceReturning(500, {'success': false, 'code': 'INTERNAL_ERROR', 'message': 'm'}),
@@ -164,14 +164,14 @@ void main() {
       );
     });
 
-    test('contactAdmin category: VISION_AUTH', () async {
+    test('contactAdmin category: OCR_AUTH', () async {
       final svc = serviceReturning(500, {
-        'success': false, 'code': 'VISION_AUTH', 'message': 'not configured',
+        'success': false, 'code': 'OCR_AUTH', 'message': 'not configured',
       });
       await expectLater(
         svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
         throwsA(isA<BaptismalOcrFailure>()
-            .having((f) => f.code, 'code', 'VISION_AUTH')
+            .having((f) => f.code, 'code', 'OCR_AUTH')
             .having((f) => f.recovery, 'recovery', OcrRecovery.contactAdmin)
             .having((f) => f.retryable, 'retryable', false)),
       );
