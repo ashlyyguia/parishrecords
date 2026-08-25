@@ -43,6 +43,33 @@ void main() {
     expect(find.text('TESTA'), findsOneWidget);
   });
 
+  testWidgets('renders a wide column table (No. -> Observations) on large screens', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(harness(BaptismalOcrReviewTable(
+      rows: [makeRow()],
+      issues: const [],
+      onChanged: (_, _, _) {},
+      onSelectedChanged: (_, _) {},
+      onLineNoChanged: (_, _) {},
+    )));
+
+    // Column headers span No. -> Observations; it's a table, not cards; and
+    // the editable cell / select / line-no controls keep their keys so the
+    // page's interactions still work in this layout.
+    expect(find.text('No.'), findsOneWidget);
+    expect(find.textContaining('Name of Child'), findsWidgets);
+    expect(find.text('Observations'), findsOneWidget);
+    expect(find.byType(Card), findsNothing);
+    expect(find.byKey(const ValueKey('cell-0-nameOfChild')), findsOneWidget);
+    expect(find.byKey(const ValueKey('row-select-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('line-no-0')), findsOneWidget);
+    expect(find.text('TESTA'), findsOneWidget);
+  });
+
   testWidgets('reports edits through onChanged', (tester) async {
     final edits = <List<Object>>[];
     await tester.pumpWidget(harness(BaptismalOcrReviewTable(

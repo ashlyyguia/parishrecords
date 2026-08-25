@@ -5,8 +5,16 @@ import '../services/baptismal_row_validation.dart';
 
 /// Editable review table for OCR-extracted baptismal register rows.
 ///
-/// One card per register line so it stays usable on a phone; a wide data grid
-/// would force horizontal scrolling through nine columns.
+/// Responsive by width:
+///  * **Wide screens (>= [_wideBreakpoint]px)** — a columnar table whose
+///    columns mirror the physical register left-to-right (No. → Observations),
+///    one register line per table row. This is the desktop/tablet review view.
+///  * **Narrow screens** — one card per register line, fields stacked
+///    vertically, so it stays usable on a phone without horizontal scrolling
+///    through ten columns.
+///
+/// Both layouts share the same widget keys, flag colours, validation, and
+/// callbacks, so the hosting page (and its tests) work identically in either.
 ///
 /// OCR on handwriting is never trusted outright — every cell here is
 /// editable, and three colours flag three different reasons a human should
@@ -45,6 +53,28 @@ class BaptismalOcrReviewTable extends StatelessWidget {
   final int? highlightedRow;
   final void Function(int rowIndex)? onRowTap;
 
+  /// Below this width the ten-column table can't fit, so the card layout is
+  /// used instead. Above 800 (the default widget-test surface) so tests keep
+  /// exercising the card layout unless they explicitly widen the view.
+  static const double _wideBreakpoint = 900;
+
+  /// Pixel width of each register column in the wide table. Sized to fit the
+  /// handwriting these columns actually hold (names/parents/sponsors need
+  /// room; the legitimacy check-mark needs almost none).
+  static const Map<String, double> _columnWidths = {
+    'nameOfChild': 150,
+    'placeAndBirthDate': 172,
+    'legitimacy': 72,
+    'parents': 160,
+    'residentsOf': 140,
+    'dateOfBaptism': 120,
+    'minister': 132,
+    'sponsors': 150,
+    'observations': 150,
+  };
+  static const double _selectWidth = 44;
+  static const double _lineNoWidth = 60;
+
   /// Finds the issue to show for one cell.
   ///
   /// A field can theoretically collect more than one issue (e.g. a blocking
@@ -61,16 +91,213 @@ class BaptismalOcrReviewTable extends StatelessWidget {
     return found;
   }
 
+  /// The fill colour that flags a cell (or null when nothing needs flagging).
+  /// Shared by both layouts so the red/blue/amber meaning is identical.
+  Color? _fillFor(BuildContext context, OcrField field, RowIssue? issue) {
+    final scheme = Theme.of(context).colorScheme;
+    if (issue != null && issue.blocking) {
+      return scheme.errorContainer.withValues(alpha: 0.35);
+    }
+    if (field.inherited) return Colors.blue.withValues(alpha: 0.10);
+    if (field.needsReview) return Colors.amber.withValues(alpha: 0.18);
+    return null;
+  }
+
+  /// The verify-me hint for an inherited or low-confidence field, or null.
+  String? _flagMessage(OcrField field) {
+    if (field.inherited) return 'Carried down from the row above — verify it';
+    if (field.needsReview) return 'Low OCR confidence — verify this value';
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (rows.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var i = 0; i < rows.length; i++) _rowCard(context, i, rows[i]),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= _wideBreakpoint) return _wideTable(context);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < rows.length; i++) _rowCard(context, i, rows[i]),
+          ],
+        );
+      },
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Wide (desktop/tablet) layout: a columnar table, No. -> Observations.
+  // ---------------------------------------------------------------------------
+
+  Widget _wideTable(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _headerRow(context),
+          for (var i = 0; i < rows.length; i++) _tableRow(context, i, rows[i]),
+        ],
+      ),
+    );
+  }
+
+  Widget _headerRow(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final style = Theme.of(context).textTheme.labelMedium?.copyWith(
+      fontWeight: FontWeight.bold,
+      color: scheme.primary,
+    );
+    return Container(
+      color: scheme.primary.withValues(alpha: 0.08),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(width: _selectWidth),
+          _headerCell('No.', _lineNoWidth, style, required: false),
+          for (final key in baptismalFieldKeys)
+            _headerCell(
+              baptismalFieldLabels[key] ?? key,
+              _columnWidths[key] ?? 140,
+              style,
+              required: baptismalRequiredFields.contains(key),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _headerCell(
+    String label,
+    double width,
+    TextStyle? style, {
+    required bool required,
+  }) {
+    // A required column's header carries the visible " *" (matching the
+    // register's own convention) but the glyph alone isn't the accessible
+    // signal: excludeSemantics swaps the raw "<label> *" node for an explicit
+    // "<label>, required" announcement, exactly as the cell labels do.
+    final child = required
+        ? Semantics(
+            label: '$label, required',
+            excludeSemantics: true,
+            child: Text('$label *', style: style),
+          )
+        : Text(label, style: style);
+    return SizedBox(
+      width: width,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _tableRow(BuildContext context, int index, BaptismalRegisterRow row) {
+    final scheme = Theme.of(context).colorScheme;
+    final highlighted = highlightedRow == index;
+    return Container(
+      key: ValueKey('row-$index'),
+      decoration: BoxDecoration(
+        color: highlighted ? scheme.primary.withValues(alpha: 0.06) : null,
+        border: Border(
+          bottom: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: _selectWidth,
+            child: Checkbox(
+              key: ValueKey('row-select-$index'),
+              value: row.selected,
+              onChanged: (v) => onSelectedChanged(index, v ?? false),
+            ),
+          ),
+          SizedBox(
+            width: _lineNoWidth,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: TextFormField(
+                key: ValueKey('line-no-$index'),
+                initialValue: row.lineNo,
+                enabled: onLineNoChanged != null,
+                onChanged: onLineNoChanged == null
+                    ? null
+                    : (v) => onLineNoChanged!(index, v),
+                style: Theme.of(context).textTheme.bodySmall,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                ),
+              ),
+            ),
+          ),
+          for (final key in baptismalFieldKeys)
+            _tableCell(context, index, row, key),
+        ],
+      ),
+    );
+  }
+
+  Widget _tableCell(
+    BuildContext context,
+    int rowIndex,
+    BaptismalRegisterRow row,
+    String key,
+  ) {
+    final field = row.field(key);
+    final issue = _issueFor(rowIndex, key);
+    final fill = _fillFor(context, field, issue);
+    final flagMessage = _flagMessage(field);
+
+    Widget cell = TextFormField(
+      key: ValueKey('cell-$rowIndex-$key'),
+      initialValue: field.value,
+      onChanged: (v) => onChanged(rowIndex, key, v),
+      minLines: 1,
+      maxLines: 3,
+      style: Theme.of(context).textTheme.bodySmall,
+      decoration: InputDecoration(
+        filled: fill != null,
+        fillColor: fill,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        border: const OutlineInputBorder(),
+        errorMaxLines: 2,
+        helperMaxLines: 2,
+        errorText: issue != null && issue.blocking ? issue.message : null,
+        helperText: issue != null && !issue.blocking ? issue.message : null,
+      ),
+    );
+
+    // Inherited / low-confidence cells carry no RowIssue message, so their
+    // only textual signal in the compact table is a hover/long-press tooltip
+    // (the fill colour is the at-a-glance one).
+    if (issue == null && flagMessage != null) {
+      cell = Tooltip(message: flagMessage, child: cell);
+    }
+
+    return SizedBox(
+      width: _columnWidths[key] ?? 140,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: cell,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Narrow (phone) layout: one card per register line.
+  // ---------------------------------------------------------------------------
 
   Widget _rowCard(BuildContext context, int index, BaptismalRegisterRow row) {
     final scheme = Theme.of(context).colorScheme;
@@ -142,20 +369,11 @@ class BaptismalOcrReviewTable extends StatelessWidget {
     BaptismalRegisterRow row,
     String key,
   ) {
-    final scheme = Theme.of(context).colorScheme;
     final field = row.field(key);
     final issue = _issueFor(rowIndex, key);
     final fieldLabel = baptismalFieldLabels[key] ?? key;
     final isRequired = baptismalRequiredFields.contains(key);
-
-    Color? fill;
-    if (issue != null && issue.blocking) {
-      fill = scheme.errorContainer.withValues(alpha: 0.35);
-    } else if (field.inherited) {
-      fill = Colors.blue.withValues(alpha: 0.10);
-    } else if (field.needsReview) {
-      fill = Colors.amber.withValues(alpha: 0.18);
-    }
+    final fill = _fillFor(context, field, issue);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
