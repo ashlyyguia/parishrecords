@@ -1,176 +1,71 @@
-const { resolveVisionCredentials, recognizeWords } = require('./baptismal_ocr_service');
+const { recognizeWords } = require('./baptismal_ocr_service');
 
-describe('resolveVisionCredentials', () => {
-  test('prefers the dedicated Vision credentials', () => {
-    const env = {
-      GOOGLE_CLOUD_VISION_CREDENTIALS_JSON: '{"project_id":"vision-proj"}',
-      FIREBASE_SERVICE_ACCOUNT_JSON: '{"project_id":"fb-proj"}',
-    };
-    expect(resolveVisionCredentials(env).credentials.project_id).toBe('vision-proj');
-  });
-
-  test('falls back to the Firebase service account', () => {
-    const env = { FIREBASE_SERVICE_ACCOUNT_JSON: '{"project_id":"fb-proj"}' };
-    expect(resolveVisionCredentials(env).credentials.project_id).toBe('fb-proj');
-  });
-
-  test('throws VISION_AUTH when nothing is configured', () => {
-    expect(() => resolveVisionCredentials({})).toThrow(/VISION_AUTH|not configured/);
-    try { resolveVisionCredentials({}); } catch (e) { expect(e.code).toBe('VISION_AUTH'); }
-  });
-
-  test('throws VISION_AUTH on unparseable JSON', () => {
-    try {
-      resolveVisionCredentials({ GOOGLE_CLOUD_VISION_CREDENTIALS_JSON: 'not json' });
-      throw new Error('should have thrown');
-    } catch (e) {
-      expect(e.code).toBe('VISION_AUTH');
-    }
-  });
-});
-
-describe('recognizeWords', () => {
-  const visionResponse = {
-    fullTextAnnotation: {
-      text: 'TESTA SAMPLE',
-      pages: [{
-        blocks: [{
-          paragraphs: [{
-            words: [
-              {
-                confidence: 0.93,
-                boundingBox: { vertices: [{x:120,y:100},{x:180,y:100},{x:180,y:122},{x:120,y:122}] },
-                symbols: 'TESTA'.split('').map((t) => ({ text: t })),
-              },
-              {
-                confidence: 0.71,
-                boundingBox: { vertices: [{x:190,y:100},{x:300,y:100},{x:300,y:122},{x:190,y:122}] },
-                symbols: 'SAMPLE'.split('').map((t) => ({ text: t })),
-              },
+// OCR.space overlay response with two words on one line.
+const okResponse = {
+  ParsedResults: [
+    {
+      ParsedText: 'TESTA SAMPLE',
+      TextOverlay: {
+        Lines: [
+          {
+            Words: [
+              { WordText: 'TESTA', Left: 120, Top: 100, Width: 60, Height: 22 },
+              { WordText: 'SAMPLE', Left: 190, Top: 100, Width: 90, Height: 22 },
             ],
-          }],
-        }],
-      }],
+          },
+        ],
+      },
     },
-  };
+  ],
+};
 
-  const fakeClient = (response) => ({ documentTextDetection: async () => [response] });
+const fetchReturning = (json, ok = true) => async () => ({ ok, status: ok ? 200 : 500, json: async () => json });
 
-  // FIX 12: Philippine registers are full of Spanish/Tagalog/Cebuano proper
-  // nouns; an English-only hint biases Vision away from reading them
-  // correctly.
-  test('requests both English and Filipino language hints from Vision', async () => {
-    const documentTextDetection = jest.fn().mockResolvedValue([visionResponse]);
-    await recognizeWords(Buffer.from('x'), { client: { documentTextDetection } });
-    expect(documentTextDetection).toHaveBeenCalledWith(
-      expect.objectContaining({
-        imageContext: { languageHints: ['en', 'fil'] },
-      }),
-    );
-  });
-
-  test('normalizes words to text + vertices + confidence', async () => {
-    const { words, fullText } = await recognizeWords(Buffer.from('x'), { client: fakeClient(visionResponse) });
+describe('recognizeWords (OCR.space)', () => {
+  test('normalizes overlay words to text + TL,TR,BR,BL vertices + confidence 1', async () => {
+    const { words, fullText } = await recognizeWords(Buffer.from('x'), {
+      apiKey: 'K', env: {}, fetchImpl: fetchReturning(okResponse),
+    });
     expect(fullText).toBe('TESTA SAMPLE');
     expect(words).toHaveLength(2);
     expect(words[0].text).toBe('TESTA');
-    expect(words[0].confidence).toBeCloseTo(0.93);
-    expect(words[0].vertices[0]).toEqual({ x: 120, y: 100 });
-    expect(words[1].text).toBe('SAMPLE');
+    expect(words[0].confidence).toBe(1);
+    // Axis-aligned box (L,T,W,H) -> TL,TR,BR,BL.
+    expect(words[0].vertices).toEqual([
+      { x: 120, y: 100 }, { x: 180, y: 100 }, { x: 180, y: 122 }, { x: 120, y: 122 },
+    ]);
   });
 
-  test('throws NO_TEXT_FOUND on an empty annotation', async () => {
-    try {
-      await recognizeWords(Buffer.from('x'), { client: fakeClient({}) });
-      throw new Error('should have thrown');
-    } catch (e) {
-      expect(e.code).toBe('NO_TEXT_FOUND');
-    }
+  test('throws NO_TEXT_FOUND when the overlay has no words', async () => {
+    const empty = { ParsedResults: [{ ParsedText: '' }] };
+    await expect(
+      recognizeWords(Buffer.from('x'), { apiKey: 'K', env: {}, fetchImpl: fetchReturning(empty) }),
+    ).rejects.toMatchObject({ code: 'NO_TEXT_FOUND' });
   });
 
-  test('maps a quota error to VISION_QUOTA', async () => {
-    const client = { documentTextDetection: async () => { const e = new Error('quota'); e.code = 8; throw e; } };
-    try {
-      await recognizeWords(Buffer.from('x'), { client });
-      throw new Error('should have thrown');
-    } catch (e) {
-      expect(e.code).toBe('VISION_QUOTA');
-    }
+  test('throws OCR_AUTH when no key is configured', async () => {
+    await expect(
+      recognizeWords(Buffer.from('x'), { env: {}, fetchImpl: fetchReturning(okResponse) }),
+    ).rejects.toMatchObject({ code: 'OCR_AUTH' });
   });
 
-  test('maps an auth error to VISION_AUTH', async () => {
-    const client = { documentTextDetection: async () => { const e = new Error('denied'); e.code = 7; throw e; } };
-    try {
-      await recognizeWords(Buffer.from('x'), { client });
-      throw new Error('should have thrown');
-    } catch (e) {
-      expect(e.code).toBe('VISION_AUTH');
-    }
+  test('maps an OCR.space rate-limit message to OCR_QUOTA', async () => {
+    const errJson = { IsErroredOnProcessing: true, ErrorMessage: ['You have exceeded your concurrent connections / rate limit'] };
+    await expect(
+      recognizeWords(Buffer.from('x'), { apiKey: 'K', env: {}, fetchImpl: fetchReturning(errJson) }),
+    ).rejects.toMatchObject({ code: 'OCR_QUOTA' });
   });
 
-  test('maps anything else to VISION_UNAVAILABLE', async () => {
-    const client = { documentTextDetection: async () => { throw new Error('socket hang up'); } };
-    try {
-      await recognizeWords(Buffer.from('x'), { client });
-      throw new Error('should have thrown');
-    } catch (e) {
-      expect(e.code).toBe('VISION_UNAVAILABLE');
-    }
-  });
-});
-
-describe('defaultClient (production Vision client, lazily required)', () => {
-  const env = { GOOGLE_CLOUD_VISION_CREDENTIALS_JSON: '{"project_id":"vision-proj"}' };
-
-  afterEach(() => {
-    jest.dontMock('@google-cloud/vision');
-    jest.resetModules();
+  test('maps a network failure to OCR_UNAVAILABLE', async () => {
+    const fetchImpl = async () => { throw new Error('socket hang up'); };
+    await expect(
+      recognizeWords(Buffer.from('x'), { apiKey: 'K', env: {}, fetchImpl }),
+    ).rejects.toMatchObject({ code: 'OCR_UNAVAILABLE' });
   });
 
-  test('constructs ImageAnnotatorClient with the resolved credentials on first use', async () => {
-    jest.resetModules();
-    const documentTextDetection = jest
-      .fn()
-      .mockResolvedValue([{ fullTextAnnotation: { text: 'X', pages: [] } }]);
-    jest.doMock('@google-cloud/vision', () => ({
-      ImageAnnotatorClient: jest.fn().mockImplementation(() => ({ documentTextDetection })),
-    }));
-
-    const vision = require('@google-cloud/vision');
-    const { recognizeWords: recognizeWordsIsolated } = require('./baptismal_ocr_service');
-
-    // No text annotation with words survives normalization, so this still
-    // rejects (NO_TEXT_FOUND) — irrelevant here; we only assert on how the
-    // client was constructed.
-    await expect(recognizeWordsIsolated(Buffer.from('x'), { env })).rejects.toMatchObject({
-      code: 'NO_TEXT_FOUND',
-    });
-
-    expect(vision.ImageAnnotatorClient).toHaveBeenCalledTimes(1);
-    expect(vision.ImageAnnotatorClient).toHaveBeenCalledWith({
-      credentials: { project_id: 'vision-proj' },
-    });
-  });
-
-  test('reuses the cached client on a second call instead of constructing again', async () => {
-    jest.resetModules();
-    const documentTextDetection = jest
-      .fn()
-      .mockResolvedValue([{ fullTextAnnotation: { text: 'X', pages: [] } }]);
-    jest.doMock('@google-cloud/vision', () => ({
-      ImageAnnotatorClient: jest.fn().mockImplementation(() => ({ documentTextDetection })),
-    }));
-
-    const vision = require('@google-cloud/vision');
-    const { recognizeWords: recognizeWordsIsolated } = require('./baptismal_ocr_service');
-
-    await expect(recognizeWordsIsolated(Buffer.from('x'), { env })).rejects.toMatchObject({
-      code: 'NO_TEXT_FOUND',
-    });
-    await expect(recognizeWordsIsolated(Buffer.from('x'), { env })).rejects.toMatchObject({
-      code: 'NO_TEXT_FOUND',
-    });
-
-    expect(vision.ImageAnnotatorClient).toHaveBeenCalledTimes(1);
+  test('maps an HTTP error to OCR_UNAVAILABLE', async () => {
+    await expect(
+      recognizeWords(Buffer.from('x'), { apiKey: 'K', env: {}, fetchImpl: fetchReturning({}, false) }),
+    ).rejects.toMatchObject({ code: 'OCR_UNAVAILABLE' });
   });
 });
