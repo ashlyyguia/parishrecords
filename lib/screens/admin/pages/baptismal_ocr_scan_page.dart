@@ -143,6 +143,11 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
 
   List<RowIssue> get _issues =>
       validateBaptismalRows(_rows, existing: _existingRecords);
+
+  /// Layout warnings only — the confidence notice is surfaced by its own
+  /// banner, not the red "review these before saving" panel.
+  List<String> get _layoutWarnings =>
+      _warnings.where((c) => c != 'CONFIDENCE_UNAVAILABLE').toList();
   bool get _canSave =>
       !_saving &&
       _rows.any((r) => r.selected) &&
@@ -489,7 +494,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
         children: [
           CircularProgressIndicator(),
           SizedBox(height: 16),
-          Text('Reading the register with Google Cloud Vision...'),
+          Text('Reading the register with OCR.space...'),
           SizedBox(height: 4),
           Text('This can take a few seconds for a full page.'),
         ],
@@ -497,7 +502,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     );
   }
 
-  Widget _warningsPanel(BuildContext context) {
+  Widget _warningsPanel(BuildContext context, List<String> codes) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -526,7 +531,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
             ],
           ),
           const SizedBox(height: 8),
-          for (final code in _warnings)
+          for (final code in codes)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(
@@ -534,6 +539,36 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
                 style: TextStyle(color: scheme.onErrorContainer),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// OCR.space returns no per-field confidence, so there is nothing to flag
+  /// cell-by-cell. This scan-level banner tells the reviewer to verify every
+  /// field before saving.
+  Widget _confidenceBanner(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('confidence-banner'),
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outline),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.fact_check_outlined, color: scheme.onSecondaryContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'This OCR engine cannot score confidence. Please verify every '
+              'field against the page before saving.',
+              style: TextStyle(color: scheme.onSecondaryContainer),
+            ),
+          ),
         ],
       ),
     );
@@ -577,7 +612,9 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
 
     return Column(
       children: [
-        if (_warnings.isNotEmpty) _warningsPanel(context),
+        if (_warnings.contains('CONFIDENCE_UNAVAILABLE'))
+          _confidenceBanner(context),
+        if (_layoutWarnings.isNotEmpty) _warningsPanel(context, _layoutWarnings),
         if (_archiveFailed) _archiveFailedNotice(context),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),

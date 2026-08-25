@@ -100,6 +100,12 @@ Map<String, dynamic> _scanBody({String name = 'TESTA SAMPLE'}) => {
   },
 };
 
+Map<String, dynamic> _scanBodyWithWarnings(List<String> warnings) {
+  final body = _scanBody();
+  (body['data'] as Map<String, dynamic>)['warnings'] = warnings;
+  return body;
+}
+
 Map<String, dynamic> _emptyScanBody() => {
   'success': true,
   'data': {
@@ -179,6 +185,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('TESTA SAMPLE'), findsOneWidget);
     expect(find.textContaining('Save'), findsWidgets);
+  });
+
+  testWidgets('shows the confidence banner when CONFIDENCE_UNAVAILABLE is present', (tester) async {
+    final svc = serviceReturning(200, _scanBodyWithWarnings(['CONFIDENCE_UNAVAILABLE']));
+    await tester.pumpWidget(harness(service: svc));
+    await tester.tap(find.byKey(const ValueKey('pick-image')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Scan / Process OCR'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('confidence-banner')), findsOneWidget);
+    // It must NOT be rendered inside the red "Review these before saving" panel.
+    expect(find.text('Review these before saving'), findsNothing);
+  });
+
+  testWidgets('keeps CONFIDENCE_UNAVAILABLE out of the red warnings panel but still shows layout warnings', (tester) async {
+    final svc = serviceReturning(
+      200,
+      _scanBodyWithWarnings(['GUTTER_UNCONFIRMED', 'CONFIDENCE_UNAVAILABLE']),
+    );
+    await tester.pumpWidget(harness(service: svc));
+    await tester.tap(find.byKey(const ValueKey('pick-image')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Scan / Process OCR'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('confidence-banner')), findsOneWidget);
+    expect(find.text('Review these before saving'), findsOneWidget);
   });
 
   testWidgets('blocks save while a required field is empty', (tester) async {
@@ -261,7 +295,7 @@ void main() {
       harness(
         service: serviceReturning(429, {
           'success': false,
-          'code': 'VISION_QUOTA',
+          'code': 'OCR_QUOTA',
           'message': 'rate limited',
         }),
       ),
@@ -282,7 +316,7 @@ void main() {
       harness(
         service: serviceReturning(500, {
           'success': false,
-          'code': 'VISION_AUTH',
+          'code': 'OCR_AUTH',
           'message': 'not configured',
         }),
       ),
