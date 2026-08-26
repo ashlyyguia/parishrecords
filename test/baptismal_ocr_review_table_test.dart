@@ -272,6 +272,48 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('cell-0-placeAndBirthDate')), findsOneWidget);
   });
+
+  testWidgets('row menu fires insert / delete with the row index', (tester) async {
+    final events = <String>[];
+    await tester.pumpWidget(harness(BaptismalOcrReviewTable(
+      rows: [makeRow(), makeRow()],
+      issues: const [],
+      onChanged: (_, _, _) {},
+      onSelectedChanged: (_, _) {},
+      onInsertRowBelow: (i) => events.add('insert$i'),
+      onDeleteRow: (i) => events.add('delete$i'),
+      onMergeWithNext: (i) => events.add('merge$i'),
+    )));
+    await tester.tap(find.byKey(const ValueKey('row-menu-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Insert blank row below'));
+    await tester.pumpAndSettle();
+    expect(events, contains('insert0'));
+
+    await tester.tap(find.byKey(const ValueKey('row-menu-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete row'));
+    await tester.pumpAndSettle();
+    expect(events, contains('delete1'));
+  });
+
+  testWidgets('merge action is hidden on the last row', (tester) async {
+    await tester.pumpWidget(harness(BaptismalOcrReviewTable(
+      rows: [makeRow(), makeRow()],
+      issues: const [],
+      onChanged: (_, _, _) {},
+      onSelectedChanged: (_, _) {},
+      onMergeWithNext: (_) {},
+    )));
+    await tester.tap(find.byKey(const ValueKey('row-menu-0')));
+    await tester.pumpAndSettle();
+    expect(find.text('Merge with row below'), findsOneWidget);
+    await tester.tap(find.text('Merge with row below')); // close menu
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('row-menu-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Merge with row below'), findsNothing);
+  });
 }
 
 void _noopOnChanged(int rowIndex, String field, String value) {}

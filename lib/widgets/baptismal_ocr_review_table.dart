@@ -41,6 +41,9 @@ class BaptismalOcrReviewTable extends StatefulWidget {
     this.onLineNoChanged,
     this.highlightedRow,
     this.onRowTap,
+    this.onInsertRowBelow,
+    this.onDeleteRow,
+    this.onMergeWithNext,
   });
 
   final List<BaptismalRegisterRow> rows;
@@ -57,6 +60,13 @@ class BaptismalOcrReviewTable extends StatefulWidget {
   final void Function(int rowIndex, String value)? onLineNoChanged;
   final int? highlightedRow;
   final void Function(int rowIndex)? onRowTap;
+
+  /// Row-set edits so a reviewer can correct over/under-counted OCR output:
+  /// insert a blank row below [rowIndex], delete it, or merge it with the row
+  /// below (the fix for one entry OCR split across two rows).
+  final void Function(int rowIndex)? onInsertRowBelow;
+  final void Function(int rowIndex)? onDeleteRow;
+  final void Function(int rowIndex)? onMergeWithNext;
 
   @override
   State<BaptismalOcrReviewTable> createState() =>
@@ -85,10 +95,53 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
   };
   static const double _selectWidth = 44;
   static const double _lineNoWidth = 60;
+  static const double _menuWidth = 40;
 
   // Separate controllers so each scrollbar attaches to exactly one view.
   final _horizontal = ScrollController();
   final _vertical = ScrollController();
+
+  bool get _hasRowActions =>
+      widget.onInsertRowBelow != null ||
+      widget.onDeleteRow != null ||
+      widget.onMergeWithNext != null;
+
+  Widget _rowMenu(BuildContext context, int index) {
+    final canMerge =
+        widget.onMergeWithNext != null && index < widget.rows.length - 1;
+    return PopupMenuButton<String>(
+      key: ValueKey('row-menu-$index'),
+      icon: const Icon(Icons.more_vert, size: 18),
+      tooltip: 'Row actions',
+      onSelected: (v) {
+        switch (v) {
+          case 'insert':
+            widget.onInsertRowBelow?.call(index);
+            break;
+          case 'merge':
+            widget.onMergeWithNext?.call(index);
+            break;
+          case 'delete':
+            widget.onDeleteRow?.call(index);
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        if (widget.onInsertRowBelow != null)
+          const PopupMenuItem(
+            value: 'insert',
+            child: Text('Insert blank row below'),
+          ),
+        if (canMerge)
+          const PopupMenuItem(
+            value: 'merge',
+            child: Text('Merge with row below'),
+          ),
+        if (widget.onDeleteRow != null)
+          const PopupMenuItem(value: 'delete', child: Text('Delete row')),
+      ],
+    );
+  }
 
   @override
   void dispose() {
@@ -98,7 +151,7 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
   }
 
   double get _totalWidth {
-    var w = _selectWidth + _lineNoWidth;
+    var w = _selectWidth + _lineNoWidth + (_hasRowActions ? _menuWidth : 0);
     for (final key in baptismalFieldKeys) {
       w += _columnWidths[key] ?? 140;
     }
@@ -201,6 +254,7 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          if (_hasRowActions) const SizedBox(width: _menuWidth),
           const SizedBox(width: _selectWidth),
           _headerCell('No.', _lineNoWidth, style, required: false),
           for (final key in baptismalFieldKeys)
@@ -258,6 +312,8 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_hasRowActions)
+            SizedBox(width: _menuWidth, child: _rowMenu(context, index)),
           SizedBox(
             width: _selectWidth,
             child: Checkbox(
@@ -408,6 +464,8 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
                       ),
                     ),
                   ),
+                  const Spacer(),
+                  if (_hasRowActions) _rowMenu(context, index),
                 ],
               ),
               const SizedBox(height: 4),
