@@ -226,4 +226,32 @@ void main() {
       expect(scan.warnings, isEmpty);
     });
   });
+
+  BaptismalRegisterRow rowWith(Map<String, String> vals, {bool selected = true, String lineNo = ''}) =>
+      BaptismalRegisterRow(
+        lineNo: lineNo,
+        selected: selected,
+        fields: {for (final k in baptismalFieldKeys) k: OcrField(value: vals[k] ?? '', confidence: 0.9)},
+      );
+
+  test('blank() has every field empty and is selected', () {
+    final r = BaptismalRegisterRow.blank();
+    expect(r.lineNo, '');
+    expect(r.selected, isTrue);
+    for (final k in baptismalFieldKeys) {
+      expect(r.field(k).value, '');
+    }
+  });
+
+  test('mergedWith space-joins per field, skips empties, marks edited, unions selected', () {
+    final a = rowWith({'nameOfChild': 'RENE', 'placeAndBirthDate': 'ZONE1'}, selected: false, lineNo: '1');
+    final b = rowWith({'nameOfChild': 'HAGANAS', 'minister': 'FR.X'}, selected: true, lineNo: '2');
+    final m = a.mergedWith(b);
+    expect(m.field('nameOfChild').value, 'RENE HAGANAS');
+    expect(m.field('placeAndBirthDate').value, 'ZONE1'); // other empty -> kept
+    expect(m.field('minister').value, 'FR.X'); // this empty -> kept
+    expect(m.field('nameOfChild').edited, isTrue);
+    expect(m.lineNo, '1');
+    expect(m.selected, isTrue);
+  });
 }

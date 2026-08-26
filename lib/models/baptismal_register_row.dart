@@ -120,6 +120,38 @@ class BaptismalRegisterRow {
       fields: map,
     );
   }
+
+  /// A fresh, empty, selected row — used when a reviewer inserts a register
+  /// entry OCR missed. Confidence 1 so it is never flagged low-confidence
+  /// (an empty value isn't flagged anyway).
+  factory BaptismalRegisterRow.blank() {
+    return BaptismalRegisterRow(
+      lineNo: '',
+      fields: {
+        for (final key in baptismalFieldKeys)
+          key: OcrField(value: '', confidence: 1),
+      },
+    );
+  }
+
+  /// Combines this row with [other] into one — the fix for a single register
+  /// entry OCR split across two rows. Each field's values are space-joined
+  /// (empties skipped) and marked edited (a human triggered the merge); the
+  /// line number is kept from this row; the result is selected if either was.
+  BaptismalRegisterRow mergedWith(BaptismalRegisterRow other) {
+    final merged = <String, OcrField>{};
+    for (final key in baptismalFieldKeys) {
+      final a = field(key).value.trim();
+      final b = other.field(key).value.trim();
+      final joined = [a, b].where((s) => s.isNotEmpty).join(' ');
+      merged[key] = field(key).copyWith(value: joined);
+    }
+    return BaptismalRegisterRow(
+      lineNo: lineNo,
+      fields: merged,
+      selected: selected || other.selected,
+    );
+  }
 }
 
 /// A whole scanned spread.
