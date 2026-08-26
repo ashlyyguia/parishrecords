@@ -77,3 +77,6 @@ book-scan/dss-analysis.html
 book-scan/dss-infographic.html
 book-scan/ocrspace-test.js
 book-scan/vision-test.js
+
+# Python OCR service local venvs
+ocr_service/.venv*/
