@@ -106,6 +106,17 @@ Map<String, dynamic> _scanBodyWithWarnings(List<String> warnings) {
   return body;
 }
 
+Map<String, dynamic> _scanBody2() => {
+  'success': true,
+  'data': {
+    'scanId': 's1', 'rotation': 0, 'warnings': <String>[],
+    'rows': [
+      {'lineNo': '1', 'fields': {'nameOfChild': {'value': 'RENE', 'confidence': 0.9}, 'dateOfBaptism': {'value': '12 MAY 2016', 'confidence': 0.9}}},
+      {'lineNo': '2', 'fields': {'nameOfChild': {'value': 'HAGANAS', 'confidence': 0.9}, 'dateOfBaptism': {'value': '12 MAY 2016', 'confidence': 0.9}}},
+    ],
+  },
+};
+
 Map<String, dynamic> _emptyScanBody() => {
   'success': true,
   'data': {
@@ -185,6 +196,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('TESTA SAMPLE'), findsOneWidget);
     expect(find.textContaining('Save'), findsWidgets);
+  });
+
+  Future<void> toReview(WidgetTester tester, Map<String, dynamic> body) async {
+    await tester.pumpWidget(harness(service: serviceReturning(200, body)));
+    await tester.tap(find.byKey(const ValueKey('pick-image')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Scan / Process OCR'));
+    await tester.pumpAndSettle();
+  }
+
+  // The review uses a lazy ListView, so off-screen rows aren't built at the
+  // test surface size -- assert on the always-visible "Save N record(s)" count
+  // (and the first, visible row) rather than an off-screen cell key.
+  testWidgets('insert adds a blank (selected) row', (tester) async {
+    await toReview(tester, _scanBody2());
+    expect(find.text('Save 2 record(s)'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('row-menu-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Insert blank row below'));
+    await tester.pumpAndSettle();
+    expect(find.text('Save 3 record(s)'), findsOneWidget);
+  });
+
+  testWidgets('delete removes a row', (tester) async {
+    await toReview(tester, _scanBody2());
+    await tester.tap(find.byKey(const ValueKey('row-menu-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete row'));
+    await tester.pumpAndSettle();
+    expect(find.text('Save 1 record(s)'), findsOneWidget);
+  });
+
+  testWidgets('merge concatenates two rows into one', (tester) async {
+    await toReview(tester, _scanBody2());
+    await tester.tap(find.byKey(const ValueKey('row-menu-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Merge with row below'));
+    await tester.pumpAndSettle();
+    expect(find.text('Save 1 record(s)'), findsOneWidget);
+    final field = tester.widget<TextFormField>(find.byKey(const ValueKey('cell-0-nameOfChild')));
+    expect(field.initialValue, 'RENE HAGANAS');
   });
 
   testWidgets('shows the confidence banner when CONFIDENCE_UNAVAILABLE is present', (tester) async {

@@ -630,6 +630,21 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
                       setState(() => _rows[i].selected = v),
                   onLineNoChanged: (i, value) =>
                       setState(() => _rows[i].lineNo = value),
+                  onInsertRowBelow: (i) => setState(() {
+                    _rows.insert(i + 1, BaptismalRegisterRow.blank());
+                    _highlightedRow = null;
+                  }),
+                  onDeleteRow: (i) => setState(() {
+                    _rows.removeAt(i);
+                    _highlightedRow = null;
+                  }),
+                  onMergeWithNext: (i) => setState(() {
+                    if (i + 1 < _rows.length) {
+                      _rows[i] = _rows[i].mergedWith(_rows[i + 1]);
+                      _rows.removeAt(i + 1);
+                      _highlightedRow = null;
+                    }
+                  }),
                 ),
         ),
         SafeArea(
