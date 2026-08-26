@@ -60,6 +60,18 @@ describe('callOcrSpace', () => {
     expect(bodies[1]).toContain('OCREngine=2');
   });
 
+  test('lets the caller turn off detectOrientation (default stays true)', async () => {
+    const bodies = [];
+    const fakeFetch = async (url, opts) => {
+      bodies.push(opts.body);
+      return { ok: true, json: async () => ({ ParsedResults: [{ ParsedText: 'ok' }] }) };
+    };
+    await callOcrSpace('X', { apiKey: 'K', fetchImpl: fakeFetch, detectOrientation: false });
+    await callOcrSpace('X', { apiKey: 'K', fetchImpl: fakeFetch });
+    expect(bodies[0]).toContain('detectOrientation=false');
+    expect(bodies[1]).toContain('detectOrientation=true');
+  });
+
   test('throws on processing error', async () => {
     const fakeFetch = async () => ({ ok: true, json: async () => ({ IsErroredOnProcessing: true, ErrorMessage: ['bad'] }) });
     await expect(callOcrSpace('X', { apiKey: 'K', fetchImpl: fakeFetch })).rejects.toThrow('bad');
