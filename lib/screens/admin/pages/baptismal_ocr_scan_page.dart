@@ -144,9 +144,16 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
       validateBaptismalRows(_rows, existing: _existingRecords);
 
   /// Layout warnings only — the confidence notice is surfaced by its own
-  /// banner, not the red "review these before saving" panel.
+  /// banner, and CV_UNAVAILABLE is an internal fallback signal (automatic grid
+  /// detection was off/unreachable, so word clustering ran instead). Neither
+  /// belongs in the red "review these before saving" panel; the confidence
+  /// banner already tells the reviewer to verify every field.
+  static const Set<String> _nonLayoutWarnings = {
+    'CONFIDENCE_UNAVAILABLE',
+    'CV_UNAVAILABLE',
+  };
   List<String> get _layoutWarnings =>
-      _warnings.where((c) => c != 'CONFIDENCE_UNAVAILABLE').toList();
+      _warnings.where((c) => !_nonLayoutWarnings.contains(c)).toList();
   bool get _canSave =>
       !_saving &&
       _rows.any((r) => r.selected) &&

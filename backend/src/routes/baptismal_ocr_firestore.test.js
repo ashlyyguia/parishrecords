@@ -331,6 +331,100 @@ describe('scanId logging (FIX 12)', () => {
   });
 });
 
+describe('CV grid path', () => {
+  const gridPages = {
+    pages: {
+      left: { imageBuffer: Buffer.from('L'), cells: [
+        { key: 'no', row: 0, x: 0, y: 0, w: 40, h: 40 },
+        { key: 'child_name', row: 0, x: 40, y: 0, w: 200, h: 40 },
+      ] },
+      right: { imageBuffer: Buffer.from('R'), cells: [
+        { key: 'minister', row: 0, x: 0, y: 0, w: 200, h: 40 },
+      ] },
+    },
+    rotationApplied: 90, deskewDeg: 0.5, warnings: [],
+  };
+  const wordAt = (text, cx, cy) => ({
+    text, confidence: 1,
+    vertices: [{ x: cx - 5, y: cy - 5 }, { x: cx + 5, y: cy - 5 }, { x: cx + 5, y: cy + 5 }, { x: cx - 5, y: cy + 5 }],
+  });
+
+  test('uses CV rows when the grid service succeeds', async () => {
+    const app = express();
+    app.use('/api/ocr/baptismal', createBaptismalOcrRouter({
+      verifyToken: (req, _res, next) => { req.user = { uid: 'u', role: 'admin' }; next(); },
+      fetchGrid: async () => gridPages,
+      // The CV path OCRs each rectified page; preprocess passes the tiny
+      // non-image buffer through unchanged, so we can key off its contents.
+      recognizeImage: async (buf) => (buf.toString() === 'L'
+        ? { words: [wordAt('1', 20, 20), wordAt('JUAN', 140, 20)] }
+        : { words: [wordAt('FR.X', 100, 20)] }),
+    }));
+    const res = await request(app).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(JPEG) });
+    expect(res.status).toBe(200);
+    expect(res.body.data.rows).toHaveLength(1);
+    expect(res.body.data.rows[0].fields.nameOfChild.value).toBe('JUAN');
+    expect(res.body.data.rows[0].fields.minister.value).toBe('FR.X');
+    expect(res.body.data.rotation).toBe(90);
+    expect(res.body.data.warnings).not.toContain('CV_UNAVAILABLE');
+    expect(res.body.data.warnings).toContain('CONFIDENCE_UNAVAILABLE');
+  });
+
+  test('falls back to word-clustering with CV_UNAVAILABLE when the grid service genuinely fails', async () => {
+    const { CvGridError } = require('../services/cv_grid_client');
+    const app = express();
+    app.use('/api/ocr/baptismal', createBaptismalOcrRouter({
+      verifyToken: (req, _res, next) => { req.user = { uid: 'u', role: 'admin' }; next(); },
+      fetchGrid: async () => { throw new CvGridError('CV_UNREACHABLE', 'down'); },
+      recognize: async () => ({ words: [{ text: 'X', vertices: [], confidence: 1 }] }),
+      extract: () => ({ rows: [{ index: 0, lineNo: '1', fields: {} }], rotation: 0, warnings: [] }),
+    }));
+    const res = await request(app).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(JPEG) });
+    expect(res.status).toBe(200);
+    expect(res.body.data.rows).toHaveLength(1);
+    expect(res.body.data.warnings).toContain('CV_UNAVAILABLE');
+  });
+
+  test('CV_DISABLED (service not configured) falls back SILENTLY -- no CV_UNAVAILABLE warning', async () => {
+    // The service being unconfigured is an intentional off-state, not a
+    // fault: a fallback scan that works fine should not surface a scary
+    // "issue to review" banner. Only genuine CV failures warn.
+    const { CvGridError } = require('../services/cv_grid_client');
+    const app = express();
+    app.use('/api/ocr/baptismal', createBaptismalOcrRouter({
+      verifyToken: (req, _res, next) => { req.user = { uid: 'u', role: 'admin' }; next(); },
+      fetchGrid: async () => { throw new CvGridError('CV_DISABLED', 'OCR_SERVICE_URL not set'); },
+      recognize: async () => ({ words: [{ text: 'X', vertices: [], confidence: 1 }] }),
+      extract: () => ({ rows: [{ index: 0, lineNo: '1', fields: {} }], rotation: 0, warnings: [] }),
+    }));
+    const res = await request(app).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(JPEG) });
+    expect(res.status).toBe(200);
+    expect(res.body.data.warnings).not.toContain('CV_UNAVAILABLE');
+    expect(res.body.data.warnings).toContain('CONFIDENCE_UNAVAILABLE');
+  });
+
+  test('an OCR.space failure during the CV path still maps to its OCR_* code', async () => {
+    // fetchGrid succeeds, but OCR on the rectified pages fails with a coded
+    // OCR error. The catch falls back to the single-OCR path, which fails the
+    // same way, and the OCR_* code must reach the client (not INTERNAL_ERROR).
+    const app = express();
+    const ocrFail = () => { const e = new Error('quota'); e.code = 'OCR_QUOTA'; throw e; };
+    app.use('/api/ocr/baptismal', createBaptismalOcrRouter({
+      verifyToken: (req, _res, next) => { req.user = { uid: 'u', role: 'admin' }; next(); },
+      fetchGrid: async () => gridPages,
+      recognizeImage: ocrFail,
+      recognize: ocrFail,
+    }));
+    const res = await request(app).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(JPEG) });
+    expect(res.status).toBe(429);
+    expect(res.body.code).toBe('OCR_QUOTA');
+  });
+});
+
 describe('body size ordering', () => {
   // Regression: mounted after server.js's global express.json({limit:'10mb'}),
   // a valid ~13.4MB base64 scan dies with a generic Express 413 and never

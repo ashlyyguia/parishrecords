@@ -62,6 +62,9 @@ async function recognizeWords(imageBuffer, options = {}) {
       apiKey,
       fetchImpl: options.fetchImpl,
       engine,
+      // Undefined -> callOcrSpace's default (true). The CV path passes false
+      // because the rectified page image is already upright.
+      detectOrientation: options.detectOrientation,
     });
   } catch (e) {
     throw mapOcrSpaceError(e);

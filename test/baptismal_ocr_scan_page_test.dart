@@ -269,6 +269,26 @@ void main() {
     expect(find.textContaining('to review before saving'), findsOneWidget);
   });
 
+  testWidgets('keeps CV_UNAVAILABLE out of the red warnings panel (silent fallback signal)', (tester) async {
+    // CV_UNAVAILABLE only means automatic grid detection fell back to word
+    // clustering; CONFIDENCE_UNAVAILABLE already tells the reviewer to verify
+    // every field, so this diagnostic code must not raise its own red banner.
+    final svc = serviceReturning(
+      200,
+      _scanBodyWithWarnings(['CV_UNAVAILABLE', 'CONFIDENCE_UNAVAILABLE']),
+    );
+    await tester.pumpWidget(harness(service: svc));
+    await tester.tap(find.byKey(const ValueKey('pick-image')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Scan / Process OCR'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('confidence-banner')), findsOneWidget);
+    expect(find.byKey(const ValueKey('warnings-panel')), findsNothing);
+    // The raw code must never reach the screen.
+    expect(find.textContaining('CV_UNAVAILABLE'), findsNothing);
+  });
+
   testWidgets('does not attempt Storage archival when no uploader is configured', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

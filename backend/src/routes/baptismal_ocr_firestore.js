@@ -4,6 +4,8 @@ const { body, validationResult } = require('express-validator');
 const { verifyFirebaseToken } = require('../middleware/auth');
 const { recognizeWords } = require('../services/baptismal_ocr_service');
 const { extractBaptismalRows } = require('../services/baptismal_register_layout');
+const { fetchGrid: defaultFetchGrid } = require('../services/cv_grid_client');
+const { gridToRows } = require('../services/baptismal_grid_assign');
 const {
   sniffImageType,
   preprocessForOcr,
@@ -138,6 +140,11 @@ function createBaptismalOcrRouter(deps = {}) {
   const extract = deps.extract || extractBaptismalRows;
   const preprocess = deps.preprocess || preprocessForOcr;
   const verifyToken = deps.verifyToken || verifyFirebaseToken;
+  const fetchGrid = deps.fetchGrid || defaultFetchGrid;
+  // OCR on one already-rectified page image the CV service returned;
+  // detectOrientation is off because that image is already upright.
+  const recognizeImage = deps.recognizeImage
+    || ((buf) => recognizeWords(buf, { detectOrientation: false }));
 
   const router = express.Router();
 
@@ -199,18 +206,47 @@ function createBaptismalOcrRouter(deps = {}) {
       }
 
       try {
-        const prepared = await preprocess(buffer, {
-          maxEdge: OCRSPACE_MAX_EDGE,
-          quality: OCRSPACE_JPEG_QUALITY,
-        });
-        const { words } = await recognize(prepared);
-        const result = extract(words);
+        let result;
+        let extraWarnings = [];
+        try {
+          // CV-first: the Python service detects the register's ruled grid and
+          // returns rectified page images. OCR runs on THOSE images, so words
+          // and grid cells share one pixel frame and each word drops into the
+          // cell that contains it -- the true rows, not y-clustered guesses.
+          const grid = await fetchGrid(buffer, {});
+          const [leftPrep, rightPrep] = await Promise.all([
+            preprocess(grid.pages.left.imageBuffer, { maxEdge: OCRSPACE_MAX_EDGE, quality: OCRSPACE_JPEG_QUALITY }),
+            preprocess(grid.pages.right.imageBuffer, { maxEdge: OCRSPACE_MAX_EDGE, quality: OCRSPACE_JPEG_QUALITY }),
+          ]);
+          const [leftOcr, rightOcr] = await Promise.all([
+            recognizeImage(leftPrep), recognizeImage(rightPrep),
+          ]);
+          const built = gridToRows(grid.pages.left, leftOcr.words, grid.pages.right, rightOcr.words);
+          result = {
+            rows: built.rows,
+            rotation: grid.rotationApplied,
+            warnings: [...grid.warnings, ...built.warnings],
+          };
+        } catch (cvErr) {
+          // Any CV failure -> today's single-OCR word-clustering path. An
+          // OCR.space failure raised HERE keeps its OCR_* code and rethrows to
+          // the outer catch. CV_DISABLED means the service is intentionally not
+          // configured (an off-state, not a fault), so it adds no warning; a
+          // genuine CV failure appends CV_UNAVAILABLE for the reviewer.
+          const prepared = await preprocess(buffer, {
+            maxEdge: OCRSPACE_MAX_EDGE,
+            quality: OCRSPACE_JPEG_QUALITY,
+          });
+          const { words } = await recognize(prepared);
+          result = extract(words);
+          if (!cvErr || cvErr.code !== 'CV_DISABLED') extraWarnings = ['CV_UNAVAILABLE'];
+        }
 
         // Log counts only -- never cell values or recognized text (records
         // of minors).
         console.log(
-          `[baptismal-ocr] scan=${sanitizeScanIdForLog(scanId)} words=${words.length} rows=${result.rows.length} ` +
-          `rotation=${result.rotation} warnings=${result.warnings.length} ms=${Date.now() - startedAt}`,
+          `[baptismal-ocr] scan=${sanitizeScanIdForLog(scanId)} rows=${result.rows.length} ` +
+          `rotation=${result.rotation} warnings=${result.warnings.length} cv=${extraWarnings.length === 0} ms=${Date.now() - startedAt}`,
         );
 
         // `columns`/`gutterX` are deliberately NOT included: nothing reads
@@ -229,8 +265,9 @@ function createBaptismalOcrRouter(deps = {}) {
             rotation: result.rotation,
             // OCR.space returns no per-word confidence, so the per-field
             // low-confidence flag can't fire. Signal the review UI to show a
-            // scan-level "verify every field" banner instead.
-            warnings: [...result.warnings, 'CONFIDENCE_UNAVAILABLE'],
+            // scan-level "verify every field" banner instead. `extraWarnings`
+            // carries CV_UNAVAILABLE when the CV grid path fell back.
+            warnings: [...result.warnings, ...extraWarnings, 'CONFIDENCE_UNAVAILABLE'],
           },
         });
       } catch (e) {
