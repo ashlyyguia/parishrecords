@@ -29,6 +29,7 @@ const STATUS_BY_CODE = {
   OCR_UNAVAILABLE: 502,
   NO_TEXT_FOUND: 422,
   LAYOUT_UNRECOGNIZED: 422,
+  SPREAD_UNREADABLE: 422,
   INTERNAL_ERROR: 500,
 };
 
@@ -44,6 +45,7 @@ const MESSAGE_BY_CODE = {
   OCR_UNAVAILABLE: 'Could not reach the OCR service. Check your connection and retry.',
   NO_TEXT_FOUND: 'No readable text was found. Retake the photo with better lighting and framing.',
   LAYOUT_UNRECOGNIZED: 'This page does not look like a baptismal register. Check the photo and retry.',
+  SPREAD_UNREADABLE: "Couldn't read this register spread reliably. Retake the photo with the book opened flat, both pages fully in frame, and even lighting, then try again.",
   INTERNAL_ERROR: 'Something went wrong while processing this scan. Try again, and contact an administrator if it persists.',
 };
 
@@ -228,7 +230,20 @@ function createBaptismalOcrRouter(deps = {}) {
             warnings: [...grid.warnings, ...built.warnings],
           };
         } catch (cvErr) {
-          // Any CV failure -> today's single-OCR word-clustering path. An
+          // A deliberate CV_REFUSED verdict means the service RAN and judged
+          // this spread unreadable (faded rules, a page out of frame, the book
+          // not opened flat). Falling back to word-clustering here would
+          // produce exactly the mangled rows the refusal exists to prevent, so
+          // surface an actionable "retake" error to the outer catch instead.
+          // Every other CV failure (unreachable, disabled, bad response, a
+          // key/config fault) is not a verdict on the photo, so it falls
+          // through to the fallback below.
+          if (cvErr && cvErr.code === 'CV_REFUSED') {
+            const unreadable = new Error('cv refused spread');
+            unreadable.code = 'SPREAD_UNREADABLE';
+            throw unreadable;
+          }
+          // Any other CV failure -> today's single-OCR word-clustering path. An
           // OCR.space failure raised HERE keeps its OCR_* code and rethrows to
           // the outer catch. CV_DISABLED means the service is intentionally not
           // configured (an off-state, not a fault), so it adds no warning; a

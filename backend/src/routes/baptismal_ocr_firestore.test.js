@@ -406,6 +406,49 @@ describe('CV grid path', () => {
     expect(res.body.data.warnings).toContain('CONFIDENCE_UNAVAILABLE');
   });
 
+  test('a deliberate CV refusal (unreadable spread) surfaces a retake error and does NOT fall back', async () => {
+    // The CV service RAN and judged this spread unreadable (faded rules, book
+    // not flat, a page out of frame). The word-clustering fallback would
+    // produce exactly the mangled rows the refusal exists to prevent, so the
+    // route must surface an actionable "retake" error instead of falling back.
+    const { CvGridError } = require('../services/cv_grid_client');
+    const extract = jest.fn(() => ({ rows: [{ index: 0, lineNo: '1', fields: {} }], rotation: 0, warnings: [] }));
+    const app = express();
+    app.use('/api/ocr/baptismal', createBaptismalOcrRouter({
+      verifyToken: (req, _res, next) => { req.user = { uid: 'u', role: 'admin' }; next(); },
+      fetchGrid: async () => { throw new CvGridError('CV_REFUSED', 'no_table_detected'); },
+      recognize: async () => ({ words: [{ text: 'X', vertices: [], confidence: 1 }] }),
+      extract,
+    }));
+    const res = await request(app).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(JPEG) });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('SPREAD_UNREADABLE');
+    expect(res.body.success).toBe(false);
+    // It must NOT have run the fallback extractor...
+    expect(extract).not.toHaveBeenCalled();
+    // ...and must not leak the upstream machine code into the client body.
+    expect(JSON.stringify(res.body)).not.toContain('no_table_detected');
+  });
+
+  test('a CV auth/config fault (CV_AUTH) falls back to word-clustering rather than telling the user to retake', async () => {
+    // A bad service key is a SERVER misconfiguration, not a verdict on the
+    // photo. Showing "retake the photo" would be false and unactionable;
+    // falling back keeps scanning working while the deploy is fixed.
+    const { CvGridError } = require('../services/cv_grid_client');
+    const app = express();
+    app.use('/api/ocr/baptismal', createBaptismalOcrRouter({
+      verifyToken: (req, _res, next) => { req.user = { uid: 'u', role: 'admin' }; next(); },
+      fetchGrid: async () => { throw new CvGridError('CV_AUTH', 'unauthorized'); },
+      recognize: async () => ({ words: [{ text: 'X', vertices: [], confidence: 1 }] }),
+      extract: () => ({ rows: [{ index: 0, lineNo: '1', fields: {} }], rotation: 0, warnings: [] }),
+    }));
+    const res = await request(app).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(JPEG) });
+    expect(res.status).toBe(200);
+    expect(res.body.data.warnings).toContain('CV_UNAVAILABLE');
+  });
+
   test('an OCR.space failure during the CV path still maps to its OCR_* code', async () => {
     // fetchGrid succeeds, but OCR on the rectified pages fails with a coded
     // OCR error. The catch falls back to the single-OCR path, which fails the

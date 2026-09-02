@@ -151,6 +151,9 @@ void main() {
       await expectDifferentImage('IMAGE_INVALID');
       await expectDifferentImage('IMAGE_TOO_LARGE');
       await expectDifferentImage('LAYOUT_UNRECOGNIZED');
+      // A deliberate CV refusal (unreadable spread) must prompt a retake, not
+      // an endless same-image retry -- the same bytes fail identically.
+      await expectDifferentImage('SPREAD_UNREADABLE');
     });
 
     test('signIn category: UNAUTHENTICATED', () async {

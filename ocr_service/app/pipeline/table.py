@@ -183,6 +183,22 @@ ROW_STRIP_CLUSTER_TOLERANCE = 20
 ROW_STRIP_MIN_SPAN_FRACTION = 0.5
 ROW_FIT_TOLERANCE_FRACTION = 0.3
 
+# How far right of the table's left border a strong row cluster may begin and
+# still count as a genuine, full-width row rule, as a fraction of the table
+# width. This is the property that tells a genuine row boundary from an interior
+# sub-divider that the strip-span filter cannot: a printed row rule runs the
+# whole width of the table and so meets its left border, while a sub-divider
+# ruled across only the register's wide right-hand columns (the father/mother
+# name-line inside "parents"/"sponsors") begins partway across. Measured on the
+# real samples, genuine rules begin within ~1% of the table width of the border
+# while such sub-dividers begin 12-40% in, so a threshold in between rejects the
+# sub-dividers without discarding any genuine rule. Left too loose it would keep
+# a sub-divider — which sits at half the row pitch and doubles the row count
+# (see IMG_3121: 43 rows found where 24 exist); left too tight it could drop a
+# genuine rule whose left end faded, but that is safe because the pitch fit only
+# needs enough self-consistent rules and extends the curve across the gaps.
+ROW_RULE_LEFT_MARGIN_FRACTION = 0.06
+
 
 def _row_strip_segments(
     binary: np.ndarray,
@@ -412,6 +428,39 @@ def _extend_row_curve(
     return k
 
 
+def _full_width_row_ys(
+    strong: list[tuple[int, int, int, int]],
+    margin_fraction: float = ROW_RULE_LEFT_MARGIN_FRACTION,
+) -> list[int]:
+    """From the strip-span-strong row clusters, keep only those that reach the
+    table's left border, returning their y-positions in input order.
+
+    A genuine row rule spans the whole table and so meets its left border; an
+    interior sub-divider ruled across only the register's wide right-hand
+    columns begins partway across. Strip span alone cannot separate them — a
+    sub-divider spanning several wide columns survives the span filter — but the
+    left extent can: it is the one property a full-width rule has that an
+    interior one does not.
+
+    The border is estimated as the 25th percentile of the clusters' left
+    extents, which stays inside the genuine population even when nearly as many
+    sub-dividers are present (they all sit to its right). Clusters beginning
+    more than ``margin_fraction`` of the table width to the right of that border
+    are dropped. Passed through unchanged when there are too few clusters to
+    estimate a border from.
+    """
+    if len(strong) < 5:
+        return [c[0] for c in strong]
+    x_los = np.array([c[2] for c in strong], dtype=np.float64)
+    x_his = np.array([c[3] for c in strong], dtype=np.float64)
+    border = float(np.percentile(x_los, 25))
+    table_width = float(np.percentile(x_his, 75)) - border
+    if table_width <= 0:
+        return [c[0] for c in strong]
+    margin = max(float(ROW_STRIP_CLUSTER_TOLERANCE), margin_fraction * table_width)
+    return [c[0] for c in strong if c[2] <= border + margin]
+
+
 def _detect_row_boundaries(
     binary: np.ndarray,
     w: int,
@@ -444,7 +493,7 @@ def _detect_row_boundaries(
     if clustered is None:
         clustered = _cluster_row_segments(_row_strip_segments(binary))
     min_span = max(2, round(ROW_STRIP_COUNT * ROW_STRIP_MIN_SPAN_FRACTION))
-    strong = [y for y, span, _, _ in clustered if span >= min_span]
+    strong = _full_width_row_ys([c for c in clustered if c[1] >= min_span])
     if len(strong) < 5:
         return header_candidates
 

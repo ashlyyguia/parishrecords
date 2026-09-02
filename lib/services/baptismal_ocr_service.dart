@@ -90,6 +90,10 @@ class BaptismalOcrService {
     'IMAGE_INVALID': OcrRecovery.differentImage,
     'IMAGE_TOO_LARGE': OcrRecovery.differentImage,
     'LAYOUT_UNRECOGNIZED': OcrRecovery.differentImage,
+    // The CV service ran and judged this spread unreadable (faded rules, a
+    // page out of frame, the book not opened flat). Re-submitting the same
+    // bytes fails identically, so the user must retake -- not retry.
+    'SPREAD_UNREADABLE': OcrRecovery.differentImage,
     'UNAUTHENTICATED': OcrRecovery.signIn,
     'OCR_AUTH': OcrRecovery.contactAdmin,
     'FORBIDDEN': OcrRecovery.contactAdmin,

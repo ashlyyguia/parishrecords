@@ -36,6 +36,15 @@ test('CV_REFUSED on a 4xx OcrError body', async () => {
     .rejects.toMatchObject({ code: 'CV_REFUSED' });
 });
 
+test('CV_AUTH (not CV_REFUSED) when the service rejects the key', async () => {
+  // A 401/unauthorized is a server config fault (wrong OCR_SERVICE_KEY), not
+  // the service judging the photo unreadable. The route must be able to tell
+  // the two apart -- one falls back, the other tells the user to retake.
+  const fetchImpl = async () => ({ ok: false, status: 401, json: async () => ({ success: false, code: 'unauthorized' }) });
+  await expect(fetchGrid(Buffer.from('img'), { env, fetchImpl }))
+    .rejects.toMatchObject({ code: 'CV_AUTH' });
+});
+
 test('CV_BAD_RESPONSE on malformed success body', async () => {
   const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ success: true }) });
   await expect(fetchGrid(Buffer.from('img'), { env, fetchImpl }))

@@ -62,9 +62,21 @@ async function fetchGrid(imageBuffer, { env = process.env, fetchImpl = fetch } =
   }
 
   if (!res.ok || !body || body.success !== true) {
-    // A structured OcrError (4xx/5xx) means the service ran but refused/failed
-    // this image -- treat as "CV can't help here", i.e. fall back.
-    throw new CvGridError('CV_REFUSED', body && body.code);
+    // A structured OcrError (4xx/5xx) means the service ran and returned a
+    // verdict. Two very different meanings hide here and the caller must be
+    // able to tell them apart:
+    //  * `unauthorized` is a SERVER config fault (a wrong OCR_SERVICE_KEY),
+    //    not a judgement on the photo -- CV_AUTH, so the route can fall back
+    //    and keep scanning working rather than falsely telling the user to
+    //    retake a photo that is fine;
+    //  * every other refusal (no_table_detected, no_rows_detected,
+    //    corrupt_image, ...) is the service judging THIS image unusable --
+    //    CV_REFUSED, which the route surfaces as an actionable "retake"
+    //    error and must NOT paper over with the word-clustering fallback,
+    //    since that would produce exactly the mangled rows the refusal
+    //    exists to prevent.
+    const serviceCode = body && body.code;
+    throw new CvGridError(serviceCode === 'unauthorized' ? 'CV_AUTH' : 'CV_REFUSED', serviceCode);
   }
   if (!body.pages || !body.pages.left || !body.pages.right) {
     throw new CvGridError('CV_BAD_RESPONSE', 'missing pages');

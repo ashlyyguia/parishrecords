@@ -7,7 +7,9 @@ MARGIN = 60
 GUTTER_HALF = 24
 
 
-def make_register_spread(rows: int = 24, cols_left: int = 5, cols_right: int = 5, gutter_offset: int = 0) -> np.ndarray:
+def make_register_spread(rows: int = 24, cols_left: int = 5, cols_right: int = 5,
+                         gutter_offset: int = 0,
+                         subdivider_start_frac: float | None = None) -> np.ndarray:
     """White page, blue ruled grid, a header band, two pages split by a gutter.
 
     Args:
@@ -16,6 +18,15 @@ def make_register_spread(rows: int = 24, cols_left: int = 5, cols_right: int = 5
         cols_right: Columns on right page.
         gutter_offset: Horizontal offset from centre (pixels). Default 0 = centred.
                        Set to ~-200 for ~40% gutter position.
+        subdivider_start_frac: When set, draws a horizontal *sub-divider* across
+                       the mid-height of every data row, running from this
+                       fraction of the way across each page's table to the
+                       table's right border. This models the interior name-lines
+                       inside a register's wide "parents"/"sponsors" columns:
+                       real printed rules, at half the row pitch, that do *not*
+                       reach the table's left border. See table.py's row
+                       detection for why the left extent is what tells them apart
+                       from genuine full-width row rules.
     """
     img = np.full((H, W, 3), 250, np.uint8)
     mid = W // 2 + gutter_offset
@@ -34,6 +45,11 @@ def make_register_spread(rows: int = 24, cols_left: int = 5, cols_right: int = 5
         xs = [int(x0 + i * (x1 - x0) / cols) for i in range(cols + 1)]
         for x in xs:
             cv2.line(img, (x, top), (x, bottom), line, 2)
+        if subdivider_start_frac is not None:
+            x_sub = int(x0 + subdivider_start_frac * (x1 - x0))
+            for r in range(rows):
+                y_mid = int(ys[2 + r] - pitch / 2)
+                cv2.line(img, (x_sub, y_mid), (x1, y_mid), line, 2)
         # ink in every data cell so blank-detection tests have signal
         for r in range(rows):
             for c in range(cols):

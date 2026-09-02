@@ -79,6 +79,27 @@ def test_detects_the_header_row_plus_24_data_rows():
     assert grid.rows == 25
 
 
+def test_wide_interior_subdividers_do_not_double_the_row_count():
+    """Pins the IMG_3121 row-doubling bug: an interior sub-divider ruled across
+    a register's wide columns (the father/mother name-line inside "parents") is
+    a real printed rule at *half* the row pitch. When it happens to be wide
+    enough to survive the strip-span filter, it lands exactly between genuine
+    row rules and, unless rejected, halves the estimated pitch — turning 24 data
+    rows into ~48.
+
+    What tells it apart from a genuine row rule is not its strip span but its
+    left extent: a genuine row rule reaches the table's left border, an interior
+    sub-divider begins partway across. This models a sub-divider wide enough
+    (0.30 of the table width to its right edge) to pass the span filter, and
+    asserts the row count is not doubled.
+    """
+    page = split_spread(
+        make_register_spread(rows=24, cols_left=5, subdivider_start_frac=0.30)
+    ).left
+    grid = detect_grid(page)
+    assert grid.rows == 25
+
+
 def test_cells_are_ordered_top_to_bottom_left_to_right():
     grid = detect_grid(_left_page())
     first = grid.cell(0, 0)
