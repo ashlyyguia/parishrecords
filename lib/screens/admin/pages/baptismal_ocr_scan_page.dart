@@ -333,15 +333,20 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     // content sits in an Expanded so the preview scroll view and the review
     // table keep the bounded height they need.
     final colorScheme = Theme.of(context).colorScheme;
+    // The forms (pick / preview / processing) are centred and capped at 800px
+    // like /admin/ocr/upload. The review step is the wide OCR result table, so
+    // it gets the FULL width it needs for all its columns rather than being
+    // squeezed into the 800px form column.
+    final isReview = _step == _Step.review;
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: Column(
-              children: [
-                const Padding(
+        child: Column(
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: const Padding(
                   padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
                   child: PageHeader(
                     icon: Icons.document_scanner_outlined,
@@ -349,18 +354,25 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
                     subtitle: 'Scan a register spread, review the rows, then save.',
                   ),
                 ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: switch (_step) {
-                    _Step.pick => _pickStep(),
-                    _Step.preview => _previewStep(),
-                    _Step.processing => _processingStep(),
-                    _Step.review => _reviewStep(),
-                  },
-                ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: isReview
+                  ? _reviewStep()
+                  : Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 800),
+                        child: switch (_step) {
+                          _Step.pick => _pickStep(),
+                          _Step.preview => _previewStep(),
+                          _Step.processing => _processingStep(),
+                          _Step.review => _reviewStep(),
+                        },
+                      ),
+                    ),
+            ),
+          ],
         ),
       ),
     );
