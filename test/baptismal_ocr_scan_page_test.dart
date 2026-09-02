@@ -174,6 +174,13 @@ void main() {
     expect(find.text('Scan / Process OCR'), findsNothing);
   });
 
+  testWidgets('shows the capture checklist on the upload step', (tester) async {
+    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('capture-guide')), findsOneWidget);
+    expect(find.textContaining('flat'), findsWidgets); // "lay the book flat"
+  });
+
   testWidgets('shows a preview and the scan action after picking', (
     tester,
   ) async {

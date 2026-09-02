@@ -334,6 +334,43 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     );
   }
 
+  Widget _captureGuide() {
+    const tips = <(IconData, String)>[
+      (Icons.menu_book_outlined,
+          'Lay the book flat and press the spine down — the top cause of an unreadable page.'),
+      (Icons.crop_free, 'Fit both pages fully in the frame, straight-on.'),
+      (Icons.wb_sunny_outlined, 'Even lighting — no glare or shadow across the page.'),
+      (Icons.zoom_in, "Fill the frame with the register; don't shoot from far away."),
+    ];
+    return Card(
+      key: const ValueKey('capture-guide'),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('For a readable scan',
+                style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            for (final (icon, text) in tips)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(icon, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(text)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _pickStep() {
     return Center(
       child: Column(
@@ -343,6 +380,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
           const SizedBox(height: 12),
           const Text('Upload or capture a register page'),
           const SizedBox(height: 16),
+          _captureGuide(),
           FilledButton.icon(
             key: const ValueKey('pick-image'),
             onPressed: _pick,
@@ -381,7 +419,13 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (failure != null) _errorBanner(failure),
+          // Only when a scan failed: the guide is retake advice, and keeping it
+          // off the normal preview avoids pushing the scan action off small
+          // screens.
+          if (failure != null) ...[
+            _captureGuide(),
+            _errorBanner(failure),
+          ],
           if (_bytes != null)
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 360),
