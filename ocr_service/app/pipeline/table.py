@@ -975,6 +975,8 @@ def detect_grid(
     page_bgr: np.ndarray,
     column_template: ColumnTemplate | None = None,
     data_row_count: int | None = None,
+    gutter_x: float | None = None,
+    gutter_side: str | None = None,
 ) -> GridResult:
     """Recover the table from its printed rules.
 
@@ -1005,7 +1007,8 @@ def detect_grid(
     if column_template is None:
         xs = _detect_column_boundaries(binary, w, h, clustered_rows, min_row_span)
     else:
-        fit = _fit_columns(binary, w, clustered_rows, min_row_span, column_template)
+        fit = _fit_columns(binary, w, clustered_rows, min_row_span, column_template,
+                           gutter_x=gutter_x, gutter_side=gutter_side)
         xs = list(fit.boundaries) if fit is not None else []
 
     if len(xs) < MIN_COLS + 1 or len(ys) < 2:
@@ -1079,12 +1082,14 @@ def _fit_columns(
     clustered_rows: list[tuple[int, int, int, int]],
     min_row_span: int,
     template: ColumnTemplate,
+    gutter_x: float | None = None,
+    gutter_side: str | None = None,
 ) -> ColumnFit | None:
     extent = _table_x_extent(clustered_rows, w, min_row_span)
     if extent is None:
         return None
     rules = _cluster_column_segments(_column_band_segments(binary))
-    return fit_column_template(template, rules, extent, w)
+    return fit_column_template(template, rules, extent, w, gutter_x, gutter_side)
 
 
 @dataclass(frozen=True)
@@ -1214,10 +1219,20 @@ def detect_spread_grids(
         "right": None if spread_template is None else spread_template.right,
     }
     row_count = None if spread_template is None else spread_template.data_row_count
+    # Each page was cropped at the gutter (the spine), so the gutter is the
+    # page's inner edge: the right edge of the left page, the left edge of the
+    # right page. It is a known table border used to anchor the spine-side
+    # column boundary when that printed rule has faded (see fit_column_template).
+    gutters = {
+        "left": (left_page_bgr.shape[1] - 1, "right"),
+        "right": (0, "left"),
+    }
     grids: dict[str, GridResult] = {}
     for side, page in (("left", left_page_bgr), ("right", right_page_bgr)):
         try:
-            grids[side] = detect_grid(page, templates[side], data_row_count=row_count)
+            gx, gside = gutters[side]
+            grids[side] = detect_grid(page, templates[side], data_row_count=row_count,
+                                      gutter_x=gx, gutter_side=gside)
         except OcrError:
             _refuse(f"The {side} page's ruled grid could not be found at all.")
     left, right = grids["left"], grids["right"]

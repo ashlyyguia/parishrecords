@@ -41,6 +41,7 @@ def _draw_table(
     right_fraction: float = TABLE_RIGHT_FRACTION,
     rows: int = 20,
     sub_divided: tuple[int, ...] = (),
+    omit_boundary: int | None = None,
 ) -> tuple[np.ndarray, list[int]]:
     """Draw a ruled table with ``template``'s proportions, and return the page
     together with the true boundary positions.
@@ -49,6 +50,10 @@ def _draw_table(
     habit, and the reason a rule-counting detector cannot recover this layout.
     Everything outside the table is drawn as background, so the crop is not
     the table.
+
+    ``omit_boundary`` skips drawing the vertical rule at that boundary index,
+    modelling a column rule that faded out of the photograph (e.g. the
+    spine-side border on a bound book).
     """
     page = np.full((height, width, 3), 250, np.uint8)
     # Something beyond the paper's edge, as a photograph would have.
@@ -62,7 +67,9 @@ def _draw_table(
     ink = (140, 60, 40)
 
     truth = [x_lo + int(round(f * table_width)) for f in template.boundaries]
-    for x in truth:
+    for index, x in enumerate(truth):
+        if index == omit_boundary:
+            continue  # this column rule faded out of the photograph
         cv2.line(page, (x, top), (x, bottom), ink, 2)
     for index in sub_divided:
         middle = (truth[index] + truth[index + 1]) // 2
@@ -261,6 +268,26 @@ class TestGutterAnchoredFit:
                                   self.EXTENT, self.PAGE_WIDTH,
                                   gutter_x=1120, gutter_side="right")
         assert abs(fit.corroboration - 5 / 6) < 1e-9
+
+    def test_the_gutter_recovers_the_faded_spine_boundary_through_detect_grid(self):
+        # Left page drawn with its table close to the crop's inner (spine) edge,
+        # then its spine-side column rule erased -- the IMG_3118 situation.
+        # Passing the page's gutter through detect_grid must recover that
+        # boundary's corroboration, proving the gutter is threaded all the way
+        # from detect_grid into the column fit. (The real floor-crossing is
+        # validated on IMG_3118 itself; a clean synthetic fit needs too many
+        # rules removed to drop below the floor without also destabilising the
+        # fit.)
+        page, _ = _draw_table(BAPTISMAL_LEFT, right_fraction=0.97,
+                              omit_boundary=5)
+        w = page.shape[1]
+        without = detect_grid(page, BAPTISMAL_LEFT).column_corroboration
+        with_gutter = detect_grid(
+            page, BAPTISMAL_LEFT, gutter_x=w - 1, gutter_side="right"
+        ).column_corroboration
+        assert without < 1.0            # the faded spine boundary is uncorroborated
+        assert with_gutter == 1.0       # the gutter recovers it
+        assert with_gutter > without
 
 
 def test_register_declares_its_fixed_row_count():
