@@ -111,6 +111,9 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
       widget.ocrService ?? BaptismalOcrService();
 
   _Step _step = _Step.pick;
+  // Sacrament chooser on the pick step (mirrors /admin/ocr/upload). Only
+  // 'baptism' scans today; 'marriage' is shown but paused (coming soon).
+  String _sacrament = 'baptism';
   Uint8List? _bytes;
   String _scanId = '';
   String? _imagePath;
@@ -400,21 +403,116 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     );
   }
 
-  Widget _pickStep() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+  Widget _sacramentChooser() {
+    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    // Same options as /admin/ocr/upload; marriage is shown but paused.
+    const options = <(String, String, IconData, Color)>[
+      ('baptism', 'Baptism', Icons.water_drop_outlined, Colors.blue),
+      ('marriage', 'Marriage (coming soon)', Icons.favorite_outline, Colors.pink),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Sacrament Type',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: scheme.onSurface.withValues(alpha: 0.8),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButtonFormField<String>(
+              key: const ValueKey('sacrament-type'),
+              initialValue: _sacrament,
+              isExpanded: true,
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.category, color: scheme.primary),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              items: options
+                  .map((o) => DropdownMenuItem(
+                        value: o.$1,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(o.$3, color: o.$4, size: 20),
+                            const SizedBox(width: 12),
+                            Flexible(
+                              child: Text(o.$2, overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                        ),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => _sacrament = v ?? 'baptism'),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _marriagePausedNotice() {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('marriage-paused'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
         children: [
-          const Icon(Icons.document_scanner_outlined, size: 64),
-          const SizedBox(height: 12),
-          const Text('Upload or capture a register page'),
-          const SizedBox(height: 16),
-          _captureGuide(),
-          FilledButton.icon(
-            key: const ValueKey('pick-image'),
-            onPressed: _pick,
-            icon: const Icon(Icons.add_photo_alternate_outlined),
-            label: const Text('Choose image'),
+          Icon(Icons.info_outline, color: scheme.primary),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Marriage scanning is coming soon. For now, choose Baptism to '
+              'scan a register spread.',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pickStep() {
+    final isMarriage = _sacrament == 'marriage';
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _sacramentChooser(),
+                  const SizedBox(height: 20),
+                  if (isMarriage)
+                    _marriagePausedNotice()
+                  else ...[
+                    _captureGuide(),
+                    FilledButton.icon(
+                      key: const ValueKey('pick-image'),
+                      onPressed: _pick,
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text('Choose image'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ],
       ),

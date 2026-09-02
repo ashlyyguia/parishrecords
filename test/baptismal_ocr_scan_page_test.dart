@@ -166,12 +166,27 @@ BaptismalOcrService serviceReturning(int status, Object body) =>
     );
 
 void main() {
-  testWidgets('starts on the upload step', (tester) async {
+  testWidgets('starts on the upload step with a sacrament chooser', (tester) async {
     await tester.pumpWidget(
       harness(service: serviceReturning(200, _scanBody())),
     );
-    expect(find.text('Upload or capture a register page'), findsOneWidget);
+    // The pick step now carries the /admin/ocr/upload-style sacrament chooser,
+    // defaulting to Baptism, plus the image picker; not yet the scan action.
+    expect(find.byKey(const ValueKey('sacrament-type')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pick-image')), findsOneWidget);
     expect(find.text('Scan / Process OCR'), findsNothing);
+  });
+
+  testWidgets('choosing Marriage shows the coming-soon notice and hides the picker',
+      (tester) async {
+    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sacrament-type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Marriage (coming soon)').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('marriage-paused')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pick-image')), findsNothing);
   });
 
   testWidgets('shows the capture checklist on the upload step', (tester) async {
@@ -518,7 +533,8 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('pick-image')));
     await tester.pumpAndSettle();
-    expect(find.text('Upload or capture a register page'), findsOneWidget);
+    // Still on the pick step (the sacrament chooser marks it), no preview image.
+    expect(find.byKey(const ValueKey('sacrament-type')), findsOneWidget);
     expect(find.byType(Image), findsNothing);
   });
 
