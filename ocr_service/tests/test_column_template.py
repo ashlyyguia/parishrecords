@@ -23,6 +23,7 @@ from app.pipeline.table import (
     detect_column_rule_positions,
     detect_grid,
     detect_spread_grids,
+    fit_column_template,
 )
 
 # A table drawn at these fractions of the page crop. Deliberately not centred
@@ -221,6 +222,45 @@ class TestTheGateChecksTheFit:
                                 spread_template=BAPTISMAL_REGISTER)
         message = excinfo.value.message.lower()
         assert "retry" in message and "manually" in message, excinfo.value.message
+
+
+class TestGutterAnchoredFit:
+    # Left page: 6 boundaries at fractions (0, .066, .311, .607, .689, 1.0) of a
+    # table with extent (100, 1100) -> width 1000, so the true boundary xs are
+    # 100, 166, 411, 707, 789, 1100. The spine (gutter) side of the LEFT page is
+    # the RIGHT/high-x side, i.e. the last boundary (x=1100).
+    EXTENT = (100, 1100)
+    PAGE_WIDTH = 1300
+    RULES_NO_SPINE = [100, 166, 411, 707, 789]  # every boundary EXCEPT x=1100
+
+    def test_without_gutter_the_missing_spine_rule_costs_a_boundary(self):
+        fit = fit_column_template(BAPTISMAL_LEFT, self.RULES_NO_SPINE,
+                                  self.EXTENT, self.PAGE_WIDTH)
+        assert abs(fit.corroboration - 5 / 6) < 1e-9
+
+    def test_gutter_corroborates_the_spine_boundary_when_its_rule_faded(self):
+        # Gutter 20px past the spine boundary (2% of width) -> within tolerance.
+        fit = fit_column_template(BAPTISMAL_LEFT, self.RULES_NO_SPINE,
+                                  self.EXTENT, self.PAGE_WIDTH,
+                                  gutter_x=1120, gutter_side="right")
+        assert abs(fit.corroboration - 1.0) < 1e-9
+
+    def test_a_gutter_far_from_the_spine_boundary_gives_no_credit(self):
+        # Gutter 200px from the spine boundary (20% of width) -> no credit; a
+        # mis-placed spine boundary is not rescued.
+        fit = fit_column_template(BAPTISMAL_LEFT, self.RULES_NO_SPINE,
+                                  self.EXTENT, self.PAGE_WIDTH,
+                                  gutter_x=1300, gutter_side="right")
+        assert abs(fit.corroboration - 5 / 6) < 1e-9
+
+    def test_gutter_only_credits_the_spine_side_not_the_far_boundary(self):
+        # Rules on every boundary EXCEPT the far (non-gutter, x=100) one; a gutter
+        # on the spine side must NOT corroborate the missing far boundary.
+        rules_no_far = [166, 411, 707, 789, 1100]
+        fit = fit_column_template(BAPTISMAL_LEFT, rules_no_far,
+                                  self.EXTENT, self.PAGE_WIDTH,
+                                  gutter_x=1120, gutter_side="right")
+        assert abs(fit.corroboration - 5 / 6) < 1e-9
 
 
 def test_register_declares_its_fixed_row_count():

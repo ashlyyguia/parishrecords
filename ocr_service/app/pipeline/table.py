@@ -678,6 +678,15 @@ TEMPLATE_CORROBORATION_TOLERANCE = 0.025
 # would be named confidently and cut in the wrong places.
 TEMPLATE_CORROBORATION_FLOOR = 0.60
 
+# How near the gutter the spine-side outer boundary must land to count as
+# corroborated by it, as a fraction of the fitted table width. Larger than
+# TEMPLATE_CORROBORATION_TOLERANCE because the gutter is not a rule the boundary
+# sits ON but a border it sits NEAR -- the page's inner white margin lies
+# between the last printed rule and the spine. Measured across the sample
+# spreads, that margin runs 2-6% of the table width; 0.05 covers the genuine
+# margin while still rejecting a spine boundary placed well off the gutter.
+GUTTER_CORROBORATION_TOLERANCE = 0.05
+
 
 @dataclass(frozen=True)
 class ColumnFit:
@@ -815,6 +824,8 @@ def fit_column_template(
     rule_xs: list[int],
     extent: tuple[int, int],
     page_width: int,
+    gutter_x: float | None = None,
+    gutter_side: str | None = None,
 ) -> ColumnFit | None:
     """Place a declared column ruling onto this page by scale and offset.
 
@@ -860,21 +871,36 @@ def fit_column_template(
 
     # boundaries[i, j, b] = los[i] + widths[i, j] * fractions[b]
     boundaries = los[:, None, None] + widths[:, :, None] * fractions[None, None, :]
-    tolerance = TEMPLATE_CORROBORATION_TOLERANCE * widths
+    tol = TEMPLATE_CORROBORATION_TOLERANCE * widths          # [i, j] rule tolerance
 
+    # Graded credit per boundary: 1.0 dead-on a detected rule, tapering to 0 at
+    # the tolerance -- the same scoring the fit has always used.
     if rules.size:
-        distance = np.abs(boundaries[..., None] - rules).min(axis=-1)
-        score = np.maximum(0.0, 1.0 - distance / tolerance[:, :, None]).sum(axis=-1)
+        rule_dist = np.abs(boundaries[..., None] - rules).min(axis=-1)   # [i, j, b]
+        credit = np.maximum(0.0, 1.0 - rule_dist / tol[:, :, None])
+        matched = rule_dist <= tol[:, :, None]
     else:
-        distance = np.full(boundaries.shape, np.inf)
-        score = np.zeros(widths.shape)
+        credit = np.zeros(boundaries.shape)
+        matched = np.zeros(boundaries.shape, dtype=bool)
 
-    score = np.where(allowed, score, -1.0)
+    # The spine-side outer boundary is also credited for sitting on the gutter --
+    # the book's spine, a known table border -- so a rule that faded there does
+    # not sink the fit. Its own, looser tolerance covers the page's inner margin
+    # between the last rule and the spine. Only this one boundary is affected.
+    if gutter_x is not None and gutter_side in ("left", "right"):
+        sb = 0 if gutter_side == "left" else boundaries.shape[-1] - 1
+        gtol = GUTTER_CORROBORATION_TOLERANCE * widths                  # [i, j]
+        gdist = np.abs(boundaries[..., sb] - float(gutter_x))           # [i, j]
+        gcredit = np.maximum(0.0, 1.0 - gdist / gtol)
+        credit[..., sb] = np.maximum(credit[..., sb], gcredit)
+        matched[..., sb] = matched[..., sb] | (gdist <= gtol)
+
+    score = np.where(allowed, credit.sum(axis=-1), -1.0)
     i, j = np.unravel_index(int(np.argmax(score)), score.shape)
 
     x_lo, x_hi = float(los[i]), float(los[i] + widths[i, j])
     fitted = boundaries[i, j]
-    corroborated = int((distance[i, j] <= tolerance[i, j]).sum()) if rules.size else 0
+    corroborated = int(matched[i, j].sum())
 
     return ColumnFit(
         template=template,
