@@ -513,6 +513,7 @@ def _detect_row_boundaries(
     w: int,
     h: int,
     clustered: list[tuple[int, int, int, int]] | None = None,
+    data_row_count: int | None = None,
 ) -> list[int]:
     """The full set of row-boundary y-positions: header band top, then the
     fitted grid of data-row boundaries, extended to cover this page's own
@@ -551,6 +552,15 @@ def _detect_row_boundaries(
     if fit is None:
         return header_candidates
     a, b, c, ks = fit
+
+    if data_row_count is not None:
+        # Declared ruling: lay exactly data_row_count rows on the fitted pitch,
+        # but only when the detected run is a trustworthy anchor. Otherwise fall
+        # back so the spread gate refuses rather than extrapolate from noise.
+        if (len(ks) < ROW_ANCHOR_MIN_RUN
+                or (max(ks) - min(ks)) < ROW_ANCHOR_MIN_SPAN_FRACTION * data_row_count):
+            return header_candidates
+        return _lay_declared_rows(a, b, c, ks, header_top, data_row_count, h)
 
     k_min = min(ks)
     k_max = _extend_row_curve(a, b, c, max(ks), [y for y, _, _, _ in clustered])
@@ -936,7 +946,9 @@ def detect_row_rule_segments(
 
 
 def detect_grid(
-    page_bgr: np.ndarray, column_template: ColumnTemplate | None = None
+    page_bgr: np.ndarray,
+    column_template: ColumnTemplate | None = None,
+    data_row_count: int | None = None,
 ) -> GridResult:
     """Recover the table from its printed rules.
 
@@ -961,7 +973,7 @@ def detect_grid(
     # Rows: see _detect_row_boundaries — a page-bow-tolerant, piecewise
     # detector that fits an evenly-spaced grid to whichever row candidates
     # agree with each other, rather than trusting a single full-width pass.
-    ys = _detect_row_boundaries(binary, w, h, clustered_rows)
+    ys = _detect_row_boundaries(binary, w, h, clustered_rows, data_row_count=data_row_count)
 
     fit: ColumnFit | None = None
     if column_template is None:
@@ -1175,10 +1187,11 @@ def detect_spread_grids(
         "left": None if spread_template is None else spread_template.left,
         "right": None if spread_template is None else spread_template.right,
     }
+    row_count = None if spread_template is None else spread_template.data_row_count
     grids: dict[str, GridResult] = {}
     for side, page in (("left", left_page_bgr), ("right", right_page_bgr)):
         try:
-            grids[side] = detect_grid(page, templates[side])
+            grids[side] = detect_grid(page, templates[side], data_row_count=row_count)
         except OcrError:
             _refuse(f"The {side} page's ruled grid could not be found at all.")
     left, right = grids["left"], grids["right"]

@@ -101,6 +101,34 @@ def test_lay_declared_rows_drops_rows_that_fall_off_the_page():
     assert ys == sorted(ys)
 
 
+def test_declared_count_recovers_faded_lower_rows():
+    # Lower-half row rules erased from the image (as on IMG_3121's right page),
+    # handwriting kept. Detection alone under-counts; the declared count lays
+    # the full ruling on the pitch fitted from the surviving upper rules.
+    page = split_spread(
+        make_register_spread(rows=24, cols_left=5, erase_row_rules_below_frac=0.55)
+    ).left
+    grid = detect_grid(page, BAPTISMAL_LEFT, data_row_count=24)
+    assert grid.rows == 25  # header band + 24 data rows
+
+
+def test_declared_count_refuses_when_the_anchor_is_too_weak():
+    # Almost all row rules erased -> too short a run to trust extrapolation.
+    # The detector must fall back (yielding too few boundaries) so detect_grid
+    # refuses rather than stamping 24 rows onto noise.
+    page = split_spread(
+        make_register_spread(rows=24, cols_left=5, erase_row_rules_below_frac=0.10)
+    ).left
+    with pytest.raises(OcrError):
+        detect_grid(page, BAPTISMAL_LEFT, data_row_count=24)
+
+
+def test_declared_count_is_opt_in_detection_path_unchanged():
+    # With no declared count the fully-ruled page detects exactly as before.
+    grid = detect_grid(_left_page())
+    assert grid.rows == 25
+
+
 def test_detects_five_columns_on_the_left_page():
     grid = detect_grid(_left_page())
     assert grid.cols == 5

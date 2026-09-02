@@ -179,6 +179,9 @@ class TestFittingTheTemplate:
 
 class TestTheGateChecksTheFit:
     def _spread(self, **kwargs):
+        # The register template now declares 24 data rows, so draw the pages
+        # with that many to keep the physical ruling matched to the declaration.
+        kwargs.setdefault("rows", 24)
         left, _ = _draw_table(BAPTISMAL_LEFT, **kwargs)
         right, _ = _draw_table(BAPTISMAL_RIGHT, **kwargs)
         return left, right
