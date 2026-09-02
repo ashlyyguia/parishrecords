@@ -38,11 +38,16 @@ class BaptismalOcrFailure implements Exception {
     required this.code,
     required this.message,
     required this.recovery,
+    this.detail,
   });
 
   final String code;
   final String message;
   final OcrRecovery recovery;
+
+  /// Optional capture-guidance text for a refused spread (which page / what to
+  /// fix). Populated from the server's `detail` field when present.
+  final String? detail;
 
   /// True only when retrying with the same image bytes may succeed.
   /// Derived from [recovery]; kept for existing callers that only need a
@@ -188,6 +193,7 @@ class BaptismalOcrService {
       throw _failure(
         decoded['code']?.toString() ?? _codeForStatus(res.statusCode),
         decoded['message']?.toString() ?? decoded['error']?.toString(),
+        decoded['detail']?.toString(),
       );
     }
 
@@ -208,11 +214,12 @@ class BaptismalOcrService {
     }
   }
 
-  BaptismalOcrFailure _failure(String code, String? serverMessage) {
+  BaptismalOcrFailure _failure(String code, String? serverMessage, [String? detail]) {
     return BaptismalOcrFailure(
       code: code,
       message: serverMessage ?? _fallbackMessages[code] ?? 'OCR failed. Please retry.',
       recovery: _recoveryByCode[code] ?? OcrRecovery.retry,
+      detail: detail,
     );
   }
 }

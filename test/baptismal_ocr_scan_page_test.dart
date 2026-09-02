@@ -181,6 +181,22 @@ void main() {
     expect(find.textContaining('flat'), findsWidgets); // "lay the book flat"
   });
 
+  testWidgets('shows the capture-guidance detail when a scan is refused',
+      (tester) async {
+    final svc = serviceReturning(422, {
+      'success': false,
+      'code': 'SPREAD_UNREADABLE',
+      'message': 'Could not read this register spread reliably.',
+      'detail': "The left page's column lines were too faint to read.",
+    });
+    await tester.pumpWidget(harness(service: svc));
+    await tester.tap(find.byKey(const ValueKey('pick-image')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Scan / Process OCR'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('too faint to read'), findsOneWidget);
+  });
+
   testWidgets('shows a preview and the scan action after picking', (
     tester,
   ) async {

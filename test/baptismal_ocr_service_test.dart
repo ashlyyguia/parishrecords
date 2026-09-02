@@ -156,6 +156,22 @@ void main() {
       await expectDifferentImage('SPREAD_UNREADABLE');
     });
 
+    test('parses the capture-guidance detail from a refusal', () async {
+      final svc = serviceReturning(422, {
+        'success': false,
+        'code': 'SPREAD_UNREADABLE',
+        'message': 'Could not read this register spread reliably.',
+        'detail': "The left page's column lines were too faint to read.",
+      });
+      await expectLater(
+        svc.scan(scanId: 's1', bytes: bytes, idToken: 't'),
+        throwsA(isA<BaptismalOcrFailure>()
+            .having((f) => f.code, 'code', 'SPREAD_UNREADABLE')
+            .having((f) => f.detail, 'detail',
+                "The left page's column lines were too faint to read.")),
+      );
+    });
+
     test('signIn category: UNAUTHENTICATED', () async {
       final svc = serviceReturning(200, {'success': true, 'data': {}});
       await expectLater(

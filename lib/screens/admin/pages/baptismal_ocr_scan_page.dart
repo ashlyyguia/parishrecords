@@ -487,6 +487,10 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
               ),
             ],
           ),
+          if (failure.detail != null) ...[
+            const SizedBox(height: 8),
+            Text(failure.detail!, style: TextStyle(color: scheme.onErrorContainer)),
+          ],
           if (hint != null) ...[
             const SizedBox(height: 8),
             Text(hint, style: TextStyle(color: scheme.onErrorContainer)),
