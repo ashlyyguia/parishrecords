@@ -1,5 +1,33 @@
 # Marriage register: CV grid template (Sub-project 1 of 3)
 
+## Status: BLOCKED on high-resolution samples (2026-09-02)
+
+Design approved; implementation **not started** — blocked on input data, not on
+the design. A feasibility study on the six sample images in
+`attachments/marriage/` (all ~1152px/page, ~400KB) proved they cannot be gridded
+reliably, and no amount of tuning fixes it:
+
+- Orientation (auto-rotate) and spread-splitting work; row/column detection does
+  not.
+- Native resolution: only ~3 rows detected; no table extent.
+- Upscaled 2-2.6×: erratic — 15-22 rows on some pages, 1-4 on others; the two
+  pages of a spread never agree on row count.
+- Column-fraction measurement across samples: no stable 7-boundary (left) /
+  5-boundary (right) pattern — 4/6/7/10 boundaries detected on different samples.
+- Parameter sweep (upscale 2200/2600px × adaptiveThreshold block 25/41/61):
+  **left/right row counts agreed on 0 of 6 samples** in every configuration; the
+  spread safety gate would refuse all of them.
+
+Conclusion: the limitation is input resolution/detail (the same physics as a
+faded page, across the whole image), not the algorithm or the template. Upscaling
+degraded images cannot add the detail the detector needs.
+
+**To unblock:** drop higher-resolution marriage scans (~2000-2200px/page,
+baptismal-like quality) into `attachments/marriage/`. Then measure a stable
+`MARRIAGE_REGISTER` template, write the implementation plan, and build to the
+validation gate below. Everything downstream of this section is the design for
+that build and remains valid.
+
 ## Context
 
 Marriage scanning mirrors baptismal (Add Record (OCR) → scan → CV grid → OCR →
