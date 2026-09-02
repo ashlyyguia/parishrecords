@@ -56,12 +56,33 @@ Returns `{"status": "ok"}`.
 
 ## Run locally
 
+> **This service must be running whenever you scan.** The backend is CV-first:
+> if it can't reach this service it silently falls back to word-clustering,
+> which mangles rotated / two-page / angled register photos. Start it alongside
+> the backend, in its own window.
+
+First-time setup:
+
 ```bash
 cd ocr_service
 python -m venv .venv310            # Python 3.10
 .venv310/Scripts/python -m pip install -r requirements.txt   # Windows
 # .venv310/bin/pip install -r requirements.txt               # POSIX
-OCR_SERVICE_KEY=devkey .venv310/Scripts/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Then, every time you run the backend, start this too:
+
+```bash
+# From anywhere in the repo. Defaults: port 8000, key dev-key (matches backend/.env).
+ocr_service/scripts/start-ocr-service.sh          # Git Bash / POSIX
+```
+
+On Windows you can also just double-click `ocr_service/scripts/start-ocr-service.bat`.
+
+Override the port/key with env vars:
+
+```bash
+OCR_SERVICE_KEY=devkey PORT=8000 ocr_service/scripts/start-ocr-service.sh
 ```
 
 Then point the backend at it in `backend/.env`:
