@@ -431,6 +431,38 @@ describe('CV grid path', () => {
     expect(JSON.stringify(res.body)).not.toContain('no_table_detected');
   });
 
+  test('a CV refusal surfaces a capture-guidance detail for the failing page', async () => {
+    const { CvGridError } = require('../services/cv_grid_client');
+    const err = new CvGridError('CV_REFUSED', 'no_table_detected');
+    err.reason = 'columns_unmatched';
+    err.side = 'left';
+    const app = express();
+    app.use('/api/ocr/baptismal', createBaptismalOcrRouter({
+      verifyToken: (req, _res, next) => { req.user = { uid: 'u', role: 'admin' }; next(); },
+      fetchGrid: async () => { throw err; },
+    }));
+    const res = await request(app).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(JPEG) });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe('SPREAD_UNREADABLE');
+    expect(res.body.detail).toMatch(/left page/i);
+    expect(JSON.stringify(res.body)).not.toContain('no_table_detected');
+  });
+
+  test('a CV refusal with no known reason has no detail', async () => {
+    const { CvGridError } = require('../services/cv_grid_client');
+    const err = new CvGridError('CV_REFUSED', 'no_table_detected'); // no reason/side
+    const app = express();
+    app.use('/api/ocr/baptismal', createBaptismalOcrRouter({
+      verifyToken: (req, _res, next) => { req.user = { uid: 'u', role: 'admin' }; next(); },
+      fetchGrid: async () => { throw err; },
+    }));
+    const res = await request(app).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(JPEG) });
+    expect(res.status).toBe(422);
+    expect(res.body.detail).toBeUndefined();
+  });
+
   test('a CV auth/config fault (CV_AUTH) falls back to word-clustering rather than telling the user to retake', async () => {
     // A bad service key is a SERVER misconfiguration, not a verdict on the
     // photo. Showing "retake the photo" would be false and unactionable;

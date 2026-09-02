@@ -45,6 +45,14 @@ test('CV_AUTH (not CV_REFUSED) when the service rejects the key', async () => {
     .rejects.toMatchObject({ code: 'CV_AUTH' });
 });
 
+test('CV_REFUSED carries the reason and side from the service', async () => {
+  const fetchImpl = async () => ({ ok: false, status: 422, json: async () => ({
+    success: false, code: 'no_table_detected', reason: 'columns_unmatched', side: 'left',
+  }) });
+  await expect(fetchGrid(Buffer.from('img'), { env, fetchImpl }))
+    .rejects.toMatchObject({ code: 'CV_REFUSED', reason: 'columns_unmatched', side: 'left' });
+});
+
 test('CV_BAD_RESPONSE on malformed success body', async () => {
   const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ success: true }) });
   await expect(fetchGrid(Buffer.from('img'), { env, fetchImpl }))

@@ -49,6 +49,29 @@ const MESSAGE_BY_CODE = {
   INTERNAL_ERROR: 'Something went wrong while processing this scan. Try again, and contact an administrator if it persists.',
 };
 
+// Curated, capture-oriented guidance for a refused spread. The CV service
+// emits only a structural reason/side (never cell text); the backend owns the
+// wording. Returns null for an unknown/missing reason (fall back to the
+// generic SPREAD_UNREADABLE message alone).
+function refusalDetail(reason, side) {
+  const where = side === 'left' ? 'left' : side === 'right' ? 'right' : null;
+  switch (reason) {
+    case 'grid_not_found':
+      return where
+        ? `The ${where} page's ruled lines couldn't be found — lay the book flat, fill the frame with the page, and retake.`
+        : "The register's ruled lines couldn't be found — lay the book flat, fill the frame, and retake.";
+    case 'columns_unmatched':
+      return where
+        ? `The ${where} page's column lines were too faint or curved to read — press the book flat near the spine and retake.`
+        : 'The column lines were too faint or curved to read — press the book flat near the spine and retake.';
+    case 'rows_disagree':
+    case 'pitch_mismatch':
+      return "The two pages didn't line up — flatten the book so both pages sit in the same plane, keep both fully in frame, and retake.";
+    default:
+      return null;
+  }
+}
+
 // Logged once per process (not per request) so a broken sharp install
 // doesn't flood the logs while the decodability gate silently degrades.
 let sharpUnavailableWarnedInRoute = false;
@@ -241,6 +264,7 @@ function createBaptismalOcrRouter(deps = {}) {
           if (cvErr && cvErr.code === 'CV_REFUSED') {
             const unreadable = new Error('cv refused spread');
             unreadable.code = 'SPREAD_UNREADABLE';
+            unreadable.detail = refusalDetail(cvErr.reason, cvErr.side);
             throw unreadable;
           }
           // Any other CV failure -> today's single-OCR word-clustering path. An
@@ -294,7 +318,7 @@ function createBaptismalOcrRouter(deps = {}) {
         // INTERNAL_ERROR/500 instead. Never include e.message in the
         // response body (no-leak property).
         const code = e && STATUS_BY_CODE[e.code] ? e.code : 'INTERNAL_ERROR';
-        return fail(res, code, scanId);
+        return fail(res, code, scanId, e && e.detail);
       }
     },
   );
@@ -302,13 +326,15 @@ function createBaptismalOcrRouter(deps = {}) {
   return router;
 }
 
-function fail(res, code, scanId) {
+function fail(res, code, scanId, detail) {
   console.warn(`[baptismal-ocr] scan=${sanitizeScanIdForLog(scanId)} failed code=${code}`);
-  return res.status(STATUS_BY_CODE[code] || 500).json({
+  const body = {
     success: false,
     code,
     message: MESSAGE_BY_CODE[code] || 'OCR failed.',
-  });
+  };
+  if (detail) body.detail = detail;
+  return res.status(STATUS_BY_CODE[code] || 500).json(body);
 }
 
 module.exports = { createBaptismalOcrRouter, router: createBaptismalOcrRouter() };

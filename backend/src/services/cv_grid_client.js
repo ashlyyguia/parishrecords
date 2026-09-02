@@ -5,9 +5,13 @@
  */
 
 class CvGridError extends Error {
-  constructor(code, message) {
+  constructor(code, message, reason = null, side = null) {
     super(message || code);
     this.code = code;
+    // Structural refusal detail from the CV service (which check failed, which
+    // page) -- never cell text. Used by the route to show retake guidance.
+    this.reason = reason;
+    this.side = side;
   }
 }
 
@@ -76,7 +80,12 @@ async function fetchGrid(imageBuffer, { env = process.env, fetchImpl = fetch } =
     //    since that would produce exactly the mangled rows the refusal
     //    exists to prevent.
     const serviceCode = body && body.code;
-    throw new CvGridError(serviceCode === 'unauthorized' ? 'CV_AUTH' : 'CV_REFUSED', serviceCode);
+    if (serviceCode === 'unauthorized') {
+      throw new CvGridError('CV_AUTH', serviceCode);
+    }
+    throw new CvGridError('CV_REFUSED', serviceCode,
+      body && body.reason ? String(body.reason) : null,
+      body && body.side ? String(body.side) : null);
   }
   if (!body.pages || !body.pages.left || !body.pages.right) {
     throw new CvGridError('CV_BAD_RESPONSE', 'missing pages');
