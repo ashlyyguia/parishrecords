@@ -14,6 +14,7 @@ import '../../../services/baptismal_row_validation.dart';
 import '../../../services/ocr_image_pick.dart';
 import '../../../utils/manual_register_notes.dart';
 import '../../../widgets/baptismal_ocr_review_table.dart';
+import '../../../widgets/page_header.dart';
 
 enum _Step { pick, preview, processing, review }
 
@@ -323,14 +324,42 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Same shell as /admin/ocr/upload (StaffOcrUploadPage): the surface
+    // background, a centred max-800 column, and a PageHeader instead of an
+    // AppBar (the admin ShellRoute already provides navigation). The step
+    // content sits in an Expanded so the preview scroll view and the review
+    // table keep the bounded height they need.
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Baptismal Records (OCR)')),
-      body: switch (_step) {
-        _Step.pick => _pickStep(),
-        _Step.preview => _previewStep(),
-        _Step.processing => _processingStep(),
-        _Step.review => _reviewStep(),
-      },
+      backgroundColor: colorScheme.surface,
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: PageHeader(
+                    icon: Icons.document_scanner_outlined,
+                    title: 'Add Baptismal Records (OCR)',
+                    subtitle: 'Scan a register spread, review the rows, then save.',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: switch (_step) {
+                    _Step.pick => _pickStep(),
+                    _Step.preview => _previewStep(),
+                    _Step.processing => _processingStep(),
+                    _Step.review => _reviewStep(),
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
