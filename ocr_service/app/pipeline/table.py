@@ -1112,13 +1112,14 @@ class SpreadGrids:
     right_corroboration: float | None = None
 
 
-def _refuse(detail: str) -> NoReturn:
+def _refuse(detail: str, reason: str | None = None, side: str | None = None) -> NoReturn:
     """Raise the error the Flutter workflow already handles.
 
     The message is written for a parish staff member holding the camera, not
     for a developer: it says what looked wrong about the *photograph* and what
     to do next. It carries only structural counts — never recognized text, a
-    name, a date, or a file path.
+    name, a date, or a file path. ``reason``/``side`` are the machine-readable
+    form of the same, so the app can show targeted retake guidance.
     """
     raise OcrError(
         "no_table_detected",
@@ -1126,6 +1127,8 @@ def _refuse(detail: str) -> NoReturn:
         "Please retake the photo with the book opened flat, both pages fully "
         "in frame, and even lighting, then tap Retry OCR — or tap Continue "
         "Manually to type this spread in.",
+        reason=reason,
+        side=side,
     )
 
 
@@ -1153,21 +1156,25 @@ def _check_template_fit(
     if grid.cols != template.column_count:
         _refuse(
             f"The {side} page came out with {grid.cols} columns where this "
-            f"register has {template.column_count}."
+            f"register has {template.column_count}.",
+            reason="columns_unmatched", side=side,
         )
     if grid.table_x_lo is None or grid.table_x_hi is None:
-        _refuse(f"The edges of the ruled table could not be found on the {side} page.")
+        _refuse(f"The edges of the ruled table could not be found on the {side} page.",
+                reason="grid_not_found", side=side)
     if not (0 <= grid.table_x_lo < grid.table_x_hi <= page_width):
         _refuse(
             f"The ruled table on the {side} page was traced past the edge of "
-            f"the photograph, so part of it is out of frame."
+            f"the photograph, so part of it is out of frame.",
+            reason="grid_not_found", side=side,
         )
     corroboration = grid.column_corroboration or 0.0
     if corroboration < TEMPLATE_CORROBORATION_FLOOR:
         _refuse(
             f"Only {corroboration:.0%} of the column edges expected on the "
             f"{side} page could be matched to a printed line in the "
-            f"photograph, so entries could be filed under the wrong heading."
+            f"photograph, so entries could be filed under the wrong heading.",
+            reason="columns_unmatched", side=side,
         )
 
 
@@ -1234,7 +1241,8 @@ def detect_spread_grids(
             grids[side] = detect_grid(page, templates[side], data_row_count=row_count,
                                       gutter_x=gx, gutter_side=gside)
         except OcrError:
-            _refuse(f"The {side} page's ruled grid could not be found at all.")
+            _refuse(f"The {side} page's ruled grid could not be found at all.",
+                    reason="grid_not_found", side=side)
     left, right = grids["left"], grids["right"]
 
     for side, page in (("left", left_page_bgr), ("right", right_page_bgr)):
@@ -1246,27 +1254,31 @@ def detect_spread_grids(
         _refuse(
             f"The two pages disagree about how many columns the register has "
             f"({left.cols} on the left page, {right.cols} on the right), so "
-            f"entries could be filed under the wrong heading."
+            f"entries could be filed under the wrong heading.",
+            reason="columns_unmatched", side="both",
         )
 
     if left.rows != right.rows:
         _refuse(
             f"The two pages disagree about how many rows the register has "
             f"({left.rows} on the left page, {right.rows} on the right), so "
-            f"each entry's details could be paired with the wrong person."
+            f"each entry's details could be paired with the wrong person.",
+            reason="rows_disagree", side="both",
         )
 
     left_pitch = median_data_row_pitch(left)
     right_pitch = median_data_row_pitch(right)
     if left_pitch <= 0 or right_pitch <= 0:
-        _refuse("The spacing between rows could not be measured on both pages.")
+        _refuse("The spacing between rows could not be measured on both pages.",
+                reason="pitch_mismatch", side="both")
 
     ratio = max(left_pitch, right_pitch) / min(left_pitch, right_pitch)
     if ratio - 1.0 > pitch_tolerance:
         _refuse(
             f"The rows are spaced {ratio - 1.0:.0%} further apart on one page "
             f"than the other, although both pages are halves of the same "
-            f"ruled table, so at least one page was not read correctly."
+            f"ruled table, so at least one page was not read correctly.",
+            reason="pitch_mismatch", side="both",
         )
 
     return SpreadGrids(

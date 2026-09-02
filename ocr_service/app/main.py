@@ -25,10 +25,12 @@ app = FastAPI(title="Parish Register Grid", version="2.0.0")
 @app.exception_handler(OcrError)
 async def _ocr_error_handler(_: Request, exc: OcrError) -> JSONResponse:
     log.warning("request failed: %s", exc.code)  # code only, never cell text
-    return JSONResponse(
-        status_code=exc.http_status,
-        content={"success": False, "code": exc.code, "message": exc.message},
-    )
+    content = {"success": False, "code": exc.code, "message": exc.message}
+    if exc.reason is not None:
+        content["reason"] = exc.reason
+    if exc.side is not None:
+        content["side"] = exc.side
+    return JSONResponse(status_code=exc.http_status, content=content)
 
 
 @app.get("/health")

@@ -67,6 +67,28 @@ def test_grid_returns_geometry_for_a_spread(monkeypatch):
     get_settings.cache_clear()
 
 
+def test_refusal_response_includes_reason_and_side(monkeypatch):
+    from app.errors import OcrError
+
+    def _raise(*_a, **_k):
+        raise OcrError("no_table_detected", "Couldn't read this spread.",
+                       reason="rows_disagree", side="both")
+
+    monkeypatch.setenv("OCR_SERVICE_KEY", "k")
+    get_settings.cache_clear()
+    monkeypatch.setattr(main_module, "detect_spread_grids", _raise)
+    spread = make_register_spread(rows=24, cols_left=5, cols_right=5)
+    res = client.post(
+        "/v1/grid", content=_png_bytes(spread), headers={"X-OCR-Service-Key": "k"}
+    )
+    assert res.status_code >= 400
+    body = res.json()
+    assert body["success"] is False
+    assert body["reason"] == "rows_disagree"
+    assert body["side"] == "both"
+    get_settings.cache_clear()
+
+
 def test_grid_rejects_missing_key(monkeypatch):
     monkeypatch.setenv("OCR_SERVICE_KEY", "k")
     get_settings.cache_clear()

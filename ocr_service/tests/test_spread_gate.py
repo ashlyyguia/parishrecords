@@ -121,3 +121,24 @@ def test_row_boundaries_are_one_more_than_the_row_count():
     left, _ = _pages()
     grid = detect_grid(left)
     assert len(row_boundaries(grid)) == grid.rows + 1
+
+
+def test_a_refusal_carries_a_structured_reason_and_side():
+    from app.pipeline.column_template import BAPTISMAL_REGISTER
+    # Two blank pages -> the spread gate refuses; assert the refusal carries a
+    # structured reason/side (which specific reason is pinned per call site).
+    blank = np.full((900, 1400, 3), 255, np.uint8)
+    with pytest.raises(OcrError) as e:
+        detect_spread_grids(blank, blank, spread_template=BAPTISMAL_REGISTER)
+    assert e.value.reason in {"grid_not_found", "columns_unmatched",
+                              "rows_disagree", "pitch_mismatch"}
+    assert e.value.side in {"left", "right", "both"}
+
+
+def test_refuse_validates_and_carries_reason_side():
+    from app.pipeline.table import _refuse
+    with pytest.raises(OcrError) as e:
+        _refuse("Detail here.", reason="rows_disagree", side="both")
+    assert e.value.reason == "rows_disagree"
+    assert e.value.side == "both"
+    assert e.value.code == "no_table_detected"
