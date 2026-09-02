@@ -218,3 +218,9 @@ class TestTheGateChecksTheFit:
                                 spread_template=BAPTISMAL_REGISTER)
         message = excinfo.value.message.lower()
         assert "retry" in message and "manually" in message, excinfo.value.message
+
+
+def test_register_declares_its_fixed_row_count():
+    # The book is ruled for a fixed number of entries, a property of the
+    # printed form just like its column proportions.
+    assert BAPTISMAL_REGISTER.data_row_count == 24

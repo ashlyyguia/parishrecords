@@ -85,11 +85,19 @@ class SpreadColumnTemplate:
     have different column rulings and must be given different templates. This
     pairs them so a caller cannot accidentally fit the left page's ruling to
     the right page.
+
+    ``data_row_count`` is the number of *data* rows the printed book is ruled
+    for (excluding the column-header band). It is declared, not detected, for
+    the same reason the column proportions are: it is a fixed property of the
+    printed form, and on a faded or angled photograph the lower row rules can
+    drop out of the image entirely — there is nothing left to detect. See
+    ``table._lay_declared_rows``.
     """
 
     name: str
     left: ColumnTemplate
     right: ColumnTemplate
+    data_row_count: int
 
 
 # --- The baptismal register this service was built for -----------------------
@@ -147,4 +155,5 @@ BAPTISMAL_REGISTER = SpreadColumnTemplate(
     name="baptismal_register",
     left=BAPTISMAL_LEFT,
     right=BAPTISMAL_RIGHT,
+    data_row_count=24,
 )
