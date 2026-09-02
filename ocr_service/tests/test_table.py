@@ -3,8 +3,9 @@ import numpy as np
 import pytest
 
 from app.errors import OcrError
+from app.pipeline.column_template import BAPTISMAL_LEFT
 from app.pipeline.spread import split_spread
-from app.pipeline.table import detect_grid
+from app.pipeline.table import detect_grid, _lay_declared_rows
 from tests.support.synthetic import make_register_spread
 
 LINE_COLOR = (140, 60, 40)  # BGR, matches synthetic register blue
@@ -67,6 +68,37 @@ def _page_with_dominant_column_artifact() -> tuple[np.ndarray, list[int]]:
     cv2.line(img, (50, 0), (50, h - 1), LINE_COLOR, 2)
 
     return img, xs_expected
+
+
+def test_lay_declared_rows_fills_to_the_declared_count():
+    # Pitch 100, no curvature, first data row at y=200, header top at y=50.
+    # Only five rows were detected, but the book is ruled for 24.
+    ys = _lay_declared_rows(200.0, 100.0, 0.0, [0, 1, 2, 3, 4],
+                            header_top=50, data_row_count=24, height=10000)
+    assert ys[0] == 50          # header band top
+    assert ys[1] == 200         # first data row top
+    assert ys[-1] == 200 + 24 * 100  # bottom edge of the 24th row (k=24)
+    # header top + 24 data-row tops + 1 bottom edge == 26 boundaries == 25 rows
+    assert len(ys) == 26
+
+
+def test_lay_declared_rows_clamps_the_header_above_the_first_row():
+    # The full-width header pass can lock onto the FIRST DATA ROW's own rule,
+    # reporting a header_top at or below entry 1 (seen on IMG_3121's right
+    # page). The header boundary must still sit strictly above entry 1.
+    ys = _lay_declared_rows(200.0, 100.0, 0.0, [0, 1, 2],
+                            header_top=205, data_row_count=24, height=10000)
+    assert ys[0] < ys[1]
+    assert ys[1] == 200
+
+
+def test_lay_declared_rows_drops_rows_that_fall_off_the_page():
+    # A crop too short to contain all 24 rows must not fabricate off-page
+    # boundaries; the spread gate then refuses on the resulting count mismatch.
+    ys = _lay_declared_rows(200.0, 100.0, 0.0, [0, 1, 2],
+                            header_top=50, data_row_count=24, height=1500)
+    assert all(0 <= y <= 1499 for y in ys)
+    assert ys == sorted(ys)
 
 
 def test_detects_five_columns_on_the_left_page():

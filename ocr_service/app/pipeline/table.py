@@ -183,6 +183,15 @@ ROW_STRIP_CLUSTER_TOLERANCE = 20
 ROW_STRIP_MIN_SPAN_FRACTION = 0.5
 ROW_FIT_TOLERANCE_FRACTION = 0.3
 
+# When a declared row count is laid down (see _lay_declared_rows), the fitted
+# pitch is trusted only if the detected run is strong enough to anchor an
+# extrapolation across faded rows: at least ROW_ANCHOR_MIN_RUN on-curve rows,
+# spanning at least ROW_ANCHOR_MIN_SPAN_FRACTION of the declared count so the
+# pitch has a long enough lever arm. Below that the anchor is guesswork, so the
+# detector falls back and the spread gate refuses rather than invent rows.
+ROW_ANCHOR_MIN_RUN = 5
+ROW_ANCHOR_MIN_SPAN_FRACTION = 0.5
+
 # How far right of the table's left border a strong row cluster may begin and
 # still count as a genuine, full-width row rule, as a fraction of the table
 # width. This is the property that tells a genuine row boundary from an interior
@@ -426,6 +435,44 @@ def _extend_row_curve(
             break
         k = k_next
     return k
+
+
+def _lay_declared_rows(
+    a: float,
+    b: float,
+    c: float,
+    ks: list[int],
+    header_top: int,
+    data_row_count: int,
+    height: int,
+) -> list[int]:
+    """Boundaries for a *declared* number of data rows.
+
+    The book is ruled for a fixed number of entries, so instead of extending
+    detection to wherever ruled ink survives (which over-runs into a trailing
+    signature block, or stops early where the rules faded out of the
+    photograph), lay the grid on the fitted curve: the header-band top, then
+    ``data_row_count`` data-row tops plus the bottom edge of the last row. The
+    faded region is filled by extrapolation; the handwriting there is still in
+    the image and still OCR'd, so it drops into the right cell.
+
+    The first data row is the fit's lowest index ``k0``. The header band sits
+    above it; keep the detected ``header_top`` unless the full-width header
+    pass locked onto entry 1's own rule (so it landed at or below entry 1), in
+    which case place the header one pitch above entry 1. Boundaries that fall
+    off the page are dropped, so a crop too short to hold all the rows yields a
+    short grid the spread gate then refuses rather than a fabricated one.
+    """
+    k0 = min(ks)
+
+    def y(k: int) -> float:
+        return a + b * k + c * k * k
+
+    entry_top = y(k0)
+    top = min(float(header_top), entry_top - b)
+    boundaries = [top] + [y(k) for k in range(k0, k0 + data_row_count + 1)]
+    rounded = [int(round(v)) for v in boundaries]
+    return [v for v in rounded if 0 <= v <= height - 1]
 
 
 def _full_width_row_ys(
