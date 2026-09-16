@@ -313,6 +313,48 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     }
   }
 
+  /// Confirms the reviewer is willing to lose the rows they've reviewed and
+  /// edited before a "start over" action (choose another image / document
+  /// type). Returns true only when they explicitly tap Discard.
+  Future<bool> _confirmDiscard() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard reviewed rows?'),
+        content: const Text(
+          "The rows you've reviewed and edited will be lost.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  /// Returns to the pick step (the sacrament chooser), clearing the current
+  /// scan so nothing from the discarded review leaks into the next one.
+  void _resetToPick() {
+    setState(() {
+      _bytes = null;
+      _scanId = '';
+      _imagePath = null;
+      _archiveFailed = false;
+      _rows = [];
+      _warnings = const [];
+      _failure = null;
+      _highlightedRow = null;
+      _step = _Step.pick;
+    });
+  }
+
   String _encodeNotes(BaptismalRegisterRow row, Map<String, String> fields) {
     final map = ManualRegisterNotes.toBaptismalOcrNotesMap(
       volNo: _volCtrl.text.trim(),
@@ -845,6 +887,27 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
                   onPressed: _canSave ? _save : null,
                   icon: const Icon(Icons.save_outlined),
                   label: Text('Save $selected record(s)'),
+                ),
+                const SizedBox(height: 8),
+                // Start-over actions: scan a different page, or switch the
+                // sacrament type. Both discard the current review, so each
+                // is gated behind a confirmation first.
+                OutlinedButton.icon(
+                  key: const ValueKey('choose-another-image'),
+                  onPressed: () async {
+                    if (await _confirmDiscard()) await _pick();
+                  },
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: const Text('Choose another image'),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  key: const ValueKey('choose-another-type'),
+                  onPressed: () async {
+                    if (await _confirmDiscard()) _resetToPick();
+                  },
+                  icon: const Icon(Icons.swap_horiz),
+                  label: const Text('Choose another document type'),
                 ),
               ],
             ),

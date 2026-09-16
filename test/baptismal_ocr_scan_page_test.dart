@@ -683,4 +683,68 @@ void main() {
 
     expect(find.textContaining('Saved 1 baptismal record'), findsOneWidget);
   });
+
+  testWidgets(
+    'Choose another image discards after confirm and returns to the picker',
+    (tester) async {
+      await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
+      await tester.tap(find.byKey(const ValueKey('pick-image')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Scan / Process OCR'));
+      await tester.pumpAndSettle();
+      expect(find.text('TESTA SAMPLE'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('choose-another-image')));
+      await tester.pumpAndSettle();
+      // The confirm dialog gates the discard.
+      expect(find.text('Discard reviewed rows?'), findsOneWidget);
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+
+      // _pick() re-ran and landed on the preview of the new image, ready to scan.
+      expect(find.text('Scan / Process OCR'), findsOneWidget);
+      expect(find.byKey(const ValueKey('save-rows')), findsNothing);
+    },
+  );
+
+  testWidgets('cancelling the discard dialog keeps the review intact', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
+    await tester.tap(find.byKey(const ValueKey('pick-image')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Scan / Process OCR'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('choose-another-image')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    // Still on the review step with the row and Save action intact.
+    expect(find.text('TESTA SAMPLE'), findsOneWidget);
+    expect(find.byKey(const ValueKey('save-rows')), findsOneWidget);
+  });
+
+  testWidgets(
+    'Choose another document type returns to the sacrament chooser after confirm',
+    (tester) async {
+      await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
+      await tester.tap(find.byKey(const ValueKey('pick-image')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Scan / Process OCR'));
+      await tester.pumpAndSettle();
+      expect(find.text('TESTA SAMPLE'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('choose-another-type')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+
+      // Back on the pick step: the sacrament chooser is shown, no preview image.
+      expect(find.byKey(const ValueKey('sacrament-type')), findsOneWidget);
+      expect(find.byType(Image), findsNothing);
+      expect(find.byKey(const ValueKey('save-rows')), findsNothing);
+    },
+  );
 }
