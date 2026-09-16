@@ -67,6 +67,7 @@ home-1280.png
 filters_format(webp)_quality(75).webp
 attachments/
 backend/test/fixtures/
+!backend/test/fixtures/
 book-scan/741693507_1502058497883113_1990985733509542854_n.jpg
 book-scan/741704936_3783239578485767_7318017266097187152_n.jpg
 book-scan/741704936_3783239578485767_7318017266097187152_n.jpg.ocrspace.txt

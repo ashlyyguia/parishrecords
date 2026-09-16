@@ -35,7 +35,9 @@ describe('heicToJpeg', () => {
   }, 20000);
 
   test('rejects an ftyp-heic header with a garbage body', async () => {
+    const spy = jest.spyOn(console, 'log').mockImplementation(() => {});
     const fake = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from('ftypheic'), Buffer.alloc(64, 0)]);
     await expect(heicToJpeg(fake)).rejects.toBeTruthy();
+    spy.mockRestore();
   });
 });
