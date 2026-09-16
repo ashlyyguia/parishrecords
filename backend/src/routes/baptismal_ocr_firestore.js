@@ -11,6 +11,7 @@ const {
   preprocessForOcr,
   MAX_INPUT_PIXELS,
 } = require('../services/baptismal_image_preprocess');
+const { isHeic, heicToJpeg } = require('../services/heic_to_jpeg');
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const ACCEPTED = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -212,6 +213,19 @@ function createBaptismalOcrRouter(deps = {}) {
       if (buffer.length === 0) return fail(res, 'IMAGE_INVALID', scanId);
 
       if (buffer.length > MAX_IMAGE_BYTES) return fail(res, 'IMAGE_TOO_LARGE', scanId);
+
+      // iPhone uploads are HEIC by default. Convert once, here, before the
+      // JPEG/PNG/WebP magic-byte gate and before the raw buffer is handed to
+      // the Python CV grid service -- so nothing downstream ever sees HEIC.
+      // An undecodable HEIC is a genuine bad-image case (IMAGE_INVALID), the
+      // same class as any other file that can't be decoded.
+      if (isHeic(buffer)) {
+        try {
+          buffer = await heicToJpeg(buffer);
+        } catch (e) {
+          return fail(res, 'IMAGE_INVALID', scanId);
+        }
+      }
 
       const mime = sniffImageType(buffer);
       if (!mime || !ACCEPTED.has(mime)) return fail(res, 'IMAGE_INVALID', scanId);

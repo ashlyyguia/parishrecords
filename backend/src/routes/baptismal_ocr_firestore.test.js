@@ -1,8 +1,11 @@
 const zlib = require('zlib');
+const fs = require('fs');
+const pathlib = require('path');
 const express = require('express');
 const request = require('supertest');
 const { createBaptismalOcrRouter } = require('./baptismal_ocr_firestore');
 const { MAX_INPUT_PIXELS } = require('../services/baptismal_image_preprocess');
+const HEIC = fs.readFileSync(pathlib.join(__dirname, '..', '..', 'test', 'fixtures', 'sample.heic'));
 
 // A genuine, decodable tiny JPEG -- generated the same way
 // `baptismal_image_preprocess.test.js` does (sharp({ create: {...} })), so
@@ -527,5 +530,25 @@ describe('body size ordering', () => {
     expect(mountAt).toBeGreaterThan(-1);
     expect(globalJsonAt).toBeGreaterThan(-1);
     expect(mountAt).toBeLessThan(globalJsonAt);
+  });
+});
+
+describe('HEIC upload support', () => {
+  test('accepts a real HEIC upload and reaches recognition (200)', async () => {
+    const recognize = jest.fn(async () => ({ words: [{ text: 'X', vertices: [], confidence: 1 }], fullText: 'X' }));
+    const res = await request(appWith({ recognize })).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(HEIC) });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  }, 25000);
+
+  test('rejects an undecodable HEIC with IMAGE_INVALID and never calls recognition', async () => {
+    const fake = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from('ftypheic'), Buffer.alloc(64, 0)]);
+    const recognize = jest.fn(async () => ({ words: [], fullText: '' }));
+    const res = await request(appWith({ recognize })).post('/api/ocr/baptismal/scan')
+      .send({ scanId: 's1', imageBase64: b64(fake) });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('IMAGE_INVALID');
+    expect(recognize).not.toHaveBeenCalled();
   });
 });
