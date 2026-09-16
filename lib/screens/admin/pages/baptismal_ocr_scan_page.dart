@@ -596,7 +596,18 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
           if (_bytes != null)
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 360),
-              child: Image.memory(_bytes!, fit: BoxFit.contain),
+              // Some formats the OCR backend accepts can't be decoded for
+              // display by the current platform -- notably HEIC on the web,
+              // where the browser's ImageDecoder throws. The server converts
+              // HEIC to JPEG on upload, so scanning still works; only the
+              // on-screen preview is unavailable. Fall back to a placeholder
+              // instead of letting Image.memory surface a raw decode error.
+              child: Image.memory(
+                _bytes!,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) =>
+                    _previewUnavailable(),
+              ),
             ),
           const SizedBox(height: 16),
           if (showScanAction)
@@ -612,6 +623,38 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
               icon: const Icon(Icons.refresh),
               label: const Text('Choose a different image'),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// Shown in place of the preview when the picked image can't be decoded for
+  /// display on this platform (e.g. HEIC in a browser). Scanning is unaffected
+  /// -- the server converts the image on upload -- so this is informational,
+  /// not an error.
+  Widget _previewUnavailable() {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 160,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.image_not_supported_outlined,
+              color: scheme.onSurfaceVariant),
+          const SizedBox(height: 8),
+          Text(
+            "Preview isn't available for this image format here (e.g. HEIC), "
+            'but scanning will still work.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
         ],
       ),
     );
