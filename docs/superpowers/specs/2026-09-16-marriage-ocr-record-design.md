@@ -8,12 +8,15 @@
 
 Add OCR scanning of the parish **marriage register** spread, mirroring the
 existing baptismal OCR pipeline end-to-end. A scanned marriage entry must
-produce the **same saved record shape** a manual entry produces
-(`marriage_form_screen.dart`), so scanned and typed marriage records are
-indistinguishable downstream (record list, detail, certificate generation,
-duplicate detection).
+produce the **same saved record shape** the existing manual marriage
+**register** entry produces (the flat `manual_marriage_register` schema from
+`ManualRegisterNotes.toMarriageNotesMap`, built from `RegisterMarriageEntry`),
+so scanned and typed marriage records are indistinguishable downstream (record
+list, detail, certificate generation, duplicate detection).
 
 Scope decided in brainstorming: **full pipeline, all register columns.**
+Approach corrected 2026-09-16 after discovering the existing marriage
+infrastructure (see Background) — reuse it rather than build a parallel model.
 
 ## Background
 
@@ -32,9 +35,23 @@ The baptismal OCR feature already ships a three-layer pipeline:
    `baptismal_register_row.dart`, `baptismal_row_validation.dart`) —
    pick → preview → OCR → review/edit → save.
 
-A **scaffold already exists** for marriage: `lib/models/register_marriage_entry.dart`
-(`RegisterMarriageEntry` + `MarriagePartyInfo`) mirrors the register layout,
-and `marriage_form_screen.dart` defines the canonical saved-notes schema.
+**Substantial marriage infrastructure already exists** (the legacy ML-Kit OCR
+path) and is reused here:
+- `lib/models/register_marriage_entry.dart` (`RegisterMarriageEntry` +
+  `MarriagePartyInfo`) — mirrors the register layout column-for-column.
+- `lib/widgets/register_marriage_table.dart` (`RegisterMarriageTable`) — an
+  editable review table with exactly these columns and horizontal scroll.
+- `ManualRegisterNotes.toMarriageNotesMap` — the flat `manual_marriage_register`
+  save schema (the analog of `toBaptismalOcrNotesMap`).
+- `lib/screens/staff/pages/staff_ocr_upload_page.dart` (`StaffOcrUploadPage`,
+  routed at `/admin/ocr/upload` + `/staff/ocr/upload`) — the legacy ML-Kit
+  marriage/baptism scanner. **Left untouched**; the new CV-grid scanner is an
+  additional, higher-quality route.
+
+Two `marriage` notes schemas exist and must not be confused: the **flat
+register** schema above (what this feature saves) and the **certificate** form
+schema in `marriage_form_screen.dart` (`marriage`/`groom`/`bride`/`witnesses`
+nesting) — the latter is NOT the target here.
 
 ## The marriage register layout (from sample photos)
 
@@ -75,22 +92,30 @@ records match regardless of entry method.
 | Parents                  | `groom.father` / `bride.father` (blob)    |
 | Sponsors of marriage     | `witnesses.witness1` / `witnesses.witness2` |
 | Minister                 | `marriage.officiant`                      |
-| License no.              | `marriage.licenseNumber`                  |
-| Observations             | `groom.religion` / `bride.religion`       |
-| Dates & places of baptism| `remarks` (no dedicated form field)       |
+| License no.              | `licenseNumber`                           |
+| Observations             | `observations`                            |
+| Dates & places of baptism| `groom.datesPlaceOfBaptism` / `bride.datesPlaceOfBaptism` |
 
-**Approved judgment calls:**
-1. **Parents saved as a single blob into `father`** (mother left blank),
-   mirroring baptismal's deliberate no-split-of-parents limitation. The
-   reviewer splits by hand. Do NOT guess a father/mother midpoint split.
-2. **Baptism dates/places → `remarks`** (with a clear label prefix so it's
-   obviously carried data, e.g. `Baptism — groom: …; bride: …`).
-3. **Observations → `religion`** per party.
+**Save target (corrected 2026-09-16):** The saved record uses the **flat
+marriage register schema** — the same one `ManualRegisterNotes.toMarriageNotesMap`
+already produces for the legacy path (`source: manual_marriage_register`),
+built from `RegisterMarriageEntry` / `MarriagePartyInfo`. Every register column
+maps **1:1** to a model field, so there is **no lossy mapping** — the earlier
+plan to fold parents→father, baptism→remarks and observations→religion (which
+targeted the *certificate* form `marriage_form_screen.dart`) is **dropped**.
 
-`marriage.place` defaults to `"Holy Rosary Parish – Oroquieta City"` (same as
-the manual form). `name` = `"Groom & Bride"`. `date` = parsed marriage date or
-today. Records saved from OCR review are marked `status: official` (a human
-stepped through review), matching baptismal.
+`MarriagePartyInfo` per-party fields: `name`, `legalStatus`, `actualAddress`,
+`datesPlaceOfBirth`, `datesPlaceOfBaptism`, `parents`, `sponsors`. Shared
+entry fields: `dateOfMarriage`, `minister`, `licenseNumber`, `observations`,
+`lineNo`. (Note: `sponsors` exists per-party on the model; the register's
+Sponsors-of-Marriage column is one shared list, so the OCR writes it to
+`groom.sponsors` and leaves `bride.sponsors` empty — the reviewer can adjust.)
+
+`name` (the `ParishRecord.name`) = `entry.recordDisplayName` (`"Groom & Bride"`).
+`date` = `ManualRegisterNotes.marriageDateForEntry(entry)` (parsed
+`dateOfMarriage`, or today). Records saved from OCR review are marked
+`status: official` and carry scan provenance (`ocrScanId`, `originalImagePath`),
+matching `toBaptismalOcrNotesMap`.
 
 ## Component design
 
@@ -133,41 +158,63 @@ stepped through review), matching baptismal.
   copy, with marriage-appropriate `LAYOUT_UNRECOGNIZED` message. Mounted
   alongside the baptismal router in `server.js`.
 
-**Response row shape** (per entry), each leaf an OcrField `{value, confidence,
-inherited}`:
+**Response row shape** (per entry). OCR.space provides no per-field
+confidence, so the response carries plain string values (matching the
+`RegisterMarriageEntry` model), plus a scan-level `warnings` array. Paired
+columns carry `groom`/`bride` sub-values; shared columns are flat:
 ```
-{ lineNo, groom: {name,status,address,birth,baptism,parents,religion},
-  bride: {…same…}, dateOfMarriage, sponsors, minister, licenseNumber }
+{
+  scanId, rotation, warnings: [...],
+  rows: [
+    { lineNo,
+      groom: { name, legalStatus, actualAddress, datesPlaceOfBirth,
+               datesPlaceOfBaptism, parents, sponsors },
+      bride: { …same keys… },
+      dateOfMarriage, minister, licenseNumber, observations }
+  ]
+}
 ```
+This is the JSON shape `MarriageOcrService` parses into
+`List<RegisterMarriageEntry>` (via a `RegisterMarriageEntry.fromScanJson`
+factory / `ManualRegisterNotes`-style mapper), so no new per-cell model is
+introduced.
 
-### 3. Flutter
+### 3. Flutter (reuse existing marriage model + table)
 
-- **`lib/models/ocr_field.dart`** (new): extract `OcrField` + `kOcrReviewThreshold`
-  from `baptismal_register_row.dart` into a shared module; both baptismal and
-  marriage import it (no marriage→baptismal dependency). Baptismal keeps a
-  re-export or updates its import.
-- **`lib/models/marriage_register_row.dart`** (new): `MarriageRegisterRow` with
-  OcrField-per-field (groom/bride sub-maps + shared fields), `selected`,
-  `lineNo`, `fromJson`, `blank()`, `mergedWith()`, and `MarriageOcrScan`
-  (mirrors `BaptismalOcrScan`).
-- **`lib/services/marriage_ocr_service.dart`** (new, mirrors baptismal service):
-  POSTs to the marriage scan route, parses `MarriageOcrScan`, same failure
-  taxonomy (`OcrRecovery`).
-- **`lib/services/marriage_row_validation.dart`** (new): required = groom name +
-  bride name (blocking); date optional. Cross-scan duplicate detection reusing
-  the manual form's couple + registry/date logic.
-- **`lib/widgets/marriage_ocr_review_table.dart`** (new): wide table with grouped
-  **Groom / Bride** sub-columns plus shared columns; same editing, selection,
-  insert/delete/merge affordances and `needsReview` highlighting as the
-  baptismal table.
+No `OcrField` extraction and no new row model — OCR.space has no per-field
+confidence, so plain strings on `RegisterMarriageEntry` suffice.
+
+- **`lib/models/register_marriage_entry.dart`** (modify): add a
+  `RegisterMarriageEntry.fromScanJson(Map)` factory that builds an entry (with
+  a fresh uuid) from one backend row of the shape above. Pure, no I/O.
+- **`lib/services/marriage_ocr_service.dart`** (new, mirrors
+  `baptismal_ocr_service.dart`): POSTs `{scanId, imageBase64}` to the marriage
+  scan route, reuses the same `OcrRecovery` / failure taxonomy, returns a
+  `MarriageOcrScan { scanId, rotation, warnings, entries: List<RegisterMarriageEntry> }`.
+- **`lib/utils/manual_register_notes.dart`** (modify): add
+  `toMarriageOcrNotesMap({volNo, seriesNo, entry, scanId, imagePath,
+  status='official'})` — the flat register schema from `toMarriageNotesMap`
+  plus `ocrScanId` / `originalImagePath`, mirroring `toBaptismalOcrNotesMap`.
+  `source` stays `manual_marriage_register` so existing readers
+  (`isManualMarriageMap`, record detail, search) keep working unchanged.
+- **`lib/services/marriage_row_validation.dart`** (new): required to save an
+  entry = groom name **and** bride name non-empty (blocking); date optional
+  (falls back to today). Cross-scan duplicate detection reusing the
+  couple + registry/date logic from `marriage_form_screen._findPossibleDuplicates`.
+- **`lib/widgets/register_marriage_table.dart`** (reuse; extend if needed): the
+  existing editable marriage table already has the exact columns. Add row
+  selection checkboxes / per-row highlight hooks only if the scan page needs
+  them beyond the current `onChanged`/`onSelectionChanged`/`onRemove` seams.
 - **`lib/screens/admin/pages/marriage_ocr_scan_page.dart`** (new, mirrors
-  baptismal page): pick → preview → processing → review → save. Save builds the
-  manual-entry notes JSON via a new `ManualRegisterNotes.toMarriageOcrNotesMap`.
-  Same injectable seams (ocrService, imagePicker, imageUploader,
-  idTokenProvider, saveRecords, existingRecords) for widget tests.
-- **Entry point**: the sacrament chooser currently shows "Marriage (coming
-  soon)". Replace the paused notice so selecting Marriage opens the new page.
-  (Exact routing wiring resolved in the plan.)
+  `baptismal_ocr_scan_page.dart`): pick → preview → processing → review → save.
+  Review step hosts `RegisterMarriageTable`. Save builds notes via
+  `toMarriageOcrNotesMap` and writes `RecordType.marriage` records. Same
+  injectable seams (ocrService, imagePicker, imageUploader, idTokenProvider,
+  saveRecords, existingRecords) for widget tests.
+- **Entry point / routing**: add `/admin/records/ocr-marriage` →
+  `MarriageOcrScanPage` (alongside `/admin/records/ocr-baptism`). The baptismal
+  page's sacrament chooser currently shows "Marriage (coming soon)"; selecting
+  Marriage there navigates to the new route instead of showing the paused notice.
 
 ## Data flow
 
@@ -179,9 +226,9 @@ image bytes
   → OCR.space on crops
   → marriageGridToRows()          → groom/bride split, field mapping
   → rows JSON
-  → MarriageOcrScan (Flutter)
-  → review table (human edits/confirms)
-  → save → notes JSON (== manual form) → recordsProvider → Firestore
+  → MarriageOcrScan → List<RegisterMarriageEntry> (Flutter)
+  → RegisterMarriageTable (human edits/confirms)
+  → save → toMarriageOcrNotesMap (flat register schema) → recordsProvider → Firestore
 ```
 
 ## Error handling & warnings
@@ -200,8 +247,9 @@ Marriage-specific copy for `LAYOUT_UNRECOGNIZED` / `SPREAD_UNREADABLE`.
   y-split + gutter/title confirm + row detection), `marriage_grid_assign.test.js`
   (key mapping + paired split + shared cells), `marriage_ocr_firestore.test.js`
   (route: auth, image gate, CV path, fallback, error mapping).
-- **Flutter**: `marriage_register_row_test`, `marriage_row_validation_test`,
-  `marriage_ocr_service_test`, `marriage_ocr_review_table_test`,
+- **Flutter**: `register_marriage_entry_test` (the `fromScanJson` factory),
+  `marriage_row_validation_test`, `marriage_ocr_service_test`,
+  `manual_register_notes` marriage-OCR-notes coverage, and
   `marriage_ocr_scan_page_test` — mirroring the baptismal equivalents.
 - **E2E sanity**: run the pipeline on a sample photo (e.g. `IMG_3130`) and
   confirm entries land in the right columns with correct groom/bride split.
@@ -212,15 +260,20 @@ Marriage-specific copy for `LAYOUT_UNRECOGNIZED` / `SPREAD_UNREADABLE`.
    Validate against sample photos early; if midpoint split proves fragile,
    fall back to 2-means y-clustering, and always surface
    `GROOM_BRIDE_SPLIT_UNCERTAIN` rather than silently mis-assign.
-2. **Parents father/mother** intentionally left as a blob (see judgment call 1).
-3. **Wide review table** ergonomics — grouped sub-columns need horizontal
-   scroll; mirror baptismal's bounded-scroll approach.
+2. **`sponsors` per-party vs shared** — the model carries `sponsors` per party
+   but the register column is one shared list; OCR writes it to `groom.sponsors`.
+   Reviewer adjusts. Not a data-loss issue, just a placement choice.
+3. **Wide review table** ergonomics — `RegisterMarriageTable` already handles
+   horizontal scroll (`_minTableWidth = 2480`); reuse as-is.
 4. **Column boundary drift** — the Python fit reports how many boundaries land
    on detected rules; a bad measurement is caught, not trusted.
 
 ## Out of scope (this pass)
 
-- Splitting parents into father/mother from OCR.
-- Splitting sponsors beyond the first two witnesses.
-- Any change to the baptismal pipeline beyond the shared `OcrField` extraction
-  and the `cv_grid_client` `register` param (both backward-compatible).
+- Splitting parents into father/mother from OCR (kept as one `parents` blob per
+  party, matching the register column and the legacy manual path).
+- Splitting sponsors beyond the shared list into per-party.
+- Any change to the baptismal pipeline beyond the `cv_grid_client` `register`
+  param (backward-compatible; default `baptismal`).
+- Any change to or removal of the legacy ML-Kit marriage path
+  (`StaffOcrUploadPage` etc.); the new CV-grid scanner is an additional route.
