@@ -29,7 +29,8 @@ class OcrImagePick {
   }) async {
     if (_useFilePicker) {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
+        type: FileType.custom,
+        allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'],
         allowMultiple: allowMultiple,
         withData: true,
       );
@@ -42,7 +43,7 @@ class OcrImagePick {
           XFile.fromData(
             bytes,
             name: f.name,
-            mimeType: _mimeForExtension(f.extension),
+            mimeType: mimeForExtension(f.extension),
           ),
         );
       }
@@ -138,12 +139,16 @@ class OcrImagePick {
     );
   }
 
-  static String? _mimeForExtension(String? ext) {
+  @visibleForTesting
+  static String mimeForExtension(String? ext) {
     switch (ext?.toLowerCase()) {
       case 'png':
         return 'image/png';
       case 'webp':
         return 'image/webp';
+      case 'heic':
+      case 'heif':
+        return 'image/heic';
       case 'jpg':
       case 'jpeg':
       default:
