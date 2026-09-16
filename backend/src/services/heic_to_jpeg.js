@@ -34,6 +34,7 @@ function isHeic(buffer) {
  * error rather than silently passing HEIC downstream.
  */
 async function heicToJpeg(buffer) {
+  // Lazy require: defer loading the libheif/WASM decoder until a HEIC is actually converted.
   const convert = require('heic-convert');
   const out = await convert({ buffer, format: 'JPEG', quality: 0.92 });
   return Buffer.from(out);

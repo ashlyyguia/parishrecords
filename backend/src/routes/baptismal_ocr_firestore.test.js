@@ -534,6 +534,8 @@ describe('body size ordering', () => {
 });
 
 describe('HEIC upload support', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   test('accepts a real HEIC upload and reaches recognition (200)', async () => {
     const recognize = jest.fn(async () => ({ words: [{ text: 'X', vertices: [], confidence: 1 }], fullText: 'X' }));
     const res = await request(appWith({ recognize })).post('/api/ocr/baptismal/scan')
@@ -543,6 +545,7 @@ describe('HEIC upload support', () => {
   }, 25000);
 
   test('rejects an undecodable HEIC with IMAGE_INVALID and never calls recognition', async () => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
     const fake = Buffer.concat([Buffer.from([0, 0, 0, 0x20]), Buffer.from('ftypheic'), Buffer.alloc(64, 0)]);
     const recognize = jest.fn(async () => ({ words: [], fullText: '' }));
     const res = await request(appWith({ recognize })).post('/api/ocr/baptismal/scan')

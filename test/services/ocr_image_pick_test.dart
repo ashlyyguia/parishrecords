@@ -7,6 +7,7 @@ void main() {
       expect(OcrImagePick.mimeForExtension('heic'), 'image/heic');
       expect(OcrImagePick.mimeForExtension('HEIC'), 'image/heic');
       expect(OcrImagePick.mimeForExtension('heif'), 'image/heic');
+      expect(OcrImagePick.mimeForExtension('HEIF'), 'image/heic');
     });
 
     test('keeps the existing image types', () {
