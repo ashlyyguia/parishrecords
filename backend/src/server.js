@@ -106,7 +106,7 @@ app.use('/api/requests', requestsRoutes);
 app.use('/api/appointments', appointmentsRoutes);
 app.use('/api/donations', donationsRoutes);
 app.use('/api/sacraments', sacramentsRoutes);
-app.use('/api/ocr', ocrRoutes);
+app.use('/api/ocr', ocrRoutes.router);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
