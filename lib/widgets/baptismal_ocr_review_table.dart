@@ -304,11 +304,12 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
         color: highlighted ? scheme.primary.withValues(alpha: 0.06) : null,
         border: Border(
           bottom: BorderSide(
-            color: scheme.outlineVariant.withValues(alpha: 0.5),
+            color: scheme.outlineVariant,
+            width: 1.5,
           ),
         ),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -338,7 +339,7 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
                   isDense: true,
                   border: OutlineInputBorder(),
                   contentPadding:
-                      EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                      EdgeInsets.symmetric(horizontal: 6, vertical: 14),
                 ),
               ),
             ),
@@ -372,7 +373,7 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
         filled: fill != null,
         fillColor: fill,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 14),
         border: const OutlineInputBorder(),
         errorMaxLines: 2,
         helperMaxLines: 2,
