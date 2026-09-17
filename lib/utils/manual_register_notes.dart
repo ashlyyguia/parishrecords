@@ -286,6 +286,24 @@ class ManualRegisterNotes {
     };
   }
 
+  /// The flat marriage-register schema (same as [toMarriageNotesMap]) plus OCR
+  /// provenance. `status` defaults to `'official'` for OCR-reviewed saves.
+  static Map<String, dynamic> toMarriageOcrNotesMap({
+    required String volNo,
+    required String seriesNo,
+    required RegisterMarriageEntry entry,
+    required String scanId,
+    String? imagePath,
+    String status = 'official',
+  }) {
+    return {
+      ...toMarriageNotesMap(
+        volNo: volNo, seriesNo: seriesNo, entry: entry, status: status),
+      'ocrScanId': scanId,
+      'originalImagePath': imagePath,
+    };
+  }
+
   static DateTime marriageDateForEntry(RegisterMarriageEntry entry) {
     final parsed = RegisterOcrParser.parseDate(entry.dateOfMarriage);
     return parsed ?? DateTime.now();
