@@ -895,6 +895,14 @@ git commit -m "chore(ocr-service): tune marriage column boundaries against sampl
 
 ---
 
+## Execution status (Task 13)
+
+Tasks 1–12 implemented TDD, one commit each. Full suites green: **Python 93, backend 215, Flutter 178**; the marriage suite passes across all three layers.
+
+**Live-CV E2E (Step 1–2) is blocked, not failing:** the booted service refuses every `attachments/marriage/*_n.jpg` with `no_table_detected` / **`grid_not_found`** — those samples are compressed Facebook exports (~430 KB, 2048 px) whose ruled lines are too soft for the shared **row/table** detector. The refusal reason is `grid_not_found`, *not* `columns_unmatched`, so the Task 1 boundary fractions are not the cause (the column-rule detector reads them cleanly on these same photos — that's how they were measured; the left page corroborates at 0.75, above the 0.6 floor, whenever the row-extent step succeeds). The baptismal register on a high-res photo (`attachments/baptismal/IMG_3120.jpeg`) still detects `success` (5+5 cols), confirming the pipeline is healthy. Fixing the row-extent step on soft photos would mean editing shared pipeline code the Global Constraints forbid touching.
+
+**No boundary adjustment committed** (none warranted — see above). To finish Step 2, a **high-res, straight-on marriage spread photo** is needed. `attachments/marriage/IMG_3123.jpeg` is not usable: it is an upside-down *baptismal* page. On a low-quality photo the app behaves correctly regardless — CV's `grid_not_found` → `CV_REFUSED` → `SPREAD_UNREADABLE` retake guidance (a deliberate refusal is never papered over by the word-clustering fallback).
+
 ## Self-Review Notes
 
 - **Spec coverage:** Python template (T1) + endpoint (T2); Node client param (T3), grid-assign+split (T4), fallback (T5), route+mount (T6); Flutter model (T7), service (T8), notes (T9), validation (T10), page+route (T11), chooser wiring (T12); E2E (T13). Warning `GROOM_BRIDE_SPLIT_UNCERTAIN` produced in T4/T5, surfaced in T11. Save schema = flat register (T9). Legacy path untouched (constraint honored — no legacy files modified).
