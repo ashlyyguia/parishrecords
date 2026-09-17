@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 /// One party line on a parish marriage register (groom or bride).
 class MarriagePartyInfo {
   MarriagePartyInfo({
@@ -35,6 +37,37 @@ class RegisterMarriageEntry {
     this.selected = true,
   })  : groom = groom ?? MarriagePartyInfo(),
         bride = bride ?? MarriagePartyInfo();
+
+  /// Builds an entry (fresh id) from one backend scan row (marriage OCR route).
+  factory RegisterMarriageEntry.fromScanJson(Map<String, dynamic> row) {
+    MarriagePartyInfo party(dynamic v) {
+      final m = v is Map ? Map<String, dynamic>.from(v) : const <String, dynamic>{};
+      String s(String k) => (m[k] ?? '').toString();
+      return MarriagePartyInfo(
+        name: s('name'),
+        legalStatus: s('legalStatus'),
+        actualAddress: s('actualAddress'),
+        datesPlaceOfBirth: s('datesPlaceOfBirth'),
+        datesPlaceOfBaptism: s('datesPlaceOfBaptism'),
+        parents: s('parents'),
+        sponsors: s('sponsors'),
+      );
+    }
+
+    String s(String k) => (row[k] ?? '').toString();
+    final ln = s('lineNo');
+    return RegisterMarriageEntry(
+      id: const Uuid().v4(),
+      lineNo: ln.isEmpty ? null : ln,
+      groom: party(row['groom']),
+      bride: party(row['bride']),
+      dateOfMarriage: s('dateOfMarriage'),
+      minister: s('minister'),
+      licenseNumber: s('licenseNumber'),
+      observations: s('observations'),
+      selected: true,
+    );
+  }
 
   final String id;
   String? lineNo;
