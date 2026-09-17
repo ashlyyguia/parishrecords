@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../models/baptismal_register_row.dart';
@@ -449,7 +450,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     // Same options as /admin/ocr/upload; marriage is shown but paused.
     const options = <(String, String, IconData, Color)>[
       ('baptism', 'Baptism', Icons.water_drop_outlined, Colors.blue),
-      ('marriage', 'Marriage (coming soon)', Icons.favorite_outline, Colors.pink),
+      ('marriage', 'Marriage', Icons.favorite_outline, Colors.pink),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -500,27 +501,39 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     );
   }
 
-  Widget _marriagePausedNotice() {
+  /// Marriage has its own scanner (register spread with a groom/bride line
+  /// split). Rather than duplicate the scan flow here, the chooser routes to
+  /// [MarriageOcrScanPage] at `/admin/records/ocr-marriage`.
+  Widget _marriageRedirect() {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      key: const ValueKey('marriage-paused'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.info_outline, color: scheme.primary),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Marriage scanning is coming soon. For now, choose Baptism to '
-              'scan a register spread.',
-            ),
+    return Column(
+      key: const ValueKey('marriage-redirect'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
           ),
-        ],
-      ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, color: scheme.primary),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text('Scan a marriage register spread.'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          key: const ValueKey('go-to-marriage'),
+          onPressed: () => context.push('/admin/records/ocr-marriage'),
+          icon: const Icon(Icons.document_scanner_outlined),
+          label: const Text('Open the marriage scanner'),
+        ),
+      ],
     );
   }
 
@@ -540,7 +553,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
                   _sacramentChooser(),
                   const SizedBox(height: 20),
                   if (isMarriage)
-                    _marriagePausedNotice()
+                    _marriageRedirect()
                   else ...[
                     _captureGuide(),
                     FilledButton.icon(
