@@ -34,16 +34,20 @@ function parsePage(raw) {
   };
 }
 
-async function fetchGrid(imageBuffer, { env = process.env, fetchImpl = fetch } = {}) {
+async function fetchGrid(imageBuffer, { env = process.env, fetchImpl = fetch, register } = {}) {
   const baseUrl = env.OCR_SERVICE_URL;
   if (!baseUrl) throw new CvGridError('CV_DISABLED', 'OCR_SERVICE_URL not set');
   const timeoutMs = Number(env.OCR_TIMEOUT_MS) || 20000;
+
+  // Which declared register ruling the CV service should fit. Omitted for the
+  // baptismal callers, so their URL is unchanged.
+  const query = register ? `?register=${encodeURIComponent(register)}` : '';
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res;
   try {
-    res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/v1/grid`, {
+    res = await fetchImpl(`${baseUrl.replace(/\/$/, '')}/v1/grid${query}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/octet-stream',
