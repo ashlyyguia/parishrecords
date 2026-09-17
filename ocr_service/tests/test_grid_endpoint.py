@@ -67,6 +67,42 @@ def test_grid_returns_geometry_for_a_spread(monkeypatch):
     get_settings.cache_clear()
 
 
+def test_grid_selects_marriage_template(monkeypatch):
+    monkeypatch.setenv("OCR_SERVICE_KEY", "k")
+    get_settings.cache_clear()
+    captured = {}
+
+    def _spy(left, right, spread_template=None):
+        captured["template"] = spread_template
+        return _fake_spread()
+
+    monkeypatch.setattr(main_module, "detect_spread_grids", _spy)
+    spread = make_register_spread(rows=24, cols_left=5, cols_right=5)
+    res = client.post("/v1/grid?register=marriage", content=_png_bytes(spread),
+                      headers={"X-OCR-Service-Key": "k"})
+    assert res.status_code == 200, res.text
+    assert captured["template"].name == "marriage_register"
+    get_settings.cache_clear()
+
+
+def test_grid_defaults_to_baptismal_template(monkeypatch):
+    monkeypatch.setenv("OCR_SERVICE_KEY", "k")
+    get_settings.cache_clear()
+    captured = {}
+
+    def _spy(left, right, spread_template=None):
+        captured["template"] = spread_template
+        return _fake_spread()
+
+    monkeypatch.setattr(main_module, "detect_spread_grids", _spy)
+    spread = make_register_spread(rows=24, cols_left=5, cols_right=5)
+    res = client.post("/v1/grid", content=_png_bytes(spread),
+                      headers={"X-OCR-Service-Key": "k"})
+    assert res.status_code == 200, res.text
+    assert captured["template"].name == "baptismal_register"
+    get_settings.cache_clear()
+
+
 def test_refusal_response_includes_reason_and_side(monkeypatch):
     from app.errors import OcrError
 
