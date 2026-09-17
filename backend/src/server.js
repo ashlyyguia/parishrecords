@@ -20,6 +20,7 @@ const donationsRoutes = require('./routes/donations_firestore');
 const sacramentsRoutes = require('./routes/sacraments_firestore');
 const ocrRoutes = require('./routes/ocr_firestore');
 const baptismalOcrRoutes = require('./routes/baptismal_ocr_firestore');
+const marriageOcrRoutes = require('./routes/marriage_ocr_firestore');
 const { verifyFirebaseToken } = require('./middleware/auth');
 
 const app = express();
@@ -59,6 +60,9 @@ app.use(limiter);
 // because a base64 register photo runs to ~13.4MB. This router brings its
 // own 20mb parser and its own verifyFirebaseToken.
 app.use('/api/ocr/baptismal', baptismalOcrRoutes.router);
+// Marriage register OCR: same reasons as the baptismal mount above (20mb
+// parser, own auth), mounted ahead of the global 10mb JSON parser.
+app.use('/api/ocr/marriage', marriageOcrRoutes.router);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));

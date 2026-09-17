@@ -16,6 +16,9 @@ from app.pipeline.column_template import (
     BAPTISMAL_LEFT,
     BAPTISMAL_REGISTER,
     BAPTISMAL_RIGHT,
+    MARRIAGE_LEFT,
+    MARRIAGE_REGISTER,
+    MARRIAGE_RIGHT,
     ColumnTemplate,
 )
 from app.pipeline.table import (
@@ -116,6 +119,25 @@ class TestTemplateDeclaration:
     def test_a_spread_pairs_two_different_page_rulings(self):
         assert BAPTISMAL_REGISTER.left is not BAPTISMAL_REGISTER.right
         assert BAPTISMAL_REGISTER.left.boundaries != BAPTISMAL_REGISTER.right.boundaries
+
+    def test_marriage_left_and_right_column_keys(self):
+        assert MARRIAGE_LEFT.columns == (
+            "no", "contracting_parties", "legal_status", "actual_address",
+            "birth", "baptism", "marriage_date",
+        )
+        assert MARRIAGE_RIGHT.columns == (
+            "parents", "sponsors", "minister", "license_no", "observations",
+        )
+
+    def test_marriage_boundaries_span_the_table(self):
+        for t in (MARRIAGE_LEFT, MARRIAGE_RIGHT):
+            assert t.boundaries[0] == 0.0 and t.boundaries[-1] == 1.0
+            assert len(t.boundaries) == t.column_count + 1
+
+    def test_marriage_register_declares_row_count_and_two_rulings(self):
+        assert MARRIAGE_REGISTER.left is MARRIAGE_LEFT
+        assert MARRIAGE_REGISTER.right is MARRIAGE_RIGHT
+        assert MARRIAGE_REGISTER.data_row_count >= 1
 
 
 class TestFittingTheTemplate:

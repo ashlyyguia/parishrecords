@@ -177,15 +177,17 @@ void main() {
     expect(find.text('Scan / Process OCR'), findsNothing);
   });
 
-  testWidgets('choosing Marriage shows the coming-soon notice and hides the picker',
+  testWidgets('choosing Marriage offers the marriage scanner and hides the picker',
       (tester) async {
     await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('sacrament-type')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Marriage (coming soon)').last);
+    await tester.tap(find.text('Marriage').last);
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('marriage-paused')), findsOneWidget);
+    // The paused notice is gone; a button now routes to the marriage scanner.
+    expect(find.byKey(const ValueKey('marriage-paused')), findsNothing);
+    expect(find.byKey(const ValueKey('go-to-marriage')), findsOneWidget);
     expect(find.byKey(const ValueKey('pick-image')), findsNothing);
   });
 

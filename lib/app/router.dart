@@ -10,6 +10,7 @@ import '../screens/admin/enhanced_admin_shell.dart';
 import '../screens/admin/pages/announcements_page.dart';
 import '../screens/admin/pages/audit_logs_page.dart';
 import '../screens/admin/pages/baptismal_ocr_scan_page.dart';
+import '../screens/admin/pages/marriage_ocr_scan_page.dart';
 import '../screens/admin/pages/integrations_page.dart';
 import '../screens/admin/pages/notifications_page.dart';
 import '../screens/admin/pages/ocr_queue_page.dart';
@@ -614,6 +615,10 @@ GoRouter createRouter() {
           GoRoute(
             path: '/admin/records/ocr-baptism',
             builder: (context, state) => const BaptismalOcrScanPage(),
+          ),
+          GoRoute(
+            path: '/admin/records/ocr-marriage',
+            builder: (context, state) => const MarriageOcrScanPage(),
           ),
           GoRoute(
             path: '/admin/certificate-scan',

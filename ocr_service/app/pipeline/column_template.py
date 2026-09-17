@@ -157,3 +157,60 @@ BAPTISMAL_REGISTER = SpreadColumnTemplate(
     right=BAPTISMAL_RIGHT,
     data_row_count=24,
 )
+
+
+# --- The marriage register ---------------------------------------------------
+#
+# Same declared-layout reasoning as the baptismal register above: the marriage
+# book is one printed ruling, so its column proportions are declared once and
+# fitted to wherever the table lands on each photograph. These fractions were
+# measured by column-rule detection on the clear, straight-on sample spreads
+# (attachments/marriage/*_n.jpg): the right page's five boundaries agreed to
+# ~0.005 across four photographs; the left page's to ~0.02, once the wide
+# CONTRACTING PARTIES column's internal sub-divider (a printed rule identical in
+# character to a real boundary, exactly like the baptismal sub-dividers) is set
+# aside. The corroboration gate re-measures the fit on every scan, so a drifting
+# declaration is caught rather than trusted.
+
+MARRIAGE_LEFT = ColumnTemplate(
+    name="marriage_register_left_page",
+    columns=(
+        "no",
+        "contracting_parties",
+        "legal_status",
+        "actual_address",
+        "birth",
+        "baptism",
+        "marriage_date",
+    ),
+    boundaries=(
+        0.000,  # table's left border
+        0.070,  # NO. | CONTRACTING PARTIES
+        0.340,  # CONTRACTING PARTIES | LEGAL STATUS
+        0.427,  # LEGAL STATUS | ACTUAL ADDRESS
+        0.637,  # ACTUAL ADDRESS | DATES & PLACES OF BIRTH
+        0.799,  # DATES & PLACES OF BIRTH | DATES & PLACES OF BAPTISM
+        0.923,  # DATES & PLACES OF BAPTISM | DATES OF MARRIAGE
+        1.000,  # table's right border
+    ),
+)
+
+MARRIAGE_RIGHT = ColumnTemplate(
+    name="marriage_register_right_page",
+    columns=("parents", "sponsors", "minister", "license_no", "observations"),
+    boundaries=(
+        0.000,  # table's left border
+        0.227,  # NAME OF PARENTS | SPONSORS OF MARRIAGE
+        0.450,  # SPONSORS OF MARRIAGE | MINISTER
+        0.665,  # MINISTER | LICENSE NO.
+        0.781,  # LICENSE NO. | OBSERVATIONS
+        1.000,  # table's right border
+    ),
+)
+
+MARRIAGE_REGISTER = SpreadColumnTemplate(
+    name="marriage_register",
+    left=MARRIAGE_LEFT,
+    right=MARRIAGE_RIGHT,
+    data_row_count=15,
+)

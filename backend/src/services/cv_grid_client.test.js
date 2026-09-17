@@ -59,6 +59,26 @@ test('CV_BAD_RESPONSE on malformed success body', async () => {
     .rejects.toMatchObject({ code: 'CV_BAD_RESPONSE' });
 });
 
+test('appends ?register=marriage to the grid URL', async () => {
+  let calledUrl;
+  const fetchImpl = async (url) => {
+    calledUrl = url;
+    return { ok: true, status: 200, json: async () => okBody };
+  };
+  await fetchGrid(Buffer.from('img'), { env, fetchImpl, register: 'marriage' });
+  expect(calledUrl).toBe('http://cv.local/v1/grid?register=marriage');
+});
+
+test('no register selector leaves the baptismal URL unchanged', async () => {
+  let calledUrl;
+  const fetchImpl = async (url) => {
+    calledUrl = url;
+    return { ok: true, status: 200, json: async () => okBody };
+  };
+  await fetchGrid(Buffer.from('img'), { env, fetchImpl });
+  expect(calledUrl).toBe('http://cv.local/v1/grid');
+});
+
 test('CvGridError is exported', () => {
   expect(new CvGridError('X').code).toBe('X');
 });

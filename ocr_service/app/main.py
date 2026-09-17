@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from .config import get_settings
 from .errors import OcrError
-from .pipeline.column_template import BAPTISMAL_REGISTER
+from .pipeline.column_template import BAPTISMAL_REGISTER, MARRIAGE_REGISTER
 from .pipeline.inversion import correct_spread_inversion
 from .pipeline.orientation import correct_orientation
 from .pipeline.rectify import rectify_page
@@ -20,6 +20,9 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("ocr_service")
 
 app = FastAPI(title="Parish Register Grid", version="2.0.0")
+
+# One printed book per register; the query selects which declared ruling to fit.
+_REGISTERS = {"baptismal": BAPTISMAL_REGISTER, "marriage": MARRIAGE_REGISTER}
 
 
 @app.exception_handler(OcrError)
@@ -76,12 +79,15 @@ async def detect_grid_endpoint(
     data = await request.body()
     validate_upload(data, settings)
 
+    register = request.query_params.get("register", "baptismal")
+    spread_template = _REGISTERS.get(register, BAPTISMAL_REGISTER)
+
     oriented = correct_orientation(_decode(data))
     spread = correct_spread_inversion(oriented.image).image
     pages = split_spread(spread)
     left = rectify_page(pages.left).image
     right = rectify_page(pages.right).image
-    grids = detect_spread_grids(left, right, spread_template=BAPTISMAL_REGISTER)
+    grids = detect_spread_grids(left, right, spread_template=spread_template)
 
     return {
         "success": True,
