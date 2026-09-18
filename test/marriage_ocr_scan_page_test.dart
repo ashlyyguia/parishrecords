@@ -106,6 +106,22 @@ void main() {
     expect(saveButton.onPressed, isNull);
   });
 
+  testWidgets('shows a reduced-accuracy banner when CV was unavailable',
+      (tester) async {
+    await tester.pumpWidget(harness(
+      service: serviceReturning(200, _scanBody(warnings: ['CV_UNAVAILABLE'])),
+    ));
+    await toReview(tester);
+    expect(find.byKey(const ValueKey('reduced-accuracy-banner')), findsOneWidget);
+    expect(find.textContaining('lower-accuracy fallback'), findsOneWidget);
+  });
+
+  testWidgets('no reduced-accuracy banner on a normal (CV) scan', (tester) async {
+    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody())));
+    await toReview(tester);
+    expect(find.byKey(const ValueKey('reduced-accuracy-banner')), findsNothing);
+  });
+
   testWidgets('surfaces the groom/bride split warning copy', (tester) async {
     await tester.pumpWidget(harness(
       service: serviceReturning(200, _scanBody(warnings: ['GROOM_BRIDE_SPLIT_UNCERTAIN'])),

@@ -542,6 +542,44 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
     );
   }
 
+  // Shown when the backend fell back to the less accurate word-clustering path
+  // because the CV grid service was unavailable (CV_UNAVAILABLE). The fallback
+  // can mis-place values across columns and swap groom/bride, so make the
+  // reduced accuracy loud rather than letting plausible-looking but wrong rows
+  // pass silently.
+  Widget _reducedAccuracyBanner(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('reduced-accuracy-banner'),
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.error),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.grid_off_outlined, color: scheme.onTertiaryContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'The accurate grid reader was unavailable, so this scan used a '
+              'lower-accuracy fallback. Columns and the groom/bride split may be '
+              'wrong — check every field carefully, or retake once the reader is '
+              'back.',
+              style: TextStyle(
+                color: scheme.onTertiaryContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _confidenceBanner(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
@@ -603,6 +641,8 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
 
     return Column(
       children: [
+        if (_warnings.contains('CV_UNAVAILABLE'))
+          _reducedAccuracyBanner(context),
         if (_warnings.contains('CONFIDENCE_UNAVAILABLE'))
           _confidenceBanner(context),
         if (_layoutWarnings.isNotEmpty) _warningsPanel(context, _layoutWarnings),
