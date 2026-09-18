@@ -123,6 +123,44 @@ def test_declared_count_refuses_when_the_anchor_is_too_weak():
         detect_grid(page, BAPTISMAL_LEFT, data_row_count=24)
 
 
+def _data_row_bottoms(grid) -> list[int]:
+    return [c.y + c.h for c in grid.cells]
+
+
+def test_declared_count_survives_a_near_left_border_subdivider():
+    # The marriage register's interior sub-divider sits in a wide column that
+    # begins only a little way in from the table's left border, so — unlike the
+    # 0.30 case the detection path already filters — it survives the left-extent
+    # filter and lands between genuine row rules at half the pitch. The declared
+    # path must still recover the *true* pitch: 24 rows laid on a halved pitch
+    # would cover only the top half of the table. Assert the rows reach the
+    # bottom of the ruled page, which a halved pitch cannot.
+    page = split_spread(
+        make_register_spread(rows=24, cols_left=5, subdivider_start_frac=0.05)
+    ).left
+    grid = detect_grid(page, BAPTISMAL_LEFT, data_row_count=24)
+    assert grid.rows == 25
+    assert max(_data_row_bottoms(grid)) > 0.85 * page.shape[0]
+
+
+def test_declared_count_recovers_faded_upper_rows_with_a_subdivider():
+    # The marriage register's right page as it actually photographs: the top
+    # entries' rules fade into the spine *and* a near-left-border sub-divider
+    # halves the visible pitch. The first *detected* genuine rule is then several
+    # rows down, so a layout that trusts the median gap (halved) or anchors on
+    # the first detected rule overshoots or mis-pitches. The declared path must
+    # still span the whole table, top to bottom.
+    page = split_spread(
+        make_register_spread(rows=24, cols_left=5,
+                             subdivider_start_frac=0.05,
+                             erase_row_rules_above_frac=0.35)
+    ).left
+    grid = detect_grid(page, BAPTISMAL_LEFT, data_row_count=24)
+    assert grid.rows == 25
+    assert min(c.y for c in grid.cells) < 0.20 * page.shape[0]
+    assert max(_data_row_bottoms(grid)) > 0.85 * page.shape[0]
+
+
 def test_declared_count_is_opt_in_detection_path_unchanged():
     # With no declared count the fully-ruled page detects exactly as before.
     grid = detect_grid(_left_page())

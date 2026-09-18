@@ -10,7 +10,8 @@ GUTTER_HALF = 24
 def make_register_spread(rows: int = 24, cols_left: int = 5, cols_right: int = 5,
                          gutter_offset: int = 0,
                          subdivider_start_frac: float | None = None,
-                         erase_row_rules_below_frac: float | None = None) -> np.ndarray:
+                         erase_row_rules_below_frac: float | None = None,
+                         erase_row_rules_above_frac: float | None = None) -> np.ndarray:
     """White page, blue ruled grid, a header band, two pages split by a gutter.
 
     Args:
@@ -33,6 +34,14 @@ def make_register_spread(rows: int = 24, cols_left: int = 5, cols_right: int = 5
                        handwriting and column rules remain — modelling rules
                        that faded out of a real photograph. Used to test the
                        declared-row-count path in table.py.
+        erase_row_rules_above_frac: The mirror of the above, for the *top* of
+                       the table: horizontal row rules above this fraction of
+                       the table height are not drawn. This models the rules
+                       fading into the book's spine near the top of a page (seen
+                       on the marriage register's right page), where the first
+                       few entries' rules drop out — so the declared-row-count
+                       path cannot assume the first *detected* rule is the first
+                       row.
     """
     img = np.full((H, W, 3), 250, np.uint8)
     mid = W // 2 + gutter_offset
@@ -48,9 +57,13 @@ def make_register_spread(rows: int = 24, cols_left: int = 5, cols_right: int = 5
         ys += [int(ys[1] + i * pitch) for i in range(1, rows + 1)]
         cutoff = (None if erase_row_rules_below_frac is None
                   else top + erase_row_rules_below_frac * (bottom - top))
+        cutoff_top = (None if erase_row_rules_above_frac is None
+                      else top + erase_row_rules_above_frac * (bottom - top))
         for y in ys:
             if cutoff is not None and y > cutoff:
                 continue  # this rule faded out of the photograph
+            if cutoff_top is not None and ys[1] < y < cutoff_top:
+                continue  # a top-of-page rule faded into the spine
             cv2.line(img, (x0, y), (x1, y), line, 2)
         xs = [int(x0 + i * (x1 - x0) / cols) for i in range(cols + 1)]
         for x in xs:
