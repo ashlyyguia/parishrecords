@@ -226,6 +226,22 @@ class TestTheGateChecksTheFit:
         assert spread.left_corroboration >= TEMPLATE_CORROBORATION_FLOOR
         assert spread.right_corroboration >= TEMPLATE_CORROBORATION_FLOOR
 
+    def test_asymmetric_template_pages_are_not_refused_for_unequal_columns(self):
+        """The marriage register is ruled with seven columns on the left page
+        and five on the right. Each page's column identity comes from its own
+        declared template (checked per page by _check_template_fit), so the
+        cross-page equal-column gate — which exists for template-less detection
+        where a mismatch means a merged/split column — must not fire when a
+        spread template legitimately declares different counts per page."""
+        left, _ = _draw_table(MARRIAGE_LEFT, rows=15)
+        right, _ = _draw_table(MARRIAGE_RIGHT, rows=15)
+        spread = detect_spread_grids(left, right,
+                                     spread_template=MARRIAGE_REGISTER)
+        assert spread.left.cols == 7
+        assert spread.right.cols == 5
+        assert spread.left.column_keys == MARRIAGE_LEFT.columns
+        assert spread.right.column_keys == MARRIAGE_RIGHT.columns
+
     def test_a_page_whose_ruling_does_not_match_the_template_is_refused(self):
         """The check that keeps the declaration answerable to the page. The
         right page here is drawn with the *left* page's ruling: the fit still

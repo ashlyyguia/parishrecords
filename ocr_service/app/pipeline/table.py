@@ -1250,7 +1250,15 @@ def detect_spread_grids(
         if template is not None:
             _check_template_fit(side, grids[side], template, page.shape[1])
 
-    if left.cols != right.cols:
+    # Without a template the two pages independently *counted* their columns,
+    # so a disagreement means one page merged or split a column and values
+    # would land in the wrong field — refuse. With a spread template each
+    # page's columns are instead *declared* per side and already checked
+    # against that page by _check_template_fit above, so the counts may
+    # legitimately differ (the marriage register is ruled 7 columns on the
+    # left, 5 on the right). Comparing the two declared counts here would only
+    # re-reject that valid asymmetry, so this gate applies only when counting.
+    if spread_template is None and left.cols != right.cols:
         _refuse(
             f"The two pages disagree about how many columns the register has "
             f"({left.cols} on the left page, {right.cols} on the right), so "
