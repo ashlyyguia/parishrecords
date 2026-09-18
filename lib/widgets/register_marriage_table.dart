@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/register_marriage_entry.dart';
+import '../services/marriage_row_validation.dart';
 
 /// Parish marriage register layout: one **No.** with two lines (Man / Woman).
 class RegisterMarriageTable extends StatelessWidget {
@@ -8,6 +9,7 @@ class RegisterMarriageTable extends StatelessWidget {
     super.key,
     required this.entries,
     required this.fillGeneration,
+    this.issues = const [],
     this.onChanged,
     this.onSelectionChanged,
     this.onRemove,
@@ -16,10 +18,29 @@ class RegisterMarriageTable extends StatelessWidget {
 
   final List<RegisterMarriageEntry> entries;
   final int fillGeneration;
+
+  /// Validation problems for these rows. A blocking issue paints the offending
+  /// name cell red and shows its message beneath the field, so a reviewer can
+  /// find the field the save banner is counting instead of hunting for it.
+  final List<MarriageRowIssue> issues;
   final VoidCallback? onChanged;
   final VoidCallback? onSelectionChanged;
   final void Function(int index)? onRemove;
   final bool showCheckboxes;
+
+  /// The issue to surface on one party's name cell. A blocking issue (a missing
+  /// name) wins over a non-blocking one (a possible duplicate) so the cell
+  /// reads as the reason save is blocked; on the same field only the strongest
+  /// is shown.
+  MarriageRowIssue? _nameIssue(int rowIndex, String field) {
+    MarriageRowIssue? found;
+    for (final issue in issues) {
+      if (issue.rowIndex != rowIndex || issue.field != field) continue;
+      if (issue.blocking) return issue;
+      found ??= issue;
+    }
+    return found;
+  }
 
   static const _minTableWidth = 2480.0;
 
@@ -82,6 +103,8 @@ class RegisterMarriageTable extends StatelessWidget {
           fillGeneration: fillGeneration,
           showCheckbox: showCheckboxes,
           showRemove: onRemove != null,
+          groomIssue: _nameIssue(i, 'groomName'),
+          brideIssue: _nameIssue(i, 'brideName'),
           onChanged: onChanged,
           onSelectionChanged: onSelectionChanged,
           onRemove: onRemove == null ? null : () => onRemove!(i),
@@ -172,6 +195,8 @@ class RegisterMarriageTable extends StatelessWidget {
     required bool showCheckbox,
     required bool showRemove,
     required bool stripe,
+    MarriageRowIssue? groomIssue,
+    MarriageRowIssue? brideIssue,
     VoidCallback? onChanged,
     VoidCallback? onSelectionChanged,
     VoidCallback? onRemove,
@@ -192,6 +217,7 @@ class RegisterMarriageTable extends StatelessWidget {
       required MarriagePartyInfo party,
       required String idPrefix,
       required bool isFirstLine,
+      MarriageRowIssue? nameIssue,
     }) {
       return TableRow(
         key: ValueKey('m-$index-$partyLabel-gen$fillGeneration'),
@@ -232,6 +258,12 @@ class RegisterMarriageTable extends StatelessWidget {
             fillGeneration: fillGeneration,
             value: party.name,
             width: _partyColumns[0].width - 12,
+            errorText: nameIssue != null && nameIssue.blocking
+                ? nameIssue.message
+                : null,
+            helperText: nameIssue != null && !nameIssue.blocking
+                ? nameIssue.message
+                : null,
             onChanged: (v) {
               party.name = v;
               onChanged?.call();
@@ -395,6 +427,7 @@ class RegisterMarriageTable extends StatelessWidget {
         party: entry.groom,
         idPrefix: 'm-$index-groom',
         isFirstLine: true,
+        nameIssue: groomIssue,
       ),
       row(
         partyLabel: 'Woman',
@@ -402,6 +435,7 @@ class RegisterMarriageTable extends StatelessWidget {
         party: entry.bride,
         idPrefix: 'm-$index-bride',
         isFirstLine: false,
+        nameIssue: brideIssue,
       ),
     ];
   }
@@ -474,6 +508,8 @@ class _RegisterField extends StatefulWidget {
     this.hint,
     this.width,
     this.maxLines = 1,
+    this.errorText,
+    this.helperText,
   });
 
   final String label;
@@ -483,6 +519,8 @@ class _RegisterField extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final double? width;
   final int maxLines;
+  final String? errorText;
+  final String? helperText;
 
   @override
   State<_RegisterField> createState() => _RegisterFieldState();
@@ -513,6 +551,8 @@ class _RegisterFieldState extends State<_RegisterField> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hasError = widget.errorText != null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: SizedBox(
@@ -524,7 +564,14 @@ class _RegisterFieldState extends State<_RegisterField> {
             labelText: widget.label.isEmpty ? null : widget.label,
             hintText: widget.hint,
             isDense: true,
+            filled: hasError,
+            fillColor:
+                hasError ? scheme.errorContainer.withValues(alpha: 0.35) : null,
             border: const OutlineInputBorder(),
+            errorMaxLines: 2,
+            helperMaxLines: 2,
+            errorText: widget.errorText,
+            helperText: widget.helperText,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 8,
               vertical: 8,

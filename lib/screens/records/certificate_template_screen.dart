@@ -716,12 +716,23 @@ class _CertificateTemplateScreenState
   Future<void> _loadRecordData() async {
     try {
       var records = ref.read(recordsProvider);
-      if (_findRecord(records) == null) {
+      var record = _findRecord(records);
+      if (record == null) {
         await ref.read(recordsProvider.notifier).load();
         records = ref.read(recordsProvider);
+        record = _findRecord(records);
       }
 
-      final record = _findRecord(records);
+      // Fallback: the in-memory list can be empty when we arrive from a screen
+      // that never populates recordsProvider (e.g. the admin Records page loads
+      // into its own local list). Resolve the record directly by id so the form
+      // still fills in.
+      if (record == null && widget.recordId.trim().isNotEmpty) {
+        record = await ref
+            .read(recordsRepositoryProvider)
+            .getById(widget.recordId);
+      }
+
       if (record != null && mounted) {
         _applyRecordToForm(record);
       }

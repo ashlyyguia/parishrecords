@@ -634,9 +634,29 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
     );
   }
 
+  // Names each blocking issue by its register row and party, so a reviewer can
+  // scroll straight to the red cell instead of hunting a table that may run
+  // well past the bottom of the screen.
+  String _attentionSummary(List<MarriageRowIssue> blockingIssues) {
+    String label(MarriageRowIssue issue) {
+      final row = (issue.rowIndex >= 0 && issue.rowIndex < _entries.length)
+          ? (_entries[issue.rowIndex].lineNo ?? '${issue.rowIndex + 1}')
+          : '${issue.rowIndex + 1}';
+      final party = issue.field == 'groomName' ? 'Man' : 'Woman';
+      return 'No. $row ($party)';
+    }
+
+    final where = blockingIssues.map(label).join(', ');
+    final n = blockingIssues.length;
+    return n == 1
+        ? '1 field needs attention: $where. Scroll to the red cell to fix it.'
+        : '$n fields need attention: $where. Scroll to each red cell to fix it.';
+  }
+
   Widget _reviewStep() {
     final issues = _issues;
-    final blocking = issues.where((i) => i.blocking).length;
+    final blockingIssues = issues.where((i) => i.blocking).toList();
+    final blocking = blockingIssues.length;
     final selected = _entries.where((e) => e.selected).length;
 
     return Column(
@@ -682,6 +702,7 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
               : RegisterMarriageTable(
                   entries: _entries,
                   fillGeneration: _fillGen,
+                  issues: issues,
                   onChanged: () => setState(() {}),
                   onSelectionChanged: () => setState(() {}),
                   onRemove: (i) => setState(() {
@@ -697,7 +718,8 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
               children: [
                 if (blocking > 0)
                   Text(
-                    '$blocking field(s) need attention before saving.',
+                    _attentionSummary(blockingIssues),
+                    textAlign: TextAlign.center,
                     style:
                         TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
