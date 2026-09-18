@@ -56,6 +56,38 @@ function joinText(placed) {
     .trim();
 }
 
+// Split a paired cell's words into the groom (top) and bride (bottom) lines.
+//
+// A geometric split at the cell's own vertical midpoint is fragile: the CV row
+// band is often taller than the four printed lines and the text can sit low or
+// high within it, so the cell midpoint cuts through one party's second line.
+// Instead, cluster the words into printed lines and split at the midpoint of the
+// TEXT's own vertical extent, which tracks where the ink actually is. When the
+// words form a single line (one person, or two names on one line) they can't be
+// separated -- all go to the groom, flagged uncertain when there are several.
+function splitGroomBride(hits, cellHeight) {
+  if (hits.length === 0) return { top: [], bottom: [], uncertain: false };
+  const sorted = [...hits].sort((a, b) => a.cy - b.cy);
+  const tol = Math.max(8, cellHeight * 0.12);
+  const lineCentres = [];
+  let run = [sorted[0].cy];
+  for (const p of sorted.slice(1)) {
+    if (p.cy - run[run.length - 1] <= tol) run.push(p.cy);
+    else { lineCentres.push(run.reduce((a, b) => a + b, 0) / run.length); run = [p.cy]; }
+  }
+  lineCentres.push(run.reduce((a, b) => a + b, 0) / run.length);
+
+  if (lineCentres.length <= 1) {
+    // One printed line: a single person. Can't tell groom from bride, so keep
+    // all as the groom and flag when there was more than one word to split.
+    return { top: hits, bottom: [], uncertain: hits.length >= 2 };
+  }
+  const splitY = (lineCentres[0] + lineCentres[lineCentres.length - 1]) / 2;
+  const top = hits.filter((p) => p.cy < splitY);
+  const bottom = hits.filter((p) => p.cy >= splitY);
+  return { top, bottom, uncertain: top.length === 0 || bottom.length === 0 };
+}
+
 function blankParty() {
   return {
     name: '',
@@ -99,14 +131,9 @@ function marriageGridToRows(leftPage, leftWords, rightPage, rightWords) {
       }
       if (pairedMap[c.key]) {
         const field = pairedMap[c.key];
-        const mid = c.y + c.h / 2;
-        const top = hits.filter((p) => p.cy < mid);
-        const bottom = hits.filter((p) => p.cy >= mid);
-        // Two or more words that all land on one side means the two printed
-        // lines can't be told apart -- flag it for the reviewer.
-        if (hits.length >= 2 && (top.length === 0 || bottom.length === 0)) {
-          warnings.add('GROOM_BRIDE_SPLIT_UNCERTAIN');
-        }
+        const { top, bottom, uncertain } = splitGroomBride(hits, c.h);
+        // The two printed lines couldn't be told apart -- flag for the reviewer.
+        if (uncertain) warnings.add('GROOM_BRIDE_SPLIT_UNCERTAIN');
         entry.groom[field] = joinText(top);
         entry.bride[field] = joinText(bottom);
       } else if (sharedMap[c.key]) {

@@ -35,6 +35,27 @@ test('splits a paired cell into groom (top) and bride (bottom)', () => {
   expect(rows[0].lineNo).toBe('47');
 });
 
+test('keeps a two-line groom together when the text sits low in the cell band', () => {
+  // Real IMG_20260915_094054_545 entry 1: the CV row band (515..666, mid 591)
+  // is taller than the four printed lines, which sit low in it. The groom's
+  // second line (MEJORADA, cy 594) is just below the geometric cell midpoint,
+  // so a cell-midpoint split misfiles it as the bride. Splitting at the text's
+  // own vertical extent keeps the groom's two lines together.
+  const left = {
+    cells: [cell('contracting_parties', 1, 40, 515, 400, 151)],
+  };
+  const y = (v) => v - 3; // word() offsets the center by +3
+  const leftWords = [
+    word('JOHN', 60, y(563)), word('REYNAN', 120, y(563)),
+    word('MEJORADA', 90, y(594)),
+    word('MERA', 60, y(636)),
+    word('MAGNAONG', 90, y(661)),
+  ];
+  const { rows } = marriageGridToRows(left, leftWords, { cells: [] }, []);
+  expect(rows[0].groom.name).toBe('JOHN REYNAN MEJORADA');
+  expect(rows[0].bride.name).toBe('MERA MAGNAONG');
+});
+
 test('flags GROOM_BRIDE_SPLIT_UNCERTAIN when both names land on one side', () => {
   const left = { cells: [cell('contracting_parties', 1, 40, 100, 200, 80)] };
   const leftWords = [word('Marlon', 50, 108), word('Ana', 90, 112)]; // both top
