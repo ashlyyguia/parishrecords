@@ -88,6 +88,17 @@ function splitGroomBride(hits, cellHeight) {
   return { top, bottom, uncertain: top.length === 0 || bottom.length === 0 };
 }
 
+// The printed NO-column entry digit is centred on the band and can fall a few
+// pixels past the narrow NO column into contracting parties, prefixing a name
+// with a stray "3 " / "1 . ". A contracting party's name never begins with a
+// digit, so drop a single leading number (with optional trailing dot/comma)
+// when readable name text follows. Applied ONLY to the name field -- birth,
+// address and parents legitimately begin with numbers.
+function stripLeadingEntryNumber(s) {
+  const m = /^\s*\d{1,3}\s*[.,]?\s*(.+)$/s.exec(s);
+  return m && /[a-z]/i.test(m[1]) ? m[1].trim() : s;
+}
+
 function blankParty() {
   return {
     name: '',
@@ -134,8 +145,9 @@ function marriageGridToRows(leftPage, leftWords, rightPage, rightWords) {
         const { top, bottom, uncertain } = splitGroomBride(hits, c.h);
         // The two printed lines couldn't be told apart -- flag for the reviewer.
         if (uncertain) warnings.add('GROOM_BRIDE_SPLIT_UNCERTAIN');
-        entry.groom[field] = joinText(top);
-        entry.bride[field] = joinText(bottom);
+        const clean = field === 'name' ? stripLeadingEntryNumber : (x) => x;
+        entry.groom[field] = clean(joinText(top));
+        entry.bride[field] = clean(joinText(bottom));
       } else if (sharedMap[c.key]) {
         const field = sharedMap[c.key];
         const text = joinText(hits);

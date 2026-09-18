@@ -63,6 +63,32 @@ test('flags GROOM_BRIDE_SPLIT_UNCERTAIN when both names land on one side', () =>
   expect(warnings).toContain('GROOM_BRIDE_SPLIT_UNCERTAIN');
 });
 
+test('strips a NO-column entry number that bled into a name cell', () => {
+  // The printed entry digit is centred on the band and can fall a little past
+  // the narrow NO column into contracting parties, prefixing a name like
+  // "3 ALYSSA BALABAG". A person's name never starts with a digit, so drop it.
+  const left = { cells: [cell('contracting_parties', 1, 40, 100, 400, 160)] };
+  const leftWords = [
+    word('JAY', 60, 110), word('BUNAO', 70, 130), // groom
+    word('3', 45, 198), word('ALYSSA', 60, 200), word('BALABAG', 70, 220), // bride + stray digit
+  ];
+  const { rows } = marriageGridToRows(left, leftWords, { cells: [] }, []);
+  expect(rows[0].groom.name).toBe('JAY BUNAO');
+  expect(rows[0].bride.name).toBe('ALYSSA BALABAG');
+});
+
+test('keeps a leading number in non-name fields (e.g. a birth date)', () => {
+  // birth ("datesPlaceOfBirth") legitimately starts with a day/year number.
+  const left = { cells: [cell('birth', 1, 40, 100, 400, 160)] };
+  const leftWords = [
+    word('1994', 60, 110), word('APRIL', 120, 110), // groom birth
+    word('1999', 60, 200), word('MAY', 120, 200), // bride birth
+  ];
+  const { rows } = marriageGridToRows(left, leftWords, { cells: [] }, []);
+  expect(rows[0].groom.datesPlaceOfBirth).toBe('1994 APRIL');
+  expect(rows[0].bride.datesPlaceOfBirth).toBe('1999 MAY');
+});
+
 test('sponsors (shared right col) go to groom.sponsors', () => {
   const right = { cells: [cell('sponsors', 1, 0, 100, 200, 80)] };
   const rightWords = [word('Victor', 10, 120), word('Amalia', 60, 120)];
