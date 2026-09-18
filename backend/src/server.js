@@ -22,6 +22,7 @@ const ocrRoutes = require('./routes/ocr_firestore');
 const baptismalOcrRoutes = require('./routes/baptismal_ocr_firestore');
 const marriageOcrRoutes = require('./routes/marriage_ocr_firestore');
 const { verifyFirebaseToken } = require('./middleware/auth');
+const { cvGridStatus } = require('./services/cv_health');
 
 const app = express();
 // Render sits behind a proxy and sets X-Forwarded-* headers.
@@ -131,6 +132,11 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(`🚀 Parish Record API server running on port ${PORT}`);
       console.log(`📊 Health check: http://localhost:${PORT}/health`);
+      // Fire-and-forget: report whether the CV grid service is reachable so a
+      // silent per-request fallback to word-clustering is visible at startup.
+      cvGridStatus().then((s) => {
+        console.log(`${s.reachable ? '🧩' : '⚠️ '} [cv-grid] ${s.message}`);
+      }).catch(() => {});
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

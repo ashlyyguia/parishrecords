@@ -93,6 +93,20 @@ OCR_SERVICE_KEY=devkey            # must match this service's OCR_SERVICE_KEY
 OCR_TIMEOUT_MS=120000
 ```
 
+### Confirm the backend can reach it
+
+The backend probes this service once at startup and prints the result, so you
+don't have to guess whether scans will use the accurate grid path:
+
+```
+🧩 [cv-grid] CV grid service reachable at http://127.0.0.1:8000.
+⚠️  [cv-grid] CV grid service at http://127.0.0.1:8000 is unreachable — scans will use the low-accuracy fallback. Start it (see ocr_service/README.md).
+```
+
+If you see the ⚠️ line, start this service (above) before scanning — the same
+check applies in production (set `OCR_SERVICE_URL` on the Railway backend to the
+VPS service and watch the deploy log for the 🧩 line).
+
 ## Tests
 
 ```bash
