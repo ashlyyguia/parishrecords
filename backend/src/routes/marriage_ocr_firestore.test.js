@@ -5,12 +5,22 @@ const request = require('supertest');
 const { createMarriageOcrRouter } = require('./marriage_ocr_firestore');
 
 let JPEG;
+let LEFT_PREP;
+let RIGHT_PREP;
 const b64 = (buf) => buf.toString('base64');
 
 beforeAll(async () => {
   const sharp = require('sharp');
   JPEG = await sharp({
     create: { width: 40, height: 30, channels: 3, background: { r: 200, g: 60, b: 60 } },
+  }).jpeg().toBuffer();
+  // Real JPEGs at the DOWNSCALED (post-preprocess) size, so the real
+  // imageDimensions() can measure them in the rescale test below.
+  LEFT_PREP = await sharp({
+    create: { width: 360, height: 180, channels: 3, background: { r: 128, g: 128, b: 128 } },
+  }).jpeg().toBuffer();
+  RIGHT_PREP = await sharp({
+    create: { width: 200, height: 180, channels: 3, background: { r: 128, g: 128, b: 128 } },
   }).jpeg().toBuffer();
 });
 
@@ -86,6 +96,73 @@ describe('POST /api/ocr/marriage/scan', () => {
     expect(row.lineNo).toBe('47');
     expect(res.body.data.rotation).toBe(90);
     expect(res.body.data.warnings).toContain('CONFIDENCE_UNAVAILABLE');
+  });
+
+  test('rescales OCR words from the downscaled frame into the CV grid frame', async () => {
+    const sharp = require('sharp');
+    // Grid cells live in a 720x360 frame (twice the OCR frame). Header band is
+    // row 0; entry is row 1, split at its vertical midpoint into groom/bride.
+    const scaledGrid = {
+      pages: {
+        left: {
+          imageBuffer: Buffer.from('L'),
+          width: 720,
+          height: 360,
+          cells: [
+            { key: 'no', row: 0, x: 0, y: 0, w: 80, h: 80 },
+            { key: 'contracting_parties', row: 0, x: 80, y: 0, w: 400, h: 80 },
+            { key: 'no', row: 1, x: 0, y: 200, w: 80, h: 160 },
+            { key: 'contracting_parties', row: 1, x: 80, y: 200, w: 400, h: 160 },
+            { key: 'marriage_date', row: 1, x: 480, y: 200, w: 240, h: 160 },
+          ],
+        },
+        right: {
+          imageBuffer: Buffer.from('R'),
+          width: 400,
+          height: 360,
+          cells: [
+            { key: 'minister', row: 0, x: 0, y: 0, w: 400, h: 80 },
+            { key: 'minister', row: 1, x: 0, y: 200, w: 400, h: 160 },
+          ],
+        },
+      },
+      rotationApplied: 0,
+      deskewDeg: 0,
+      warnings: [],
+    };
+    const app = express();
+    app.use('/api/ocr/marriage', createMarriageOcrRouter({
+      verifyToken: (req, _res, next) => { req.user = { uid: 'u', role: 'admin' }; next(); },
+      fetchGrid: async () => scaledGrid,
+      // Return the downscaled page images so the route measures the small frame.
+      preprocess: async (buf) => (buf.toString() === 'L' ? LEFT_PREP : RIGHT_PREP),
+      // Words are in the 360x180 / 200x180 downscaled frame; only after a
+      // correct 2x rescale do they land in the 720x360 / 400x360 cells above.
+      recognizeImage: async (buf) => {
+        const { width } = await sharp(buf).metadata();
+        return width === 360
+          ? {
+            words: [
+              wordAt('NO', 20, 20), wordAt('CONTRACTING', 140, 20), // header, row 0
+              wordAt('47', 20, 120), wordAt('Marlon', 140, 120), // groom (grid y=240 < mid 280)
+              wordAt('Ana', 140, 160), // bride (grid y=320 >= mid 280)
+              wordAt('1994', 300, 130), // marriage_date (grid x=600)
+            ],
+          }
+          : { words: [wordAt('MINISTER', 100, 20), wordAt('FrAlcher', 100, 130)] };
+      },
+    }));
+    const res = await request(app).post('/api/ocr/marriage/scan')
+      .send({ scanId: 's1', imageBase64: b64(JPEG) });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.rows).toHaveLength(1); // header row dropped
+    const row = res.body.data.rows[0];
+    expect(row.groom.name).toBe('Marlon');
+    expect(row.bride.name).toBe('Ana');
+    expect(row.dateOfMarriage).toBe('1994');
+    expect(row.minister).toBe('FrAlcher');
+    expect(row.lineNo).toBe('47');
   });
 
   test('rejects a parishioner (403)', async () => {

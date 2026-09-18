@@ -171,3 +171,20 @@ describe('preprocessForOcr', () => {
     expect(Math.max(meta.width, meta.height)).toBeLessThanOrEqual(1000);
   });
 });
+
+describe('imageDimensions', () => {
+  const { imageDimensions } = require('./baptismal_image_preprocess');
+
+  test('reports the pixel dimensions of an encoded image', async () => {
+    const sharp = require('sharp');
+    const src = await sharp({
+      create: { width: 640, height: 480, channels: 3, background: { r: 10, g: 20, b: 30 } },
+    }).jpeg().toBuffer();
+
+    expect(await imageDimensions(src)).toEqual({ width: 640, height: 480 });
+  });
+
+  test('returns null for a buffer that is not a decodable image', async () => {
+    expect(await imageDimensions(Buffer.from('not an image'))).toBeNull();
+  });
+});

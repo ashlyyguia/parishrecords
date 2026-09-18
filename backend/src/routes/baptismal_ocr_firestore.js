@@ -9,8 +9,10 @@ const { gridToRows } = require('../services/baptismal_grid_assign');
 const {
   sniffImageType,
   preprocessForOcr,
+  imageDimensions,
   MAX_INPUT_PIXELS,
 } = require('../services/baptismal_image_preprocess');
+const { rescaleWordsToGrid } = require('../services/ocr_word_frame');
 const { isHeic, heicToJpeg } = require('../services/heic_to_jpeg');
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -167,6 +169,7 @@ function createBaptismalOcrRouter(deps = {}) {
   const preprocess = deps.preprocess || preprocessForOcr;
   const verifyToken = deps.verifyToken || verifyFirebaseToken;
   const fetchGrid = deps.fetchGrid || defaultFetchGrid;
+  const measureImage = deps.measureImage || imageDimensions;
   // OCR on one already-rectified page image the CV service returned;
   // detectOrientation is off because that image is already upright.
   const recognizeImage = deps.recognizeImage
@@ -260,7 +263,15 @@ function createBaptismalOcrRouter(deps = {}) {
           const [leftOcr, rightOcr] = await Promise.all([
             recognizeImage(leftPrep), recognizeImage(rightPrep),
           ]);
-          const built = gridToRows(grid.pages.left, leftOcr.words, grid.pages.right, rightOcr.words);
+          // OCR ran on the possibly-downscaled page images, so word boxes are in
+          // that frame; map them back into the grid's own (full-size) frame
+          // before assigning to cells, or every word lands in the wrong cell.
+          const [leftDims, rightDims] = await Promise.all([
+            measureImage(leftPrep), measureImage(rightPrep),
+          ]);
+          const leftWords = rescaleWordsToGrid(leftOcr.words, grid.pages.left, leftDims);
+          const rightWords = rescaleWordsToGrid(rightOcr.words, grid.pages.right, rightDims);
+          const built = gridToRows(grid.pages.left, leftWords, grid.pages.right, rightWords);
           result = {
             rows: built.rows,
             rotation: grid.rotationApplied,

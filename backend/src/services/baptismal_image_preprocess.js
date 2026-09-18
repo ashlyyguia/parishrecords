@@ -106,4 +106,37 @@ async function preprocessForOcr(buffer, { maxEdge = MAX_EDGE, quality = 92 } = {
   }
 }
 
-module.exports = { sniffImageType, preprocessForOcr, MAX_EDGE, MAX_INPUT_PIXELS };
+/**
+ * The pixel dimensions of an encoded image, or null if it can't be measured
+ * (undecodable buffer, or sharp unavailable in this environment).
+ *
+ * The OCR route needs the size of the image OCR actually ran on -- after
+ * `preprocessForOcr`'s possible downscale -- so it can map word boxes back into
+ * the CV grid's frame (see `ocr_word_frame.rescaleWordsToGrid`). Reads only the
+ * header via sharp's `metadata()`; no full pixel decode. Returns null rather
+ * than throwing so the caller degrades to "no rescale" (which is correct when a
+ * fallback left the image at its original size) instead of failing the scan.
+ */
+async function imageDimensions(buffer) {
+  let sharp;
+  try {
+    sharp = require('sharp');
+  } catch (e) {
+    if (!sharpUnavailableWarned) {
+      logPreprocessFailure('require', e);
+      sharpUnavailableWarned = true;
+    }
+    return null;
+  }
+  try {
+    const meta = await sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
+    if (meta && meta.width > 0 && meta.height > 0) {
+      return { width: meta.width, height: meta.height };
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+module.exports = { sniffImageType, preprocessForOcr, imageDimensions, MAX_EDGE, MAX_INPUT_PIXELS };
