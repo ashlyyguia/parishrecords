@@ -183,14 +183,19 @@ ROW_STRIP_CLUSTER_TOLERANCE = 20
 ROW_STRIP_MIN_SPAN_FRACTION = 0.5
 ROW_FIT_TOLERANCE_FRACTION = 0.3
 
-# When a declared row count is laid down (see _lay_declared_rows), the fitted
-# pitch is trusted only if the detected run is strong enough to anchor an
-# extrapolation across faded rows: at least ROW_ANCHOR_MIN_RUN on-curve rows,
-# spanning at least ROW_ANCHOR_MIN_SPAN_FRACTION of the declared count so the
-# pitch has a long enough lever arm. Below that the anchor is guesswork, so the
-# detector falls back and the spread gate refuses rather than invent rows.
+# When a declared row count is laid down (see _fit_declared_row_grid), the
+# fitted pitch is trusted only if enough detected rules land on the comb to
+# anchor the extrapolation across faded rows: at least ROW_ANCHOR_MIN_RUN of
+# them, over a run of at least that many row indices so the pitch has a lever
+# arm. Below that the anchor is guesswork, so the detector falls back and the
+# spread gate refuses rather than invent rows.
 ROW_ANCHOR_MIN_RUN = 5
-ROW_ANCHOR_MIN_SPAN_FRACTION = 0.5
+
+# When laying a declared row count, a detected rule counts as landing on a comb
+# tooth if it is within this fraction of the pitch of it. Wide enough to absorb
+# the per-row jitter of a hand-photographed rule, tight enough that an interior
+# sub-divider (which sits half a pitch from every tooth) never counts as support.
+ROW_DECLARED_COMB_TOLERANCE = 0.22
 
 # How far right of the table's left border a strong row cluster may begin and
 # still count as a genuine, full-width row rule, as a fraction of the table
@@ -475,6 +480,85 @@ def _lay_declared_rows(
     return [v for v in rounded if 0 <= v <= height - 1]
 
 
+def _fit_declared_row_grid(
+    strong_ys: list[int],
+    header_top: int,
+    data_row_count: int,
+    height: int,
+    tol_frac: float = ROW_DECLARED_COMB_TOLERANCE,
+) -> tuple[float, float, float, list[int]] | None:
+    """Fit the declared grid of ``data_row_count`` data rows by aligning a comb
+    of exactly that many teeth to the detected row rules.
+
+    Two things defeat a consecutive-index curve fit on the marriage register,
+    and fixing the tooth *count* at the declared number side-steps both:
+
+    * an interior sub-divider that survives the full-width filter (the wide
+      CONTRACTING PARTIES name-line begins too near the left border to reject)
+      lands at *half* the row pitch, so the smallest gaps no longer measure a
+      row — trusting the median gap halves the pitch; and
+    * the top entries' rules fade into the spine on the right page, so the first
+      *detected* rule is not the first row — trusting it misplaces the origin.
+
+    A comb of N+1 teeth can only cover the table at the true pitch: a halved
+    pitch reaches half way, and the sub-dividers then fall between teeth and earn
+    no support. The teeth run to the *page* edge, not to the last detected rule,
+    so the grid extrapolates through rows that faded at the top or bottom rather
+    than compressing to fit the survivors; the origin is whichever alignment the
+    detected rules most support, not wherever detection happened to begin.
+
+    Returns ``(a, b, c, ks)`` for :func:`_lay_declared_rows` — with ``c == 0``
+    and ``ks == [0]`` so ``a`` is the first data row's top and ``b`` the pitch —
+    or None when too few rules land on the comb for the fit to be trusted (the
+    caller falls back and the spread gate then refuses).
+    """
+    ys = sorted({int(y) for y in strong_ys})
+    if len(ys) < ROW_ANCHOR_MIN_RUN:
+        return None
+    ys_arr = np.array(ys, dtype=np.float64)
+    n = data_row_count
+    span = ys[-1] - header_top
+    if span <= 0:
+        return None
+    # Bracket the pitch so N+1 teeth cover roughly the detected table height,
+    # give or take a few rows at either end.
+    p_lo = max(2, int(span / (n + 5)))
+    p_hi = max(p_lo, int(span / max(1, n - 3)))
+    best: tuple[tuple[int, int, float], float, int] | None = None
+    for p in range(p_lo, p_hi + 1):
+        tol = tol_frac * p
+        for anchor in ys:
+            # Teeth share this rule's phase; the first tooth is the one of that
+            # phase nearest below the header band, and the rest run down to the
+            # page edge — so a tall header band cannot shift the grid by a row.
+            start = anchor - int(np.floor((anchor - header_top) / p)) * p
+            teeth = start + np.arange(n + 1) * p
+            if teeth[0] < header_top - tol or teeth[-1] > height - 1:
+                continue
+            d = np.abs(teeth[:, None] - ys_arr[None, :]).min(axis=1)
+            hits = d <= tol
+            key = (int(hits.sum()), -p, -float(d[hits].sum()))
+            if best is None or key > best[0]:
+                best = (key, float(start), p)
+    if best is None:
+        return None
+    _, start, p = best
+    # Confirm enough rules actually landed on the chosen comb, spanning a long
+    # enough run of row indices, before trusting it to carry the declared count
+    # across the faded gaps. Unlike the detection-path fit these indices are
+    # absolute (0..N), so a solid consecutive run mid-table — the marriage right
+    # page, whose top and bottom rows fade — anchors the pitch even though it
+    # covers well under half the declared rows; only a near-empty page (almost
+    # every rule gone) falls short of the run and is refused.
+    tol = tol_frac * p
+    ks_all = np.round((ys_arr - start) / p).astype(int)
+    on = (np.abs((start + ks_all * p) - ys_arr) <= tol) & (ks_all >= 0) & (ks_all <= n)
+    ks = ks_all[on]
+    if len(ks) < ROW_ANCHOR_MIN_RUN or (int(ks.max()) - int(ks.min())) < ROW_ANCHOR_MIN_RUN:
+        return None
+    return float(start), float(p), 0.0, [0]
+
+
 def _full_width_row_ys(
     strong: list[tuple[int, int, int, int]],
     margin_fraction: float = ROW_RULE_LEFT_MARGIN_FRACTION,
@@ -545,6 +629,18 @@ def _detect_row_boundaries(
     if len(strong) < 5:
         return header_candidates
 
+    if data_row_count is not None:
+        # Declared ruling: fit the grid by aligning a comb of exactly
+        # data_row_count teeth, which recovers the true pitch through interior
+        # sub-dividers and places the origin without trusting the first detected
+        # rule. Falls back when too few rules anchor it, so the spread gate
+        # refuses rather than extrapolate from noise.
+        grid = _fit_declared_row_grid(strong, header_top, data_row_count, h)
+        if grid is None:
+            return header_candidates
+        a, b, c, ks = grid
+        return _lay_declared_rows(a, b, c, ks, header_top, data_row_count, h)
+
     # The candidate closest to the header is excluded from the fit: it is
     # not a data-row boundary, and it would bias the pitch estimate toward
     # the header's own (legitimately different) height.
@@ -552,15 +648,6 @@ def _detect_row_boundaries(
     if fit is None:
         return header_candidates
     a, b, c, ks = fit
-
-    if data_row_count is not None:
-        # Declared ruling: lay exactly data_row_count rows on the fitted pitch,
-        # but only when the detected run is a trustworthy anchor. Otherwise fall
-        # back so the spread gate refuses rather than extrapolate from noise.
-        if (len(ks) < ROW_ANCHOR_MIN_RUN
-                or (max(ks) - min(ks)) < ROW_ANCHOR_MIN_SPAN_FRACTION * data_row_count):
-            return header_candidates
-        return _lay_declared_rows(a, b, c, ks, header_top, data_row_count, h)
 
     k_min = min(ks)
     k_max = _extend_row_curve(a, b, c, max(ks), [y for y, _, _, _ in clustered])
@@ -1250,7 +1337,15 @@ def detect_spread_grids(
         if template is not None:
             _check_template_fit(side, grids[side], template, page.shape[1])
 
-    if left.cols != right.cols:
+    # Without a template the two pages independently *counted* their columns,
+    # so a disagreement means one page merged or split a column and values
+    # would land in the wrong field — refuse. With a spread template each
+    # page's columns are instead *declared* per side and already checked
+    # against that page by _check_template_fit above, so the counts may
+    # legitimately differ (the marriage register is ruled 7 columns on the
+    # left, 5 on the right). Comparing the two declared counts here would only
+    # re-reject that valid asymmetry, so this gate applies only when counting.
+    if spread_template is None and left.cols != right.cols:
         _refuse(
             f"The two pages disagree about how many columns the register has "
             f"({left.cols} on the left page, {right.cols} on the right), so "
