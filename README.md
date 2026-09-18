@@ -4,7 +4,7 @@
 
 The **Parish Operational Management System with ML Kit OCR** is a web-based system designed to digitize and manage parish operations. It replaces manual record-keeping with a modern system that uses **OCR (Optical Character Recognition)** to scan and extract sacramental records.
 
-The system integrates **Firebase services** for real-time data handling and authentication, while a **Render-hosted backend API** manages server-side processing and business logic.
+The system integrates **Firebase services** for real-time data handling and authentication, a **Railway-hosted Node.js backend API** for server-side processing and OCR orchestration, and a **Python CV grid service** (self-hosted on a VPS) that detects the ruled grid of register spreads before text OCR.
 
 ---
 
@@ -107,29 +107,37 @@ The system integrates **Firebase services** for real-time data handling and auth
 ## 🧱 System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Flutter Web / App                     │
-│         (Cross-platform frontend application)           │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ↓
-┌─────────────────────────────────────────────────────────┐
-│                  Firebase Services                       │
-│  • Authentication  • Firestore DB  • Storage  • FCM   │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ↓
-┌─────────────────────────────────────────────────────────┐
-│              Render Backend API (Node.js)                │
-│           Business logic & server-side processing       │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ↓
-┌─────────────────────────────────────────────────────────┐
-│              External Services Integration               │
-│         Google ML Kit OCR  •  Email Services           │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                   Flutter (Web / Desktop)                     │
+│   Talks to Firebase directly, and to the backend API via     │
+│   BACKEND_URL (compile-time dart-define).                    │
+└───────────────┬───────────────────────────────┬──────────────┘
+                │                               │
+                ↓                               ↓
+┌───────────────────────────────┐   ┌──────────────────────────────┐
+│        Firebase Services       │   │   Node.js / Express backend  │
+│  • Authentication              │   │  Local:  http://localhost:3000│
+│  • Firestore DB                │   │  Prod:   Railway service      │
+│  • Cloud Messaging (FCM)       │   │  (business logic, OCR orch.)  │
+└───────────────────────────────┘   └───────────────┬──────────────┘
+                                                     │
+                          ┌──────────────────────────┴───────────────┐
+                          ↓                                          ↓
+        ┌────────────────────────────────────┐   ┌──────────────────────────────┐
+        │   CV Grid Service (Python/FastAPI) │   │      OCR.space (cloud)       │
+        │   Local:  http://127.0.0.1:8000    │   │  Handwriting text OCR on the │
+        │   Prod:   VPS 187.53.141.101:8000  │   │  rectified page images.      │
+        │   Finds the ruled grid, rectifies  │   │  (OCRSPACE_API_KEY)          │
+        │   the two pages. No text OCR here. │   └──────────────────────────────┘
+        └────────────────────────────────────┘
 ```
+
+> The register-scanning path is a three-hop chain: **Flutter → backend → CV grid
+> service**, with the backend also calling **OCR.space** for the actual
+> handwriting recognition. The CV service does grid detection and page
+> rectification only; there is no local text-OCR engine. See
+> [Running the App](#-running-the-app--local--production) below for how each hop
+> is pointed at local vs production.
 
 ---
 
@@ -143,8 +151,9 @@ The system integrates **Firebase services** for real-time data handling and auth
 
 ### Backend (Live API)
 - **Node.js** + **Express**
-- Hosted on **Render**
+- Hosted on **Railway** (production); runs locally on port `3000`
 - **Firebase Admin SDK** for server-side operations
+- Orchestrates OCR: calls the CV grid service, then OCR.space
 
 ### Cloud Services (Firebase)
 - **Firebase Authentication** – User authentication & role management
@@ -152,9 +161,11 @@ The system integrates **Firebase services** for real-time data handling and auth
 - **Firebase Storage** – Image & document storage
 - **Firebase Cloud Messaging** – Push notifications
 
-### OCR
-- **Google ML Kit OCR** – On-device text recognition
-- **Google ML Kit Text Recognition** – Document scanning
+### OCR / Register scanning
+- **CV Grid Service** (`ocr_service/`) – Python + FastAPI + OpenCV; finds the
+  register's ruled grid and rectifies the two pages (no text recognition)
+- **OCR.space** – cloud handwriting text OCR run by the backend on the
+  rectified page images
 
 ### Payment Integration (Future)
 - **GCash** / **PayMongo** / **PayPal**
@@ -200,47 +211,124 @@ The system includes comprehensive security rules in `firestore.rules`:
 
 ---
 
-## 🚀 Render Backend Setup
+## 🚀 Running the App — Local & Production
 
-### 1. Create Backend Project (Node.js)
+The register-scanning feature spans three hops (Flutter → backend → CV grid
+service, plus the backend's OCR.space calls). "Running locally" vs "production"
+is just a matter of pointing each hop at the right host. This table is the whole
+story; the steps below apply it.
+
+| Hop / setting | Where | Local | Production |
+|---|---|---|---|
+| Flutter → backend base URL | `BACKEND_URL` dart-define | `http://localhost:3000` (built-in default) | Railway URL, from `dart_define.json` |
+| Backend HTTP port | `PORT` in `backend/.env` | `3000` | assigned by Railway |
+| Backend → CV grid service | `OCR_SERVICE_URL` in `backend/.env` | `http://127.0.0.1:8000` | `http://187.53.141.101:8000` (VPS) |
+| Backend ↔ CV shared secret | `OCR_SERVICE_KEY` (both sides) | `dev-key` | long random string, identical on both |
+| Handwriting text OCR | `OCRSPACE_API_KEY` in `backend/.env` | your ocr.space key | same (this hop is **always** cloud) |
+| Allowed browser origins | `ALLOWED_ORIGINS` in `backend/.env` | `http://localhost:3000,http://127.0.0.1:3000` | your deployed web origin |
+
+> **"Pure local" caveat:** the local CV service only does grid detection and page
+> rectification. The actual handwriting recognition always calls **OCR.space**
+> (a cloud API keyed by `OCRSPACE_API_KEY`) — there is no offline text-OCR engine
+> in this stack. Running locally gets you off Railway and the VPS, not off the
+> internet entirely.
+
+### ▶️ Run everything locally
+
+Use three terminals (the CV service must stay up while you scan).
+
+**1. CV grid service** — `ocr_service/` (FastAPI, port 8000):
+
+```bash
+cd ocr_service
+# First time only: create the venv and install deps
+python -m venv .venv310
+.venv310/Scripts/python -m pip install -r requirements.txt   # Windows
+# .venv310/bin/pip install -r requirements.txt               # macOS/Linux
+
+# Start it (key must match backend/.env → OCR_SERVICE_KEY)
+OCR_SERVICE_KEY=dev-key .venv310/Scripts/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+See `ocr_service/README.md` for the helper scripts (`scripts/start-ocr-service.sh` / `.bat`).
+
+**2. Backend** — `backend/` (Express, port 3000):
 
 ```bash
 cd backend
-npm init -y
-npm install express cors dotenv firebase-admin helmet express-rate-limit
-```
-
-### 2. Environment Configuration
-
-Create `backend/.env`:
-
-```env
-PORT=3000
-FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
-EMAILJS_SERVICE_ID=your_service_id
-EMAILJS_TEMPLATE_ID=your_template_id
-EMAILJS_PUBLIC_KEY=your_public_key
-EMAILJS_PRIVATE_KEY=your_private_key
-```
-
-### 3. Start Server Locally
-
-```bash
+npm install                     # first time only
+cp .env.example .env            # first time; then fill in the values below
 npm run dev
 ```
 
-Server will start at `http://localhost:3000`
+Set these in `backend/.env` for local:
 
-### 4. Deploy to Render
+```env
+PORT=3000
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+OCR_SERVICE_URL=http://127.0.0.1:8000      # point at the LOCAL CV service
+OCR_SERVICE_KEY=dev-key                    # must equal the CV service's key
+OCR_TIMEOUT_MS=120000
+OCRSPACE_API_KEY=your_ocrspace_key
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+```
 
-1. Push code to GitHub repository
-2. Create new Web Service on [Render](https://render.com)
-3. Connect your GitHub repository
-4. Set build command: `npm install`
-5. Set start command: `npm start`
-6. Add environment variables in Render dashboard
+> If `backend/.env` already contains a production `OCR_SERVICE_URL` line (the VPS
+> address), make sure the **local** value is the one that takes effect — dotenv
+> keeps the *last* definition of a duplicated key, so remove or comment the VPS
+> line when running locally.
 
-### 5. API Endpoints
+**3. Flutter** — from the repo root, pointed at the local backend:
+
+```bash
+flutter pub get                 # first time only
+flutter run                     # uses the built-in default http://localhost:3000
+```
+
+Do **not** pass `--dart-define-from-file=dart_define.json` for local runs — that
+file points at the production Railway URL. To be explicit you can instead pass
+`--dart-define=BACKEND_URL=http://localhost:3000`.
+
+> **Flutter web + CORS:** the web dev server picks a random port that won't be in
+> `ALLOWED_ORIGINS`, so the backend will reject it. Either run a desktop build
+> (`flutter run -d windows`), or pin the port and whitelist it:
+> `flutter run -d chrome --web-port 5000` and add `http://localhost:5000` to
+> `ALLOWED_ORIGINS`. (Requests from localhost also bypass auth via
+> `DEV_BYPASS_AUTH`/localhost detection, which is convenient for local testing.)
+
+### ☁️ Run against production
+
+Each hop lives on its own host; nothing runs on your machine except the Flutter
+build you're testing.
+
+**Backend — Railway** (deploys from the `development` branch):
+- Root directory: `backend/`
+- Start command: `node src/server.js` (see `backend/railway.json` / `Procfile`)
+- Health check: `/health`
+- `PORT` is injected by Railway — do not hardcode it.
+- Set the production env vars in the Railway dashboard: `OCR_SERVICE_URL=http://187.53.141.101:8000`, a strong `OCR_SERVICE_KEY` (matching the VPS), `OCRSPACE_API_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `ALLOWED_ORIGINS`, and the EmailJS keys.
+
+**CV grid service — VPS** (`187.53.141.101`):
+- Start bound to all interfaces so Railway can reach it:
+  `uvicorn app.main:app --host 0.0.0.0 --port 8000`
+- Set `OCR_SERVICE_KEY` to the same strong secret configured on Railway.
+
+**Flutter — production build** (pointed at Railway via `dart_define.json`):
+
+```bash
+flutter build web --dart-define-from-file=dart_define.json
+firebase deploy --only hosting
+```
+
+`dart_define.json` holds the production backend URL:
+
+```json
+{ "BACKEND_URL": "https://parishrecords-production.up.railway.app" }
+```
+
+---
+
+## 🔌 API Endpoints
 
 #### User Management
 - **POST** `/api/admin/users` – Create new user (Admin only)
@@ -465,40 +553,27 @@ parishrecord/
 ### Quick Start
 
 ```bash
-# 1. Clone repository
+# 1. Clone + install
 git clone <repo-url>
 cd parishrecord
-
-# 2. Install Flutter dependencies
 flutter pub get
+cd backend && npm install && cp .env.example .env && cd ..
+# Edit backend/.env (see the table in "Running the App" above)
 
-# 3. Setup backend
-cd backend
-npm install
+# 2. Terminal A — CV grid service (required for scanning)
+cd ocr_service
+python -m venv .venv310 && .venv310/Scripts/python -m pip install -r requirements.txt
+OCR_SERVICE_KEY=dev-key .venv310/Scripts/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
-# 4. Configure environment
-cp .env.example .env
-# Edit .env with your Firebase credentials
-# Important: Set PORT=3000
+# 3. Terminal B — backend
+cd backend && npm run dev            # http://localhost:3000
 
-# 5. Run backend
-npm run dev
-
-# 6. Run Flutter (in new terminal)
-flutter run -d chrome  # For web
+# 4. Terminal C — Flutter (defaults to http://localhost:3000)
+flutter run                          # add -d windows, or -d chrome --web-port 5000 (see CORS note)
 ```
 
-### Backend Configuration
-
-Update `backend/.env`:
-```env
-PORT=3000
-NODE_ENV=development
-FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
-ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-```
-
-Update `lib/config/backend.dart` for production deployment.
+For the full local-vs-production breakdown of every setting, see
+[Running the App — Local & Production](#-running-the-app--local--production) above.
 
 ---
 
