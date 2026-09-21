@@ -355,3 +355,20 @@ def test_declared_layout_count_is_invariant_to_high_origin():
     assert len(laid) == 26
     assert laid[0] >= 0
     assert laid == sorted(laid)
+
+
+def test_synthetic_right_page_still_corroborates():
+    """No-regression guard: a clean synthetic right page must still corroborate
+    the BAPTISMAL_RIGHT template at or above the acceptance floor after any
+    band-detector tuning. A more sensitive detector cannot start inventing rules
+    that break a good page.
+    """
+    from app.pipeline.column_template import BAPTISMAL_RIGHT
+    from app.pipeline.spread import split_spread
+    from app.pipeline.table import detect_grid
+
+    pages = split_spread(make_register_spread(rows=24, cols_left=5, cols_right=5))
+    grid = detect_grid(pages.right, BAPTISMAL_RIGHT, data_row_count=24,
+                       gutter_x=0, gutter_side="left")
+    assert grid.cols == 5
+    assert (grid.column_corroboration or 0.0) >= 0.60
