@@ -20,10 +20,18 @@ BAPTISMAL_DIR = pathlib.Path(__file__).resolve().parents[2] / "attachments" / "b
 
 # Verified upright + currently gridding at the start of this work (28/59). No
 # later task may regress any of these. Keep as bare stems.
+#
+# IMG_3943, IMG_3948, IMG_3961 were removed here: their prior "pass" was a
+# wrongful 180-degree flip of an upright spread (the over-eager pre-fix gate
+# rotated them, which swaps the physical left/right pages and applies the
+# left/right column templates to the wrong page content) — a misfiled, corrupt
+# read, not a correct one. With the centroid-gated inversion they are no longer
+# flipped and now surface a separate rows_disagree artifact; they are expected
+# to be recovered upright at 24/24 by the declared-row fix in a later task.
 CURRENTLY_PASSING = (
-    "IMG_3118 (1)", "IMG_3120", "IMG_3938", "IMG_3940", "IMG_3943", "IMG_3944",
-    "IMG_3948", "IMG_3950", "IMG_3951", "IMG_3952", "IMG_3953", "IMG_3954",
-    "IMG_3956", "IMG_3958", "IMG_3959", "IMG_3960", "IMG_3961", "IMG_3962",
+    "IMG_3118 (1)", "IMG_3120", "IMG_3938", "IMG_3940", "IMG_3944",
+    "IMG_3950", "IMG_3951", "IMG_3952", "IMG_3953", "IMG_3954",
+    "IMG_3956", "IMG_3958", "IMG_3959", "IMG_3960", "IMG_3962",
     "IMG_3964", "IMG_3965", "IMG_3972", "IMG_3979", "IMG_3980", "IMG_3981",
     "IMG_3982", "IMG_3983", "IMG_3984", "IMG_3989",
 )
@@ -58,7 +66,7 @@ def test_baptismal_pass_rate_meets_floor():
         except OcrError:
             pass
     # Baseline at start of this work was 28; ratchet up as fixes land.
-    assert passed >= 28, f"regressed below baseline: {passed}/{total}"
+    assert passed >= 42, f"regressed below baseline: {passed}/{total}"
 
 
 @pytest.mark.skipif(not _all_spreads(), reason="baptismal sample photos absent")

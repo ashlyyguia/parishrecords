@@ -260,13 +260,44 @@ def count_inversion_votes(*pages_bgr: np.ndarray) -> tuple[int, int]:
     return inverted, cast
 
 
+def reliable_cue_supports_inversion(*cue_dicts: "dict[str, float | None]") -> bool:
+    """Whether the reliable centroid cue supports a 180 rotation.
+
+    The centroid cue is the only cue with dependable sign (it measures that
+    handwriting sits above its printed rule, which flips cleanly upside-down);
+    the other two are corroborating and misfire on a fully-filled page. So a
+    rotation needs this cue's concurrence: at least one page must have voted on
+    it, and no page may read upright (positive). If it abstained on every page,
+    the weak cues cannot carry a flip on their own.
+    """
+    votes = [d.get("text_band_centroid") for d in cue_dicts]
+    present = [v for v in votes if v is not None]
+    if not present:
+        return False
+    if any(v > 0.0 for v in present):
+        return False
+    return True
+
+
 def spread_is_inverted(left_bgr: np.ndarray, right_bgr: np.ndarray) -> tuple[bool, int, int]:
-    """Whether both halves agree, by supermajority, that the spread is upside-down."""
-    inverted, cast = count_inversion_votes(left_bgr, right_bgr)
+    """Whether both halves agree, by supermajority AND the reliable cue, that
+    the spread is upside-down."""
+    left_cues = page_upright_cues(left_bgr)
+    right_cues = page_upright_cues(right_bgr)
+    inverted = cast = 0
+    for cues in (left_cues, right_cues):
+        for score in cues.values():
+            if score is None:
+                continue
+            cast += 1
+            if score < 0.0:
+                inverted += 1
     if cast < MIN_INVERSION_VOTES:
         return False, inverted, cast
     required = -(-INVERSION_VOTE_NUMERATOR * cast // INVERSION_VOTE_DENOMINATOR)
-    return inverted >= required, inverted, cast
+    supermajority = inverted >= required
+    decision = supermajority and reliable_cue_supports_inversion(left_cues, right_cues)
+    return decision, inverted, cast
 
 
 def correct_spread_inversion(spread_bgr: np.ndarray) -> InversionResult:

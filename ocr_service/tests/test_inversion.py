@@ -21,6 +21,7 @@ from app.pipeline.inversion import (
     correct_spread_inversion,
     count_inversion_votes,
     page_upright_cues,
+    reliable_cue_supports_inversion,
     spread_is_inverted,
 )
 from app.pipeline.orientation import correct_orientation
@@ -117,3 +118,30 @@ def test_orientation_stage_alone_cannot_tell_these_apart(angle):
     result = correct_orientation(rotate(_spread(), angle))
     assert result.image.shape[1] > result.image.shape[0]
     assert result.rotation_applied == 0
+
+
+# ---------------------------------------------------------------------------
+# reliable_cue_supports_inversion unit tests
+# ---------------------------------------------------------------------------
+
+def _cues(centroid, ink=None, margin=None):
+    return {"ink_below_midline": ink, "table_margin_asymmetry": margin,
+            "text_band_centroid": centroid}
+
+
+def test_reliable_cue_abstains_on_both_pages_blocks_inversion():
+    # Both centroid cues abstained -> weak cues cannot carry a flip.
+    assert reliable_cue_supports_inversion(_cues(None), _cues(None)) is False
+
+
+def test_reliable_cue_negative_supports_inversion():
+    assert reliable_cue_supports_inversion(_cues(-0.03), _cues(None)) is True
+
+
+def test_reliable_cue_any_positive_vetoes_inversion():
+    # One page reads upright on the reliable cue -> never rotate.
+    assert reliable_cue_supports_inversion(_cues(-0.03), _cues(0.02)) is False
+
+
+def test_reliable_cue_all_negative_supports_inversion():
+    assert reliable_cue_supports_inversion(_cues(-0.03), _cues(-0.02)) is True
