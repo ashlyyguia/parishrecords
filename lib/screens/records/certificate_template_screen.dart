@@ -718,9 +718,18 @@ class _CertificateTemplateScreenState
       var records = ref.read(recordsProvider);
       var record = _findRecord(records);
       if (record == null) {
-        await ref.read(recordsProvider.notifier).load();
-        records = ref.read(recordsProvider);
-        record = _findRecord(records);
+        // Refreshing the shared list can be rejected when this screen mounts
+        // during the widget-tree build (Riverpod forbids mutating a provider
+        // then). Isolate that failure so it can't skip the getById fallback
+        // below — which is what actually resolves the record when we arrive
+        // from a screen that never populated recordsProvider.
+        try {
+          await ref.read(recordsProvider.notifier).load();
+          records = ref.read(recordsProvider);
+          record = _findRecord(records);
+        } catch (e, st) {
+          debugPrint('Certificate provider load skipped: $e\n$st');
+        }
       }
 
       // Fallback: the in-memory list can be empty when we arrive from a screen
