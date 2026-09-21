@@ -106,6 +106,25 @@ void main() {
     expect(saveButton.onPressed, isNull);
   });
 
+  testWidgets('shows the blocking issue on the offending name field', (tester) async {
+    // A blocked save must point at the field that needs attention, not just
+    // report a count the reviewer cannot locate. The message the validator
+    // produces must be rendered on the empty bride-name cell itself.
+    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody(bride: ''))));
+    await toReview(tester);
+    expect(find.text("Bride's name is required."), findsOneWidget);
+  });
+
+  testWidgets('the save banner names the row and party that need attention',
+      (tester) async {
+    // The offending cell can sit far below the fold on a full spread, so the
+    // banner must say which register row and party to scroll to, not just a
+    // bare count.
+    await tester.pumpWidget(harness(service: serviceReturning(200, _scanBody(bride: ''))));
+    await toReview(tester);
+    expect(find.textContaining('No. 1 (Woman)'), findsOneWidget);
+  });
+
   testWidgets('shows a reduced-accuracy banner when CV was unavailable',
       (tester) async {
     await tester.pumpWidget(harness(

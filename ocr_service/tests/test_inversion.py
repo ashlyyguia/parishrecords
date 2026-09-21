@@ -11,11 +11,13 @@ in both orientations, because that is the only place the cues have ground
 truth. A synthetic fixture built to satisfy these particular cues would be
 validating them against themselves.
 """
+import cv2
 import numpy as np
 import pytest
 
 from app.pipeline.inversion import (
     MIN_INVERSION_VOTES,
+    _text_band_centroid_offset,
     correct_spread_inversion,
     count_inversion_votes,
     page_upright_cues,
@@ -52,6 +54,28 @@ def test_a_vertically_symmetric_spread_yields_no_evidence():
         for page in (pages.left, pages.right):
             cues = page_upright_cues(page)
             assert all(v is None for v in cues.values()), (angle, cues)
+
+
+def test_the_centroid_cue_abstains_when_ink_carries_no_vertical_bias():
+    """The centroid cue reads the sign of each row's vertical ink bias: on a
+    genuine upright row the printed rule at the band's bottom edge weights the
+    ink downward. When a band is measurable but its ink sits centred — no
+    top/bottom bias, so the offset is within the measurement's own resolution —
+    the cue must abstain, exactly as the margin and ink cues already do below
+    their deadbands, rather than return a near-zero value that is then cast as
+    a vote on noise. Two such noise votes were enough to push a
+    legitimately-shaky margin cue over the rotation supermajority on a real,
+    upright spread, flipping it upside-down.
+    """
+    h, w = 1400, 1000
+    page = np.full((h, w, 3), 255, np.uint8)
+    pitch = h // 12
+    # Ten measurable bands, each a thick block of ink centred in its band, so
+    # every band's centroid sits at its own centre: measurable, but no bias.
+    for r in range(1, 11):
+        cy = r * pitch
+        cv2.rectangle(page, (100, cy - 18), (w - 100, cy + 18), (20, 20, 20), -1)
+    assert _text_band_centroid_offset(page) is None
 
 
 def test_no_evidence_means_no_rotation():

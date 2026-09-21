@@ -517,7 +517,18 @@ def _fit_declared_row_grid(
         return None
     ys_arr = np.array(ys, dtype=np.float64)
     n = data_row_count
-    span = ys[-1] - header_top
+    # The header band top comes from a coarse full-width pass that, on a bowed
+    # page, can misfire and report a header_top *below* the first entry's own
+    # rule (measured on a real marriage spread: 646 while entry 1's rule sat at
+    # 501). Used unchecked as the teeth's lower bound it then excludes that first
+    # rule, forcing the comb to start one entry low: the header band lands on
+    # entry 1 (so no header can be dropped) and a spurious row falls off the
+    # bottom. A header can never sit at or below the first detected data rule, so
+    # cap it there. This is a no-op whenever the header was found correctly
+    # (above the first rule), which is the usual case, so it leaves the
+    # tall-header protection below intact.
+    eff_top = min(header_top, ys[0])
+    span = ys[-1] - eff_top
     if span <= 0:
         return None
     # Bracket the pitch so N+1 teeth cover roughly the detected table height,
@@ -531,9 +542,9 @@ def _fit_declared_row_grid(
             # Teeth share this rule's phase; the first tooth is the one of that
             # phase nearest below the header band, and the rest run down to the
             # page edge — so a tall header band cannot shift the grid by a row.
-            start = anchor - int(np.floor((anchor - header_top) / p)) * p
+            start = anchor - int(np.floor((anchor - eff_top) / p)) * p
             teeth = start + np.arange(n + 1) * p
-            if teeth[0] < header_top - tol or teeth[-1] > height - 1:
+            if teeth[0] < eff_top - tol or teeth[-1] > height - 1:
                 continue
             d = np.abs(teeth[:, None] - ys_arr[None, :]).min(axis=1)
             hits = d <= tol
@@ -573,18 +584,29 @@ def _full_width_row_ys(
     left extent can: it is the one property a full-width rule has that an
     interior one does not.
 
-    The border is estimated as the 25th percentile of the clusters' left
-    extents, which stays inside the genuine population even when nearly as many
-    sub-dividers are present (they all sit to its right). Clusters beginning
-    more than ``margin_fraction`` of the table width to the right of that border
-    are dropped. Passed through unchanged when there are too few clusters to
-    estimate a border from.
+    The border is estimated as the *median* of the clusters' left extents. The
+    genuine full-width rules all share the same left end — the printed table
+    border — so they form the dense middle of that distribution, while the two
+    things that pull an estimate off it sit in the tails: interior sub-dividers
+    begin to the right of the border, and rules whose ink bleeds into whatever
+    the book was resting on (its cover, the binding shadow, or the hand holding
+    it — measured on the real spreads at the lower-left, where a third of the
+    rules ran to the page edge) begin far to its left. The median resists both
+    tails as long as neither is the majority, which a low percentile does not:
+    a 25th percentile stayed inside the genuine population against right-hand
+    sub-dividers but was dragged to the page edge by the left-hand bleed,
+    discarding every rule that stopped at the true border — the whole upper
+    half of a real left page. Clusters beginning more than ``margin_fraction``
+    of the table width to the right of the border are dropped; those bleeding
+    to its left are kept (they are genuine rules, merely over-extended).
+    Passed through unchanged when there are too few clusters to estimate a
+    border from.
     """
     if len(strong) < 5:
         return [c[0] for c in strong]
     x_los = np.array([c[2] for c in strong], dtype=np.float64)
     x_his = np.array([c[3] for c in strong], dtype=np.float64)
-    border = float(np.percentile(x_los, 25))
+    border = float(np.median(x_los))
     table_width = float(np.percentile(x_his, 75)) - border
     if table_width <= 0:
         return [c[0] for c in strong]

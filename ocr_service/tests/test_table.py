@@ -5,7 +5,17 @@ import pytest
 from app.errors import OcrError
 from app.pipeline.column_template import BAPTISMAL_LEFT
 from app.pipeline.spread import split_spread
-from app.pipeline.table import detect_grid, _lay_declared_rows
+from app.pipeline.table import (
+    detect_grid,
+    _lay_declared_rows,
+    _fit_declared_row_grid,
+    _cluster_row_segments,
+    _row_strip_segments,
+    _full_width_row_ys,
+    _binary,
+    ROW_STRIP_COUNT,
+    ROW_STRIP_MIN_SPAN_FRACTION,
+)
 from tests.support.synthetic import make_register_spread
 
 LINE_COLOR = (140, 60, 40)  # BGR, matches synthetic register blue
@@ -68,6 +78,71 @@ def _page_with_dominant_column_artifact() -> tuple[np.ndarray, list[int]]:
     cv2.line(img, (50, 0), (50, h - 1), LINE_COLOR, 2)
 
     return img, xs_expected
+
+
+def _page_with_bottom_rows_bleeding_left() -> np.ndarray:
+    """A ruled page whose table sits well right of the page's left edge, where
+    the *lower* rows' rules bleed leftward across the empty margin to the page
+    edge — modelling the book cover, binding shadow, and the hand holding the
+    book at the bottom-left of a real spread photograph, whose horizontal ink
+    merges with those rows' printed rules and carries their left extent past
+    the table's true border.
+
+    A genuine full-width rule reaches the table's left border and no further;
+    the border is estimated from the rules' own left extents. A minority of
+    rules bleeding to the page edge must not drag that estimate off the true
+    border and cause every rule that stops *at* the border (the whole upper
+    half of the table) to be discarded as "not full-width".
+    """
+    h, w = 3000, 2000
+    img = np.full((h, w, 3), 250, np.uint8)
+    x0, x1 = 500, 1900              # table border a quarter of the way in
+    top, header_h, rows = 200, 90, 24
+    ys = [top, top + header_h]
+    pitch = (h - 120 - ys[1]) / rows
+    ys += [int(ys[1] + i * pitch) for i in range(1, rows + 1)]
+    bleed_from = ys[2 + rows * 2 // 3]  # lower third bleeds to the page edge
+    for y in ys:
+        left_x = 0 if y >= bleed_from else x0
+        cv2.line(img, (left_x, y), (x1, y), LINE_COLOR, 3)
+    for i in range(6):             # five columns, so a template has rules to fit
+        x = round(x0 + i * (x1 - x0) / 5)
+        cv2.line(img, (x, ys[0]), (x, ys[-1]), LINE_COLOR, 2)
+    return img
+
+
+def test_lower_rows_bleeding_left_do_not_discard_the_genuine_upper_rows():
+    # The bug: the left border is estimated from a low percentile of the row
+    # rules' left extents, which a minority of rules bleeding to the page edge
+    # drags left, so every genuine rule that stops at the true border (here, the
+    # whole upper half of the table) is rejected as not full-width. With those
+    # anchors gone the declared-row fit collapses and the spread gate refuses a
+    # perfectly readable page. Every genuine full-width rule must survive.
+    page = _page_with_bottom_rows_bleeding_left()
+    binary = _binary(page)
+    clustered = _cluster_row_segments(_row_strip_segments(binary))
+    min_span = max(2, round(ROW_STRIP_COUNT * ROW_STRIP_MIN_SPAN_FRACTION))
+    strong = [c for c in clustered if c[1] >= min_span]
+    kept = _full_width_row_ys(strong)
+    # Every span-strong cluster in this fixture is a genuine row rule; some
+    # merely bleed left. None may be dropped.
+    assert len(kept) == len(strong), (len(kept), len(strong))
+
+
+def test_declared_fit_does_not_skip_the_first_row_when_header_is_misdetected_low():
+    # The coarse full-width header pass can, on a bowed page, report a
+    # header_top that sits BELOW the first entry's own rule (measured on a real
+    # marriage spread: header_top=646 while entry 1's rule was at 501). The comb
+    # must still anchor on that first rule. If it does not, it starts one entry
+    # too low: the header band then lands on entry 1 (so no header can be
+    # dropped) and a spurious extra row falls off the bottom.
+    ys = [500, 650, 800, 950, 1100, 1250, 1400]  # seven entry rules, pitch 150
+    result = _fit_declared_row_grid(ys, header_top=640, data_row_count=6, height=2000)
+    assert result is not None
+    start, pitch, _, _ = result
+    # The first tooth must sit on the first detected rule, not a full pitch below
+    # it (which would leave entry 1 above the grid, inside the header band).
+    assert start - ys[0] < pitch * 0.5, (start, ys[0], pitch)
 
 
 def test_lay_declared_rows_fills_to_the_declared_count():

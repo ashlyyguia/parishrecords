@@ -81,6 +81,16 @@ _MARGIN_CUE_MIN_SPAN_FRACTION = 0.5
 # certainly too poor to have its margins compared.
 MIN_RULES_FOR_MARGIN_CUE = 6
 
+# The centroid cue abstains when its measured bias is below this fraction of a
+# text band's height. Like the margin cue's ROW_STRIP_CLUSTER_TOLERANCE floor
+# and the ink cue's one-row floor, this is the cue's own resolution: a band's
+# centroid can be located to about a pixel, which on this register's ~75px rows
+# is a couple of percent of the band, so a smaller offset has no reliable sign.
+# Without it a near-zero measurement was returned as a vote, and two such noise
+# votes pushed a legitimately-negative-but-shaky margin cue over the rotation
+# supermajority on a real, upright spread — flipping a readable page.
+_CENTROID_NOISE_DEADBAND = 0.02
+
 
 @dataclass(frozen=True)
 class InversionResult:
@@ -209,7 +219,14 @@ def _text_band_centroid_offset(page_bgr: np.ndarray) -> float | None:
         ys = np.arange(y0, y1 + 1, dtype=np.float64)
         centroid = float((weights * ys).sum() / weights.sum())
         offsets.append((centroid - (y0 + y1) / 2.0) / span)
-    return float(np.median(offsets)) if offsets else None
+    if not offsets:
+        return None
+    median = float(np.median(offsets))
+    # Below the cue's own resolution the sign is noise, so abstain rather than
+    # vote — see _CENTROID_NOISE_DEADBAND.
+    if abs(median) < _CENTROID_NOISE_DEADBAND:
+        return None
+    return median
 
 
 PAGE_CUES = (
