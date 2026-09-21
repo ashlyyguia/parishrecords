@@ -465,8 +465,10 @@ def _lay_declared_rows(
     above it; keep the detected ``header_top`` unless the full-width header
     pass locked onto entry 1's own rule (so it landed at or below entry 1), in
     which case place the header one pitch above entry 1. Boundaries that fall
-    off the page are dropped, so a crop too short to hold all the rows yields a
-    short grid the spread gate then refuses rather than a fabricated one.
+    off the page are clamped into the page and any resulting coincident
+    boundaries collapsed, so the header/data boundary count stays invariant to
+    framing while a crop too short to hold all rows still collapses to a short
+    grid the spread gate refuses rather than a fabricated one.
     """
     k0 = min(ks)
 
