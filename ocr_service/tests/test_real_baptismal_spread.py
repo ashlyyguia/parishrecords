@@ -29,11 +29,18 @@ BAPTISMAL_DIR = pathlib.Path(__file__).resolve().parents[2] / "attachments" / "b
 # flipped and now surface a separate rows_disagree artifact; they are expected
 # to be recovered upright at 24/24 by the declared-row fix in a later task.
 CURRENTLY_PASSING = (
-    "IMG_3118 (1)", "IMG_3120", "IMG_3938", "IMG_3940", "IMG_3944",
-    "IMG_3950", "IMG_3951", "IMG_3952", "IMG_3953", "IMG_3954",
-    "IMG_3956", "IMG_3958", "IMG_3959", "IMG_3960", "IMG_3962",
-    "IMG_3964", "IMG_3965", "IMG_3972", "IMG_3979", "IMG_3980", "IMG_3981",
-    "IMG_3982", "IMG_3983", "IMG_3984", "IMG_3989",
+    "IMG_3118 (1)", "IMG_3120", "IMG_3121", "IMG_3122",
+    "IMG_3936", "IMG_3937", "IMG_3938", "IMG_3939", "IMG_3940",
+    "IMG_3941", "IMG_3942", "IMG_3943", "IMG_3944", "IMG_3945",
+    "IMG_3946", "IMG_3947", "IMG_3948", "IMG_3949", "IMG_3950",
+    "IMG_3951", "IMG_3952", "IMG_3953", "IMG_3954", "IMG_3956",
+    "IMG_3957", "IMG_3958", "IMG_3959", "IMG_3960", "IMG_3961",
+    "IMG_3962", "IMG_3963", "IMG_3964", "IMG_3965", "IMG_3966",
+    "IMG_3967", "IMG_3968", "IMG_3969", "IMG_3970", "IMG_3971",
+    "IMG_3972", "IMG_3973", "IMG_3974", "IMG_3976", "IMG_3977",
+    "IMG_3978", "IMG_3979", "IMG_3980", "IMG_3981", "IMG_3982",
+    "IMG_3983", "IMG_3984", "IMG_3985", "IMG_3988", "IMG_3989",
+    "IMG_3990",
 )
 
 
@@ -66,7 +73,7 @@ def test_baptismal_pass_rate_meets_floor():
         except OcrError:
             pass
     # Baseline at start of this work was 28; ratchet up as fixes land.
-    assert passed >= 42, f"regressed below baseline: {passed}/{total}"
+    assert passed >= 55, f"regressed below baseline: {passed}/{total}"
 
 
 @pytest.mark.skipif(not _all_spreads(), reason="baptismal sample photos absent")

@@ -335,3 +335,23 @@ def test_genuine_rules_survive_a_dominant_artifact():
         if not any(abs(x - b) <= tolerance for b in boundaries)
     ]
     assert not missing, f"genuine column rules not detected: {missing}"
+
+
+def test_declared_layout_count_is_invariant_to_top_margin():
+    # Same fit (origin a, pitch b), two crops whose only difference is how much
+    # blank space sits above the table -> header_top differs, count must not.
+    a, b = 120.0, 74.0
+    tall = _lay_declared_rows(a, b, 0.0, [0], header_top=40, data_row_count=24, height=2268)
+    # A crop where the header pass locked low (below entry 1): must still emit
+    # the same number of boundaries, not drop the top one.
+    low = _lay_declared_rows(a, b, 0.0, [0], header_top=400, data_row_count=24, height=2268)
+    assert len(tall) == len(low) == 26
+
+
+def test_declared_layout_count_is_invariant_to_high_origin():
+    # First data row near the page top: entry_top - b would be negative. The
+    # top boundary must be clamped in, not filtered out, so the count holds.
+    laid = _lay_declared_rows(41.0, 74.0, 0.0, [0], header_top=184, data_row_count=24, height=2268)
+    assert len(laid) == 26
+    assert laid[0] >= 0
+    assert laid == sorted(laid)

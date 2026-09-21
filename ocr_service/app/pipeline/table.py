@@ -476,8 +476,20 @@ def _lay_declared_rows(
     entry_top = y(k0)
     top = min(float(header_top), entry_top - b)
     boundaries = [top] + [y(k) for k in range(k0, k0 + data_row_count + 1)]
-    rounded = [int(round(v)) for v in boundaries]
-    return [v for v in rounded if 0 <= v <= height - 1]
+    # Clamp into the page rather than dropping: the declared structure has a
+    # fixed number of boundaries, so a top boundary that extrapolates a hair
+    # off the crop (entry_top - b < 0) must stay counted, or the two pages of
+    # one spread disagree by that single margin boundary purely by framing.
+    # Clamping keeps the count invariant; the spread gate's pitch check still
+    # catches a genuinely wrong fit.
+    lo, hi = 0.0, float(height - 1)
+    rounded = [int(round(min(max(v, lo), hi))) for v in boundaries]
+    # Collapse any pair the clamp made coincident, preserving order.
+    out: list[int] = []
+    for v in rounded:
+        if not out or v > out[-1]:
+            out.append(v)
+    return out
 
 
 def _fit_declared_row_grid(
