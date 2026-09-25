@@ -431,30 +431,109 @@ class CertificateData {
   ) {
     data.parishName = record.parish ?? 'HOLY ROSARY PARISH';
     data.sacramentDate = record.date;
+    data.issueDate ??= DateTime.now();
 
-    if (notes != null) {
-      final groom = notes['groom'] as Map<String, dynamic>?;
-      final bride = notes['bride'] as Map<String, dynamic>?;
-      final marriage = notes['marriage'] as Map<String, dynamic>?;
-      final witnesses = notes['witnesses'] as Map<String, dynamic>?;
-
-      if (groom != null && bride != null) {
-        data.personName = '${groom['fullName']} & ${bride['fullName']}';
-        data.fatherName = groom['father']?.toString() ?? '';
-        data.motherName = groom['mother']?.toString() ?? '';
-      }
-
-      if (marriage != null) {
-        data.ministerName = marriage['officiant']?.toString() ?? '';
-        data.birthplace = marriage['place']?.toString() ?? '';
-      }
-
-      if (witnesses != null) {
-        final w1 = witnesses['witness1']?.toString() ?? '';
-        final w2 = witnesses['witness2']?.toString() ?? '';
-        data.sponsorName = [w1, w2].where((s) => s.isNotEmpty).join(', ');
-      }
+    if (notes == null) {
+      if (record.name.trim().isNotEmpty) data.personName = record.name.trim();
+      return;
     }
+
+    // Flat marriage register (manual register + OCR) stores party names under
+    // `groom.name`/`bride.name`, not the full-form `groom.fullName`. Handle it
+    // explicitly so the couple resolves instead of rendering "null & null".
+    if (ManualRegisterNotes.usesFlatMarriageRegisterLayout(notes)) {
+      _applyFlatMarriageNotes(data, record, notes);
+      return;
+    }
+
+    // Full marriage form JSON (nested groom/bride/marriage/witnesses).
+    final groom = _asMap(notes['groom']);
+    final bride = _asMap(notes['bride']);
+    final marriage = _asMap(notes['marriage']);
+    final witnesses = _asMap(notes['witnesses']);
+
+    final groomName = groom?['fullName']?.toString() ?? '';
+    final brideName = bride?['fullName']?.toString() ?? '';
+    final combined =
+        [groomName, brideName].where((s) => s.trim().isNotEmpty).join(' & ');
+    if (combined.isNotEmpty) {
+      data.personName = combined;
+    } else if (record.name.trim().isNotEmpty) {
+      data.personName = record.name.trim();
+    }
+    data.fatherName = groom?['father']?.toString() ?? '';
+    data.motherName = groom?['mother']?.toString() ?? '';
+
+    if (marriage != null) {
+      data.ministerName = marriage['officiant']?.toString() ?? '';
+      data.birthplace = marriage['place']?.toString() ?? '';
+    }
+
+    if (witnesses != null) {
+      final w1 = witnesses['witness1']?.toString() ?? '';
+      final w2 = witnesses['witness2']?.toString() ?? '';
+      data.sponsorName = [w1, w2].where((s) => s.isNotEmpty).join(', ');
+    }
+  }
+
+  /// Flat marriage register (manual + OCR) → certificate fields.
+  static void _applyFlatMarriageNotes(
+    CertificateData data,
+    ParishRecord record,
+    Map<String, dynamic> notes,
+  ) {
+    _applyParishFromRecord(data, record);
+
+    final groom = _asMap(notes['groom']);
+    final bride = _asMap(notes['bride']);
+
+    final groomName =
+        groom == null ? '' : ManualRegisterNotes.fieldAny(groom, ['name', 'fullName']);
+    final brideName =
+        bride == null ? '' : ManualRegisterNotes.fieldAny(bride, ['name', 'fullName']);
+    final combined =
+        [groomName, brideName].where((s) => s.isNotEmpty).join(' & ');
+    if (combined.isNotEmpty) {
+      data.personName = combined;
+    } else {
+      final summary =
+          ManualRegisterNotes.fieldAny(notes, ['contractingParties']);
+      data.personName = summary.isNotEmpty ? summary : record.name.trim();
+    }
+
+    // Groom's parents populate the shared "Child of / and" lines.
+    if (groom != null) {
+      _splitParentsIntoCertificate(groom['parents'], data);
+    }
+
+    final sacramentText =
+        ManualRegisterNotes.fieldAny(notes, ['dateOfMarriage', 'date']);
+    if (sacramentText.isNotEmpty) {
+      data.sacramentDate =
+          RegisterOcrParser.parseDate(sacramentText) ?? data.sacramentDate;
+    }
+
+    data.ministerName =
+        ManualRegisterNotes.fieldAny(notes, ['minister', 'officiant']);
+
+    // Sponsors (Ninong/Ninang) — combine both parties' entries.
+    final sponsors = <String>[];
+    for (final party in [groom, bride]) {
+      if (party == null) continue;
+      final s = ManualRegisterNotes.fieldAny(party, [
+        'sponsors',
+        'sponsorsOfMarriage',
+      ]);
+      if (s.isNotEmpty) sponsors.add(s);
+    }
+    data.sponsorName = sponsors.join(', ');
+
+    data.registryVolume =
+        ManualRegisterNotes.fieldAny(notes, ['volNo', 'volume', 'vol']);
+    data.registrySeries =
+        ManualRegisterNotes.fieldAny(notes, ['seriesNo', 'series']);
+    data.registryPage =
+        ManualRegisterNotes.fieldAny(notes, ['lineNo', 'pageNo', 'page']);
   }
 
   static void _extractFuneralData(
