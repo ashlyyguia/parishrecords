@@ -281,13 +281,22 @@ FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
 **3. Flutter** — from the repo root, pointed at the local backend:
 
 ```bash
-flutter pub get                 # first time only
-flutter run                     # uses the built-in default http://localhost:3000
+flutter pub get                                              # first time only
+flutter run --dart-define-from-file=dart_define.local.json   # points at http://localhost:3000
 ```
 
-Do **not** pass `--dart-define-from-file=dart_define.json` for local runs — that
-file points at the production Railway URL. To be explicit you can instead pass
-`--dart-define=BACKEND_URL=http://localhost:3000`.
+`dart_define.local.json` holds the local backend URL (committed alongside the
+production `dart_define.json`):
+
+```json
+{ "BACKEND_URL": "http://localhost:3000" }
+```
+
+Keep the two files separate: `dart_define.local.json` for local runs,
+`dart_define.json` for production builds — do **not** point local runs at
+`dart_define.json`, which targets the Railway URL. (Running with no flag also
+works, since `http://localhost:3000` is the built-in default; passing the file
+just makes the target explicit.)
 
 > **Flutter web + CORS:** the web dev server picks a random port that won't be in
 > `ALLOWED_ORIGINS`, so the backend will reject it. Either run a desktop build
