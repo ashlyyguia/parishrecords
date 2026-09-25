@@ -489,7 +489,7 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
         children: [
           CircularProgressIndicator(),
           SizedBox(height: 16),
-          Text('Reading the register with OCR.space...'),
+          Text('Reading the register...'),
           SizedBox(height: 4),
           Text('This can take a few seconds for a full page.'),
         ],
