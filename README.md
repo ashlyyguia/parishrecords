@@ -335,6 +335,22 @@ firebase deploy --only hosting
 { "BACKEND_URL": "https://parishrecords-production.up.railway.app" }
 ```
 
+How the two commands split the work:
+
+- **`flutter build web --dart-define-from-file=dart_define.json`** bakes the
+  production `BACKEND_URL` into the compiled bundle at `build/web`. This is a
+  **compile-time** value — it is fixed in the output, so there is no runtime env
+  to set on the host.
+- **`firebase deploy --only hosting`** ships whatever is already in `build/web`
+  (hosting's `public` dir per `firebase.json`). It does **not** rebuild.
+
+Because deploy only uploads the existing bundle, **always rebuild first** after
+any code or config change — otherwise you deploy a stale bundle (possibly one
+built with the local URL from `dart_define.local.json`).
+
+First time / wrong project? Run `firebase login` and `firebase use <project-id>`
+before deploying.
+
 ---
 
 ## 🔌 API Endpoints
