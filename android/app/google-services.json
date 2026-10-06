@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "92541925437",
-    "project_id": "holyparish-af472",
-    "storage_bucket": "holyparish-af472.firebasestorage.app"
+    "project_number": "1045532070797",
+    "project_id": "holyparish",
+    "storage_bucket": "holyparish.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:92541925437:android:9a1cd349585bf8c1519254",
+        "mobilesdk_app_id": "1:1045532070797:android:c08265ff3d27e5e3a423c4",
         "android_client_info": {
           "package_name": "com.example.parishrecord"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyApUbGlRr-53H5UjNpiaVBBk_XesfFZcug"
+          "current_key": "AIzaSyBS0EpETSdgGhTh1Bqz1wUin1VlTxFaDKQ"
         }
       ],
       "services": {

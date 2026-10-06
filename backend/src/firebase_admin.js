@@ -64,7 +64,7 @@ function init() {
     // Try to initialize without service account (uses Application Default Credentials)
     console.log('Firebase Admin initializing with Application Default Credentials...');
     admin.initializeApp({
-      projectId: projectId || 'holyparish-af472',
+      projectId: projectId || 'holyparish',
     });
   }
 

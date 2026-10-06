@@ -41,48 +41,46 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCD4IVkXqxZtSjuv_XG2-VktbHwKRPaBmk',
-    appId: '1:92541925437:web:4bd0f0414fb9306a519254',
-    messagingSenderId: '92541925437',
-    projectId: 'holyparish-af472',
-    authDomain: 'holyparish-af472.firebaseapp.com',
-    storageBucket: 'holyparish-af472.firebasestorage.app',
-    measurementId: 'G-THHPFR7S75',
+    apiKey: 'AIzaSyBrUxjqHvwaMLlSBTTQ8dDV6QXP9geGMmU',
+    appId: '1:1045532070797:web:74889d2c3300eed9a423c4',
+    messagingSenderId: '1045532070797',
+    projectId: 'holyparish',
+    authDomain: 'holyparish.firebaseapp.com',
+    storageBucket: 'holyparish.firebasestorage.app',
+    measurementId: 'G-KLX8W8RXHM',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyApUbGlRr-53H5UjNpiaVBBk_XesfFZcug',
-    appId: '1:92541925437:android:9a1cd349585bf8c1519254',
-    messagingSenderId: '92541925437',
-    projectId: 'holyparish-af472',
-    storageBucket: 'holyparish-af472.firebasestorage.app',
+    apiKey: 'AIzaSyBS0EpETSdgGhTh1Bqz1wUin1VlTxFaDKQ',
+    appId: '1:1045532070797:android:c08265ff3d27e5e3a423c4',
+    messagingSenderId: '1045532070797',
+    projectId: 'holyparish',
+    storageBucket: 'holyparish.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAKStQ2lJoHUkBGexD9BkkitUoCtNxyoh0',
-    appId: '1:92541925437:ios:6b1df0f8c0163a1f519254',
-    messagingSenderId: '92541925437',
-    projectId: 'holyparish-af472',
-    storageBucket: 'holyparish-af472.firebasestorage.app',
+    apiKey: 'AIzaSyADXQpz4KUWBdVpIspakwymFvMut6SqIsk',
+    appId: '1:1045532070797:ios:65f867625963a6e1a423c4',
+    messagingSenderId: '1045532070797',
+    projectId: 'holyparish',
+    storageBucket: 'holyparish.firebasestorage.app',
     iosBundleId: 'com.example.parishrecord',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyAKStQ2lJoHUkBGexD9BkkitUoCtNxyoh0',
-    appId: '1:92541925437:ios:6b1df0f8c0163a1f519254',
-    messagingSenderId: '92541925437',
-    projectId: 'holyparish-af472',
-    storageBucket: 'holyparish-af472.firebasestorage.app',
+    apiKey: 'AIzaSyADXQpz4KUWBdVpIspakwymFvMut6SqIsk',
+    appId: '1:1045532070797:ios:65f867625963a6e1a423c4',
+    messagingSenderId: '1045532070797',
+    projectId: 'holyparish',
+    storageBucket: 'holyparish.firebasestorage.app',
     iosBundleId: 'com.example.parishrecord',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyCD4IVkXqxZtSjuv_XG2-VktbHwKRPaBmk',
-    appId: '1:92541925437:web:0442e277efe3a190519254',
-    messagingSenderId: '92541925437',
-    projectId: 'holyparish-af472',
-    authDomain: 'holyparish-af472.firebaseapp.com',
-    storageBucket: 'holyparish-af472.firebasestorage.app',
-    measurementId: 'G-CRES5L6M2K',
+    apiKey: 'AIzaSyBrUxjqHvwaMLlSBTTQ8dDV6QXP9geGMmU',
+    appId: '1:1045532070797:web:c4af44a59a036709a423c4',
+    messagingSenderId: '1045532070797',
+    projectId: 'holyparish',
+    authDomain: 'holyparish.firebaseapp.com',
+    storageBucket: 'holyparish.firebasestorage.app',
+    measurementId: 'G-TCNXQQXBQN',
   );
 }
