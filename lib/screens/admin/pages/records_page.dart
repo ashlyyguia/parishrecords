@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:csv/csv.dart';
 import 'package:intl/intl.dart';
 import '../../../models/record.dart';
+import '../../../services/export_service.dart';
+import '../../../services/records_backup.dart';
 import '../../../services/records_repository.dart';
 import '../../../services/admin_repository.dart';
 import '../../../utils/record_date_filter.dart';
@@ -31,6 +33,7 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
   final _adminRepo = AdminRepository();
   StreamSubscription<List<ParishRecord>>? _sub;
   List<ParishRecord> _records = const [];
+  bool _backupBusy = false;
 
   @override
   void initState() {
@@ -258,6 +261,43 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     }
   }
 
+  Future<void> _backupFiltered() async {
+    final filtered = _load();
+    final records = filtered
+        .map((m) => m['record'])
+        .whereType<ParishRecord>()
+        .toList();
+
+    if (records.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No records to back up.')));
+      return;
+    }
+
+    setState(() => _backupBusy = true);
+    try {
+      final data = recordsToBackupJson(records);
+      final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
+      await ExportService.exportJson(
+        'records_backup_${records.length}_$ts.json',
+        data,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backed up ${records.length} records.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Backup failed: $e')));
+    } finally {
+      if (mounted) setState(() => _backupBusy = false);
+    }
+  }
+
   Future<void> _deleteRecord(ParishRecord record) async {
     try {
       await _repo.deleteForType(record.id, record.type);
@@ -364,6 +404,17 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                   onPressed: _openNewRecord,
                   icon: const Icon(Icons.add_rounded),
                   label: const Text('Add Record'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _backupBusy ? null : _backupFiltered,
+                  icon: _backupBusy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.backup_outlined),
+                  label: const Text('Back Up (JSON)'),
                 ),
               ],
             ),
