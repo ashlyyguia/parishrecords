@@ -65,7 +65,7 @@ class BaptismalOcrFailure implements Exception {
 class BaptismalOcrService {
   BaptismalOcrService({
     http.Client? client,
-    Duration timeout = const Duration(seconds: 60),
+    Duration timeout = const Duration(seconds: 90),
   })  : _client = client ?? http.Client(),
         _timeout = timeout;
 

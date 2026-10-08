@@ -14,6 +14,7 @@ import '../../../widgets/app_loading.dart';
 import '../../admin/widgets/finance_module_design.dart'
     hide formatPaymentMethod;
 import '../widgets/finance_records_layout.dart';
+import '../../../services/certificate_fee_repository.dart';
 import '../../../services/donations_repository.dart';
 import '../../admin/pages/admin_certificate_fees_page.dart'
     show RecordCertificateFeeForm;
@@ -30,6 +31,15 @@ class FinanceCertificateFeesPage extends ConsumerStatefulWidget {
 class _FinanceCertificateFeesPageState
     extends ConsumerState<FinanceCertificateFeesPage> {
   bool _exportBusy = false;
+  bool _actionBusy = false;
+
+  static const _certificateTypes = ['Baptism', 'Marriage', 'Confirmation', 'Death'];
+
+  static String _certTypeKey(Map<String, dynamic> d) {
+    final t = (d['certificate_type'] as String?)?.trim();
+    if (t == null || t.isEmpty || t == 'Parish Certification') return 'Baptism';
+    return t;
+  }
   DateTime? _from;
   DateTime? _to;
 
@@ -152,6 +162,184 @@ class _FinanceCertificateFeesPageState
     }
   }
 
+  // ── Edit / delete (same behaviour as Admin → Certificate Fees) ──
+  Future<void> _editFee(Map<String, dynamic> record) async {
+    final id = record['donation_id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final amountCtrl = TextEditingController(
+      text: (record['amount'] as num?)?.toDouble().toStringAsFixed(2) ?? '0.00',
+    );
+    final payerCtrl =
+        TextEditingController(text: record['donor_name']?.toString() ?? '');
+    const methods = ['cash', 'gcash', 'bank_transfer', 'check', 'card'];
+    var method = (record['method'] ?? 'cash').toString();
+    if (!methods.contains(method)) method = 'cash';
+    var type = _certTypeKey(record);
+    if (!_certificateTypes.contains(type)) type = _certificateTypes.first;
+    var anonymous = record['anonymous'] == true;
+
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Certificate Fee'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: type,
+                  decoration: const InputDecoration(
+                    labelText: 'Certificate type',
+                    prefixIcon: Icon(Icons.verified_outlined),
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final t in _certificateTypes)
+                      DropdownMenuItem(
+                        value: t,
+                        child: Text(CertificateFeeRepository.getDisplayName(t)),
+                      ),
+                  ],
+                  onChanged: (v) => setDialogState(() => type = v ?? type),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Amount (₱)',
+                    prefixIcon: Icon(Icons.payments),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: payerCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Payer Name',
+                    prefixIcon: Icon(Icons.person),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                CheckboxListTile(
+                  value: anonymous,
+                  onChanged: (v) => setDialogState(() => anonymous = v ?? false),
+                  title: const Text('Anonymous'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: method,
+                  decoration: const InputDecoration(
+                    labelText: 'Method',
+                    prefixIcon: Icon(Icons.payment),
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final m in methods)
+                      DropdownMenuItem(
+                        value: m,
+                        child: Text(formatPaymentMethod(m)),
+                      ),
+                  ],
+                  onChanged: (v) => setDialogState(() => method = v ?? 'cash'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: _style.accent),
+              onPressed: () {
+                final a = double.tryParse(amountCtrl.text.trim());
+                if (a == null || a <= 0) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(content: Text('Please enter a valid amount')),
+                  );
+                  return;
+                }
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (save != true || !mounted) return;
+    setState(() => _actionBusy = true);
+    try {
+      await DonationsRepository().update(
+        id,
+        amount: double.parse(amountCtrl.text.trim()),
+        method: method,
+        campaign: 'certificate',
+        certificateType: type,
+        donorName: payerCtrl.text.trim().isNotEmpty ? payerCtrl.text.trim() : null,
+        anonymous: anonymous,
+      );
+      if (!mounted) return;
+      ref.invalidate(donationsListProvider(200));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Certificate fee updated.')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Update failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<void> _deleteFee(Map<String, dynamic> record) async {
+    final id = record['donation_id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Certificate Fee'),
+        content: const Text('Are you sure? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _actionBusy = true);
+    try {
+      await DonationsRepository().delete(id);
+      if (!mounted) return;
+      ref.invalidate(donationsListProvider(200));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Certificate fee deleted.')));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
   Widget _headerActions(Widget? exportBtn) => Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -261,11 +449,13 @@ class _FinanceCertificateFeesPageState
                         columns: const [
                           DataColumn(label: Text('Date')),
                           DataColumn(label: Text('Payer')),
+                          DataColumn(label: Text('Certificate')),
                           DataColumn(label: Text('Method')),
                           DataColumn(
                             label: Text('Amount (₱)'),
                             numeric: true,
                           ),
+                          DataColumn(label: Text('Actions')),
                         ],
                         rows: filtered.map((r) {
                           final ts = r['created_at'];
@@ -307,6 +497,13 @@ class _FinanceCertificateFeesPageState
                               ),
                               DataCell(
                                 Text(
+                                  CertificateFeeRepository.getDisplayName(
+                                    _certTypeKey(r),
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
                                   formatPaymentMethod(
                                     (r['method'] ?? 'cash').toString(),
                                   ),
@@ -319,6 +516,31 @@ class _FinanceCertificateFeesPageState
                                     fontWeight: FontWeight.bold,
                                     color: _style.accent,
                                   ),
+                                ),
+                              ),
+                              DataCell(
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit_outlined,
+                                          size: 20),
+                                      tooltip: 'Edit',
+                                      onPressed: _actionBusy
+                                          ? null
+                                          : () => _editFee(r),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline,
+                                          size: 20),
+                                      tooltip: 'Delete',
+                                      color:
+                                          Theme.of(context).colorScheme.error,
+                                      onPressed: _actionBusy
+                                          ? null
+                                          : () => _deleteFee(r),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],

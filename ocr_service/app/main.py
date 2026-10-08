@@ -1,5 +1,6 @@
 import base64
 import logging
+import time
 
 import cv2
 import numpy as np
@@ -19,7 +20,9 @@ from .security import require_service_key, validate_upload
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("ocr_service")
 
-app = FastAPI(title="Parish Register Grid", version="2.0.0")
+SERVICE_VERSION = "2.1.0"  # bump on every pipeline change; /health reports it
+
+app = FastAPI(title="Parish Register Grid", version=SERVICE_VERSION)
 
 # One printed book per register; the query selects which declared ruling to fit.
 _REGISTERS = {"baptismal": BAPTISMAL_REGISTER, "marriage": MARRIAGE_REGISTER}
@@ -38,7 +41,11 @@ async def _ocr_error_handler(_: Request, exc: OcrError) -> JSONResponse:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok"}
+    # `version` and `registers` let the backend (and a person with curl) tell
+    # at a glance whether this server runs the current pipeline -- a stale
+    # deploy without the marriage template silently refuses every marriage
+    # spread.
+    return {"status": "ok", "version": SERVICE_VERSION, "registers": sorted(_REGISTERS)}
 
 
 def _decode(data: bytes) -> np.ndarray:
@@ -69,6 +76,57 @@ def _page_payload(page_bgr: np.ndarray, grid) -> dict:
     }
 
 
+def _clahe(image: np.ndarray) -> np.ndarray:
+    """Local contrast boost: lifts faint ruled lines on shaded/curved pages."""
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    lum, a, b = cv2.split(lab)
+    lum = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(lum)
+    return cv2.cvtColor(cv2.merge([lum, a, b]), cv2.COLOR_LAB2BGR)
+
+
+def _upscale(image: np.ndarray) -> np.ndarray:
+    return cv2.resize(image, None, fx=1.25, fy=1.25, interpolation=cv2.INTER_CUBIC)
+
+
+# Tried in order only after the plain image is refused. Each variant runs the
+# exact same gates, so it cannot accept a grid the checks would reject; it just
+# gives faint or slightly curved rulings a second look. Measured on the 59
+# sample baptismal spreads: 55 pass as-is, contrast rescues 2 more, upscale 1.
+_RETRY_VARIANTS = (("contrast", _clahe), ("upscale", _upscale))
+_RETRY_BUDGET_S = 30.0  # stop retrying once this much time has been spent
+
+
+def _detect(image: np.ndarray, spread_template):
+    oriented = correct_orientation(image)
+    spread = correct_spread_inversion(oriented.image).image
+    pages = split_spread(spread)
+    left = rectify_page(pages.left).image
+    right = rectify_page(pages.right).image
+    grids = detect_spread_grids(left, right, spread_template=spread_template)
+    return oriented, left, right, grids
+
+
+def _detect_with_retries(image: np.ndarray, spread_template):
+    started = time.monotonic()
+    try:
+        return _detect(image, spread_template)
+    except OcrError as first:
+        if first.code not in ("no_table_detected", "no_rows_detected"):
+            raise
+        for name, transform in _RETRY_VARIANTS:
+            if time.monotonic() - started > _RETRY_BUDGET_S:
+                break
+            try:
+                result = _detect(transform(image), spread_template)
+                log.info("grid found on retry: %s", name)  # variant name only
+                return result
+            except OcrError:
+                continue
+        # Report the ORIGINAL refusal: it describes the photo as taken, which
+        # is what the retake guidance should talk about.
+        raise first
+
+
 @app.post("/v1/grid")
 async def detect_grid_endpoint(
     request: Request,
@@ -82,12 +140,7 @@ async def detect_grid_endpoint(
     register = request.query_params.get("register", "baptismal")
     spread_template = _REGISTERS.get(register, BAPTISMAL_REGISTER)
 
-    oriented = correct_orientation(_decode(data))
-    spread = correct_spread_inversion(oriented.image).image
-    pages = split_spread(spread)
-    left = rectify_page(pages.left).image
-    right = rectify_page(pages.right).image
-    grids = detect_spread_grids(left, right, spread_template=spread_template)
+    oriented, left, right, grids = _detect_with_retries(_decode(data), spread_template)
 
     return {
         "success": True,

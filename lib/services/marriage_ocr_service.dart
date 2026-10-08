@@ -58,7 +58,7 @@ class MarriageOcrScan {
 class MarriageOcrService {
   MarriageOcrService({
     http.Client? client,
-    Duration timeout = const Duration(seconds: 60),
+    Duration timeout = const Duration(seconds: 90),
   })  : _client = client ?? http.Client(),
         _timeout = timeout;
 

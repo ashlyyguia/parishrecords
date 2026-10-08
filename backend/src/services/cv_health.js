@@ -28,7 +28,31 @@ async function cvGridStatus({ env = process.env, fetchImpl = fetch, timeoutMs = 
   try {
     const res = await fetchImpl(healthUrl, { signal: controller.signal });
     if (res && res.ok) {
-      return { configured: true, reachable: true, message: `CV grid service reachable at ${baseUrl}.` };
+      // A reachable but out-of-date service is the worst case: it refuses most
+      // real spreads (the pre-2.1 pipeline read 7/59 sample baptismal photos
+      // and 0/8 marriage photos), and every refusal looks like a bad photo.
+      // /health reports `version` + `registers` from 2.1.0 on.
+      let body = null;
+      try { body = await res.json(); } catch (_) { body = null; }
+      const registers = body && Array.isArray(body.registers) ? body.registers : [];
+      const version = body && typeof body.version === 'string' ? body.version : null;
+      if (!version || !registers.includes('marriage')) {
+        return {
+          configured: true,
+          reachable: false,
+          stale: true,
+          message:
+            `CV grid service at ${baseUrl} is reachable but OUT OF DATE`
+            + `${version ? ` (version ${version})` : ' (no version reported)'} — it will refuse most `
+            + 'register photos. Redeploy ocr_service/ to the VPS (see ocr_service/DEPLOY_VPS.md).',
+        };
+      }
+      return {
+        configured: true,
+        reachable: true,
+        version,
+        message: `CV grid service reachable at ${baseUrl} (version ${version}).`,
+      };
     }
     return {
       configured: true,

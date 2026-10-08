@@ -1,4 +1,4 @@
-const { overlayToCells, callOcrSpace } = require('./ocrspace_service');
+const { overlayToCells, callOcrSpace, toLatinLookalikes } = require('./ocrspace_service');
 
 describe('overlayToCells', () => {
   test('maps word overlay to cells and text', () => {
@@ -30,6 +30,26 @@ describe('overlayToCells', () => {
     expect(overlayToCells({ ParsedResults: [{ ParsedText: 'x' }] })).toEqual({ text: 'x', cells: [] });
     const blank = { ParsedResults: [{ TextOverlay: { Lines: [{ Words: [{ WordText: '  ', Left: 1, Top: 1, Width: 1, Height: 1 }] }] } }] };
     expect(overlayToCells(blank).cells).toEqual([]);
+  });
+});
+
+describe('toLatinLookalikes', () => {
+  test('maps Cyrillic/Greek look-alikes misread from handwriting to Latin', () => {
+    expect(toLatinLookalikes('р - 2 Саливау')).toBe('p - 2 Caлиbay');
+    expect(toLatinLookalikes('оReRunta с itu')).toBe('oReRunta c itu');
+    expect(toLatinLookalikes('PUROK 6 LOVeR')).toBe('PUROK 6 LOVeR');
+    expect(toLatinLookalikes('')).toBe('');
+  });
+
+  test('overlayToCells returns Latin text for words and full text', () => {
+    const out = overlayToCells({
+      ParsedResults: [{
+        ParsedText: 'ОRОQUIЕТА',
+        TextOverlay: { Lines: [{ Words: [{ WordText: 'ОRОQUIЕТА', Left: 1, Top: 2, Width: 3, Height: 4 }] }] },
+      }],
+    });
+    expect(out.text).toBe('OROQUIETA');
+    expect(out.cells[0].text).toBe('OROQUIETA');
   });
 });
 

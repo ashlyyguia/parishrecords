@@ -782,7 +782,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
           SizedBox(height: 16),
           Text('Reading the register...'),
           SizedBox(height: 4),
-          Text('This can take a few seconds for a full page.'),
+          Text('Reading both pages — this usually takes 10–30 seconds.'),
         ],
       ),
     );

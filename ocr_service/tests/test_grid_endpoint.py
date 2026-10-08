@@ -5,6 +5,7 @@ import cv2
 from fastapi.testclient import TestClient
 
 import app.main as main_module
+from app.errors import OcrError
 from app.config import get_settings
 from app.main import app
 from tests.support.synthetic import make_register_spread
@@ -37,7 +38,52 @@ def _png_bytes(bgr):
 
 
 def test_health():
-    assert client.get("/health").json() == {"status": "ok"}
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    assert body["version"] == main_module.SERVICE_VERSION
+    assert body["registers"] == ["baptismal", "marriage"]
+
+
+def _refuse(*_a, **_k):
+    raise OcrError("no_table_detected", "refused", 422, reason="grid_not_found", side="right")
+
+
+def test_grid_retries_a_refused_spread_and_succeeds(monkeypatch):
+    monkeypatch.setenv("OCR_SERVICE_KEY", "k")
+    get_settings.cache_clear()
+    calls = {"n": 0}
+
+    def _second_try_works(left, right, spread_template=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            _refuse()
+        return _fake_spread()
+
+    monkeypatch.setattr(main_module, "detect_spread_grids", _second_try_works)
+    spread = make_register_spread(rows=24, cols_left=5, cols_right=5)
+    res = client.post("/v1/grid", content=_png_bytes(spread), headers={"X-OCR-Service-Key": "k"})
+    assert res.status_code == 200, res.text
+    assert calls["n"] == 2  # plain attempt refused, contrast retry accepted
+    get_settings.cache_clear()
+
+
+def test_grid_reports_the_original_refusal_when_every_retry_fails(monkeypatch):
+    monkeypatch.setenv("OCR_SERVICE_KEY", "k")
+    get_settings.cache_clear()
+    calls = {"n": 0}
+
+    def _always_refuse(left, right, spread_template=None):
+        calls["n"] += 1
+        side = "right" if calls["n"] == 1 else "left"
+        raise OcrError("no_table_detected", "refused", 422, reason="grid_not_found", side=side)
+
+    monkeypatch.setattr(main_module, "detect_spread_grids", _always_refuse)
+    spread = make_register_spread(rows=24, cols_left=5, cols_right=5)
+    res = client.post("/v1/grid", content=_png_bytes(spread), headers={"X-OCR-Service-Key": "k"})
+    assert res.status_code == 422
+    assert res.json()["side"] == "right"  # the first (as-photographed) verdict
+    assert calls["n"] == 1 + len(main_module._RETRY_VARIANTS)
+    get_settings.cache_clear()
 
 
 def test_grid_returns_geometry_for_a_spread(monkeypatch):
