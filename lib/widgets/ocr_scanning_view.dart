@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -105,6 +106,8 @@ class _OcrScanningViewState extends State<OcrScanningView> {
                 ),
               ),
               const SizedBox(width: 12),
+              const _PulsingSparkle(),
+              const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   widget.title,
@@ -252,9 +255,124 @@ class _ScanSweepPainter extends CustomPainter {
         ..color = Colors.greenAccent.shade400
         ..strokeWidth = 2.5,
     );
+
+    _paintSparkles(canvas, size, y, bandHeight);
+  }
+
+  // Fixed pseudo-random layout (same every frame, so sparkles twinkle in
+  // place relative to the line instead of jittering).
+  static final List<_Spark> _sparks = () {
+    final r = math.Random(7);
+    return List.generate(
+      22,
+      (_) => _Spark(
+        x: r.nextDouble(),
+        lag: r.nextDouble(), // 0 = on the line, 1 = top of the glow band
+        phase: r.nextDouble(),
+        speed: 2 + r.nextDouble() * 3,
+        size: 3 + r.nextDouble() * 5,
+        gold: r.nextDouble() < 0.3,
+      ),
+    );
+  }();
+
+  void _paintSparkles(Canvas canvas, Size size, double lineY, double band) {
+    for (final s in _sparks) {
+      // Twinkle: 0 -> 1 -> 0 a few times per sweep, each spark offset.
+      final t = (progress * s.speed + s.phase) % 1.0;
+      final twinkle = math.sin(t * math.pi);
+      if (twinkle <= 0.05) continue;
+      final cy = lineY - s.lag * band * 1.3;
+      if (cy < 0 || cy > size.height) continue;
+      final center = Offset(s.x * size.width, cy);
+      final r = s.size * (0.4 + 0.6 * twinkle);
+      final color = (s.gold ? const Color(0xFFFFF59D) : Colors.white)
+          .withValues(alpha: 0.9 * twinkle * (1 - s.lag * 0.5));
+      // Soft glow
+      canvas.drawCircle(
+        center,
+        r * 1.6,
+        Paint()
+          ..color = Colors.greenAccent.withValues(alpha: 0.25 * twinkle)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+      );
+      canvas.drawPath(_star(center, r), Paint()..color = color);
+    }
+  }
+
+  /// Four-point sparkle star.
+  static Path _star(Offset c, double r) {
+    final inner = r * 0.28;
+    return Path()
+      ..moveTo(c.dx, c.dy - r)
+      ..quadraticBezierTo(c.dx + inner, c.dy - inner, c.dx + r, c.dy)
+      ..quadraticBezierTo(c.dx + inner, c.dy + inner, c.dx, c.dy + r)
+      ..quadraticBezierTo(c.dx - inner, c.dy + inner, c.dx - r, c.dy)
+      ..quadraticBezierTo(c.dx - inner, c.dy - inner, c.dx, c.dy - r)
+      ..close();
   }
 
   @override
   bool shouldRepaint(_ScanSweepPainter oldDelegate) =>
       oldDelegate.progress != progress;
+}
+
+class _Spark {
+  const _Spark({
+    required this.x,
+    required this.lag,
+    required this.phase,
+    required this.speed,
+    required this.size,
+    required this.gold,
+  });
+  final double x, lag, phase, speed, size;
+  final bool gold;
+}
+
+/// Small sparkle icon beside the title that gently pulses and rotates.
+class _PulsingSparkle extends StatefulWidget {
+  const _PulsingSparkle();
+
+  @override
+  State<_PulsingSparkle> createState() => _PulsingSparkleState();
+}
+
+class _PulsingSparkleState extends State<_PulsingSparkle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        final v = Curves.easeInOut.transform(_c.value);
+        return Transform.rotate(
+          angle: v * 0.35,
+          child: Transform.scale(
+            scale: 0.85 + 0.3 * v,
+            child: Icon(
+              Icons.auto_awesome,
+              size: 18,
+              color: Color.lerp(
+                Colors.greenAccent.shade200,
+                const Color(0xFFFFF59D),
+                v,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
