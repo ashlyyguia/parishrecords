@@ -44,7 +44,23 @@ class BaptismalOcrReviewTable extends StatefulWidget {
     this.onInsertRowBelow,
     this.onDeleteRow,
     this.onMergeWithNext,
+    this.searchQuery = '',
   });
+
+  /// Shows only rows containing every word of this text (any column,
+  /// including No.). Row indices passed to callbacks stay the original ones.
+  final String searchQuery;
+
+  /// Whether [row] matches [query] (case-insensitive; all words must appear).
+  static bool rowMatches(BaptismalRegisterRow row, String query) {
+    final terms = query.toLowerCase().split(RegExp(r'\s+'))
+      ..removeWhere((t) => t.isEmpty);
+    if (terms.isEmpty) return true;
+    final hay = [row.lineNo, for (final f in row.fields.values) f.value]
+        .join(' ')
+        .toLowerCase();
+    return terms.every(hay.contains);
+  }
 
   final List<BaptismalRegisterRow> rows;
   final List<RowIssue> issues;
@@ -205,6 +221,23 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
     return null;
   }
 
+  /// Original indices of the rows that match the search.
+  List<int> get _visible => [
+        for (var i = 0; i < widget.rows.length; i++)
+          if (BaptismalOcrReviewTable.rowMatches(widget.rows[i], widget.searchQuery))
+            i,
+      ];
+
+  Widget _noMatches(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No rows match "${widget.searchQuery.trim()}".',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     if (widget.rows.isEmpty) return const SizedBox.shrink();
@@ -242,13 +275,17 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
                 child: Scrollbar(
                   controller: _vertical,
                   thumbVisibility: true,
-                  child: ListView.builder(
-                    controller: _vertical,
-                    padding: EdgeInsets.zero,
-                    itemCount: widget.rows.length,
-                    itemBuilder: (context, i) =>
-                        _tableRow(context, i, widget.rows[i]),
-                  ),
+                  child: Builder(builder: (context) {
+                    final visible = _visible;
+                    if (visible.isEmpty) return _noMatches(context);
+                    return ListView.builder(
+                      controller: _vertical,
+                      padding: EdgeInsets.zero,
+                      itemCount: visible.length,
+                      itemBuilder: (context, j) => _tableRow(
+                          context, visible[j], widget.rows[visible[j]]),
+                    );
+                  }),
                 ),
               ),
             ],
@@ -419,11 +456,14 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
   // ---------------------------------------------------------------------------
 
   Widget _cardsList(BuildContext context) {
+    final visible = _visible;
+    if (visible.isEmpty) return _noMatches(context);
     return ListView.builder(
       controller: _vertical,
       padding: const EdgeInsets.symmetric(vertical: 4),
-      itemCount: widget.rows.length,
-      itemBuilder: (context, i) => _rowCard(context, i, widget.rows[i]),
+      itemCount: visible.length,
+      itemBuilder: (context, j) =>
+          _rowCard(context, visible[j], widget.rows[visible[j]]),
     );
   }
 

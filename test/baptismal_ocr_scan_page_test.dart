@@ -281,6 +281,22 @@ void main() {
     expect(find.byKey(const ValueKey('open-fullscreen')), findsOneWidget);
   });
 
+  testWidgets('search filters rows and edits still apply to the right row',
+      (tester) async {
+    await toReview(tester, _scanBody2());
+    expect(find.text('Save 2 record(s)'), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const ValueKey('review-search')), 'zzz-no-such-name');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('No rows match'), findsOneWidget);
+    expect(find.text('0 of 2'), findsOneWidget);
+    // Clearing brings every row back; nothing was removed.
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('No rows match'), findsNothing);
+    expect(find.text('Save 2 record(s)'), findsOneWidget);
+  });
+
   testWidgets('delete removes a row', (tester) async {
     await toReview(tester, _scanBody2());
     await tester.tap(find.byKey(const ValueKey('row-menu-0')));

@@ -94,6 +94,7 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
   @override
   void dispose() {
     _fullscreenTick.dispose();
+    _searchCtrl.dispose();
     _volCtrl.dispose();
     _seriesCtrl.dispose();
     super.dispose();
@@ -181,6 +182,8 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
         _entries = scan.entries;
         _warnings = scan.warnings;
         _step = _Step.review;
+        _search = '';
+        _searchCtrl.clear();
       });
     } on MarriageOcrFailure catch (e) {
       if (!mounted) return;
@@ -260,6 +263,11 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
     );
     return ok ?? false;
   }
+
+  // Review-step search: filters the visible rows; edits still apply to the
+  // original rows.
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _search = '';
 
   // Full-screen review (see OcrReviewFullscreen). The route rebuilds from
   // [_fullscreenTick], which every setState bumps.
@@ -689,6 +697,40 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
         : '$n fields need attention: $where. Scroll to each red cell to fix it.';
   }
 
+  bool get _wideReview => MediaQuery.sizeOf(context).width >= 700;
+
+  Widget _searchField() {
+    return TextField(
+      key: const ValueKey('review-search'),
+      controller: _searchCtrl,
+      onChanged: (v) => setState(() => _search = v),
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.search),
+        labelText: 'Search entries',
+        hintText: 'Groom, bride, parents, sponsors, minister, No.',
+        suffixIcon: _search.trim().isEmpty
+            ? null
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${_entries.where((e) => RegisterMarriageTable.entryMatches(e, _search)).length} of ${_entries.length}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  IconButton(
+                    tooltip: 'Clear search',
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      setState(() => _search = '');
+                    },
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
   Widget _reviewStep() {
     final issues = _issues;
     final blockingIssues = issues.where((i) => i.blocking).toList();
@@ -707,6 +749,10 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(
             children: [
+              if (_wideReview) ...[
+                Expanded(flex: 2, child: _searchField()),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 child: TextField(
                   controller: _volCtrl,
@@ -732,6 +778,11 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
             ],
           ),
         ),
+        if (!_wideReview)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: _searchField(),
+          ),
         Expanded(
           child: _entries.isEmpty
               ? const Center(
@@ -746,6 +797,7 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
                 )
               : RegisterMarriageTable(
                   entries: _entries,
+                  searchQuery: _search,
                   fillGeneration: _fillGen,
                   issues: issues,
                   onChanged: () => setState(() {}),

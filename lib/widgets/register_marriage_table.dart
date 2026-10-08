@@ -14,7 +14,37 @@ class RegisterMarriageTable extends StatelessWidget {
     this.onSelectionChanged,
     this.onRemove,
     this.showCheckboxes = true,
+    this.searchQuery = '',
   });
+
+  /// Shows only entries containing every word of this text (groom, bride or
+  /// shared columns, or No.). Indices passed to callbacks stay the original.
+  final String searchQuery;
+
+  static bool entryMatches(RegisterMarriageEntry e, String query) {
+    final terms = query.toLowerCase().split(RegExp(r'\s+'))
+      ..removeWhere((t) => t.isEmpty);
+    if (terms.isEmpty) return true;
+    String party(MarriagePartyInfo p) => [
+          p.name,
+          p.legalStatus,
+          p.actualAddress,
+          p.datesPlaceOfBirth,
+          p.datesPlaceOfBaptism,
+          p.parents,
+          p.sponsors,
+        ].join(' ');
+    final hay = [
+      e.lineNo ?? '',
+      party(e.groom),
+      party(e.bride),
+      e.dateOfMarriage,
+      e.minister,
+      e.licenseNumber,
+      e.observations,
+    ].join(' ').toLowerCase();
+    return terms.every(hay.contains);
+  }
 
   final List<RegisterMarriageEntry> entries;
   final int fillGeneration;
@@ -94,7 +124,10 @@ class RegisterMarriageTable extends StatelessWidget {
     final tableRows = <TableRow>[
       _headerRow(context, showCheckboxes, onRemove != null),
     ];
+    var shown = 0;
     for (var i = 0; i < entries.length; i++) {
+      if (!entryMatches(entries[i], searchQuery)) continue;
+      shown++;
       tableRows.addAll(
         _entryRows(
           context,
@@ -108,7 +141,19 @@ class RegisterMarriageTable extends StatelessWidget {
           onChanged: onChanged,
           onSelectionChanged: onSelectionChanged,
           onRemove: onRemove == null ? null : () => onRemove!(i),
-          stripe: i.isEven,
+          stripe: shown.isOdd,
+        ),
+      );
+    }
+
+    if (shown == 0) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No entries match "${searchQuery.trim()}".',
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }

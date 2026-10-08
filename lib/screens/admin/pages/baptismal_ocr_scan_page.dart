@@ -138,6 +138,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
   @override
   void dispose() {
     _fullscreenTick.dispose();
+    _searchCtrl.dispose();
     _volCtrl.dispose();
     _seriesCtrl.dispose();
     super.dispose();
@@ -254,6 +255,8 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
         _rows = scan.rows;
         _warnings = scan.warnings;
         _step = _Step.review;
+        _search = '';
+        _searchCtrl.clear();
       });
     } on BaptismalOcrFailure catch (e) {
       if (!mounted) return;
@@ -376,6 +379,11 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     );
     return jsonEncode(map);
   }
+
+  // Review-step search: filters the visible rows; edits still apply to the
+  // original rows.
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _search = '';
 
   // Full-screen review (see OcrReviewFullscreen). The route rebuilds from
   // [_fullscreenTick], which every setState bumps.
@@ -892,6 +900,40 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     );
   }
 
+  bool get _wideReview => MediaQuery.sizeOf(context).width >= 700;
+
+  Widget _searchField() {
+    return TextField(
+      key: const ValueKey('review-search'),
+      controller: _searchCtrl,
+      onChanged: (v) => setState(() => _search = v),
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.search),
+        labelText: 'Search rows',
+        hintText: 'Name, parents, sponsors, minister, No.',
+        suffixIcon: _search.trim().isEmpty
+            ? null
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${_rows.where((r) => BaptismalOcrReviewTable.rowMatches(r, _search)).length} of ${_rows.length}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  IconButton(
+                    tooltip: 'Clear search',
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      setState(() => _search = '');
+                    },
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
   Widget _reviewStep() {
     final issues = _issues;
     final blocking = issues.where((i) => i.blocking).length;
@@ -907,6 +949,10 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(
             children: [
+              if (_wideReview) ...[
+                Expanded(flex: 2, child: _searchField()),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 child: TextField(
                   controller: _volCtrl,
@@ -932,6 +978,11 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
             ],
           ),
         ),
+        if (!_wideReview)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: _searchField(),
+          ),
         Expanded(
           // The review table manages its own scrolling (a pinned header plus
           // horizontal + vertical scrollbars in the wide layout), so it gets a
@@ -949,6 +1000,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
                 )
               : BaptismalOcrReviewTable(
                   rows: _rows,
+                  searchQuery: _search,
                   issues: issues,
                   highlightedRow: _highlightedRow,
                   onRowTap: (i) => setState(() => _highlightedRow = i),
