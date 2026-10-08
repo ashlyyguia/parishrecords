@@ -150,13 +150,25 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
     super.dispose();
   }
 
-  double get _totalWidth {
-    var w = _selectWidth + _lineNoWidth + (_hasRowActions ? _menuWidth : 0);
+  /// Stretch factor for the field columns: when the window is wider than the
+  /// table's natural width (e.g. full screen), the columns grow to fill it
+  /// instead of leaving empty space. Never shrinks below the natural width.
+  double _fieldScale = 1;
+
+  double get _fixedWidth =>
+      _selectWidth + _lineNoWidth + (_hasRowActions ? _menuWidth : 0);
+
+  double get _naturalFieldsWidth {
+    var w = 0.0;
     for (final key in baptismalFieldKeys) {
       w += _columnWidths[key] ?? 140;
     }
     return w;
   }
+
+  double _colWidth(String key) => (_columnWidths[key] ?? 140) * _fieldScale;
+
+  double get _totalWidth => _fixedWidth + _naturalFieldsWidth * _fieldScale;
 
   /// Finds the issue to show for one cell.
   ///
@@ -198,7 +210,11 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
     if (widget.rows.isEmpty) return const SizedBox.shrink();
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth >= _wideBreakpoint) return _wideTable(context);
+        if (constraints.maxWidth >= _wideBreakpoint) {
+          final room = constraints.maxWidth - _fixedWidth - 16; // scrollbar
+          _fieldScale = room > _naturalFieldsWidth ? room / _naturalFieldsWidth : 1;
+          return _wideTable(context);
+        }
         return _cardsList(context);
       },
     );
@@ -260,7 +276,7 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
           for (final key in baptismalFieldKeys)
             _headerCell(
               baptismalFieldLabels[key] ?? key,
-              _columnWidths[key] ?? 140,
+              _colWidth(key),
               style,
               required: baptismalRequiredFields.contains(key),
             ),
@@ -390,7 +406,7 @@ class _BaptismalOcrReviewTableState extends State<BaptismalOcrReviewTable> {
     }
 
     return SizedBox(
-      width: _columnWidths[key] ?? 140,
+      width: _colWidth(key),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: cell,

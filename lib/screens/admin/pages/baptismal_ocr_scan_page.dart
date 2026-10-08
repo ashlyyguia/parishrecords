@@ -16,6 +16,7 @@ import '../../../services/ocr_image_pick.dart';
 import '../../../utils/manual_register_notes.dart';
 import '../../../widgets/baptismal_ocr_review_table.dart';
 import '../../../widgets/page_header.dart';
+import '../../../widgets/ocr_review_fullscreen.dart';
 
 enum _Step { pick, preview, processing, review }
 
@@ -136,6 +137,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
 
   @override
   void dispose() {
+    _fullscreenTick.dispose();
     _volCtrl.dispose();
     _seriesCtrl.dispose();
     super.dispose();
@@ -309,6 +311,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Saved $saved baptismal record(s).')),
       );
+      _closeFullscreen();
       Navigator.of(context).maybePop();
     } catch (e) {
       if (!mounted) return;
@@ -372,6 +375,39 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
       imagePath: _imagePath,
     );
     return jsonEncode(map);
+  }
+
+  // Full-screen review (see OcrReviewFullscreen). The route rebuilds from
+  // [_fullscreenTick], which every setState bumps.
+  final ValueNotifier<int> _fullscreenTick = ValueNotifier<int>(0);
+  bool _fullscreen = false;
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _fullscreenTick.value++;
+    // Leaving the review step (new image, other document type) closes it.
+    if (_fullscreen && _step != _Step.review) _closeFullscreen();
+  }
+
+  Future<void> _openFullscreen() async {
+    if (_fullscreen) return;
+    _fullscreen = true;
+    _fullscreenTick.value++;
+    await OcrReviewFullscreen.open(
+      context,
+      title: 'Review baptismal records',
+      refresh: _fullscreenTick,
+      builder: (_) => _reviewStep(),
+    );
+    _fullscreen = false;
+    if (mounted) setState(() {});
+  }
+
+  void _closeFullscreen() {
+    if (!_fullscreen) return;
+    _fullscreen = false;
+    Navigator.of(context, rootNavigator: true).pop();
   }
 
   @override
@@ -884,6 +920,15 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
                   decoration: const InputDecoration(labelText: 'Series'),
                 ),
               ),
+              if (!_fullscreen) ...[
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  key: const ValueKey('open-fullscreen'),
+                  onPressed: _openFullscreen,
+                  icon: const Icon(Icons.fullscreen),
+                  label: const Text('Full screen'),
+                ),
+              ],
             ],
           ),
         ),

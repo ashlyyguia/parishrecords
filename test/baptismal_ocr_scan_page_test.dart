@@ -259,6 +259,28 @@ void main() {
     expect(find.text('Save 3 record(s)'), findsOneWidget);
   });
 
+  testWidgets('full screen shows the review edge to edge and stays in sync',
+      (tester) async {
+    await toReview(tester, _scanBody2());
+    await tester.tap(find.byKey(const ValueKey('open-fullscreen')));
+    await tester.pumpAndSettle();
+    expect(find.text('Review baptismal records'), findsOneWidget);
+    expect(find.byKey(const ValueKey('exit-fullscreen')), findsOneWidget);
+    // Editing inside full screen updates the shared state.
+    expect(find.text('Save 2 record(s)'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('row-menu-0')).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Insert blank row below'));
+    await tester.pumpAndSettle();
+    expect(find.text('Save 3 record(s)'), findsWidgets);
+    // Exit returns to the normal page with the change kept.
+    await tester.tap(find.byKey(const ValueKey('exit-fullscreen')));
+    await tester.pumpAndSettle();
+    expect(find.text('Review baptismal records'), findsNothing);
+    expect(find.text('Save 3 record(s)'), findsOneWidget);
+    expect(find.byKey(const ValueKey('open-fullscreen')), findsOneWidget);
+  });
+
   testWidgets('delete removes a row', (tester) async {
     await toReview(tester, _scanBody2());
     await tester.tap(find.byKey(const ValueKey('row-menu-0')));
