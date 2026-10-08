@@ -14,6 +14,9 @@ import '../../../widgets/app_loading.dart';
 import '../../admin/widgets/finance_module_design.dart'
     hide formatPaymentMethod;
 import '../widgets/finance_records_layout.dart';
+import '../../../services/donations_repository.dart';
+import '../../admin/pages/admin_certificate_fees_page.dart'
+    show RecordCertificateFeeForm;
 import '../../../services/report_pdf_service.dart';
 
 class FinanceCertificateFeesPage extends ConsumerStatefulWidget {
@@ -117,6 +120,54 @@ class _FinanceCertificateFeesPageState
     }
   }
 
+  // ── Record a certificate fee (same form as Admin → Certificate Fees) ──
+  Future<void> _recordCertificateFee() async {
+    final result = await showFinanceFormSheet<Map<String, dynamic>>(
+      context: context,
+      style: _style,
+      title: 'Record certificate fee',
+      child: const RecordCertificateFeeForm(),
+      actions: const [],
+    );
+    if (result == null) return;
+    try {
+      await DonationsRepository().create(
+        amount: (result['amount'] as num).toDouble(),
+        method: result['method']?.toString() ?? 'cash',
+        campaign: 'certificate',
+        certificateType: result['certificateType']?.toString(),
+        donorName: result['payerName']?.toString(),
+        anonymous: result['anonymous'] == true,
+        createdAt: result['date'] as DateTime?,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Certificate fee recorded.')),
+      );
+      ref.invalidate(donationsListProvider(200));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not save: $e')));
+    }
+  }
+
+  Widget _headerActions(Widget? exportBtn) => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.end,
+        children: [
+          FilledButton.icon(
+            key: const ValueKey('add-certificate-fee'),
+            style: FilledButton.styleFrom(backgroundColor: _style.accent),
+            onPressed: _recordCertificateFee,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add Certificate Fee'),
+          ),
+          ?exportBtn,
+        ],
+      );
+
   Widget _buildShell({
     required Widget body,
     List<Widget> summaryChips = const [],
@@ -136,7 +187,7 @@ class _FinanceCertificateFeesPageState
         _to = null;
       }),
       onRefresh: () => ref.invalidate(donationsListProvider(200)),
-      exportButton: exportBtn,
+      exportButton: _headerActions(exportBtn),
       summaryChips: summaryChips,
       recordCount: recordCount,
       body: body,

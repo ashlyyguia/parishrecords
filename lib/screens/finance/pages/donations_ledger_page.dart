@@ -14,6 +14,7 @@ import '../../../widgets/app_loading.dart';
 import '../../admin/widgets/finance_module_design.dart'
     hide formatPaymentMethod;
 import '../widgets/finance_records_layout.dart';
+import '../../admin/pages/admin_donations_page.dart' show RecordDonationForm;
 import '../../../services/report_pdf_service.dart';
 
 class DonationsLedgerPage extends ConsumerStatefulWidget {
@@ -133,6 +134,51 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
     }
   }
 
+  // ── Record a walk-in cash donation (same form as Admin → Donations) ──
+  Future<void> _recordDonation() async {
+    final result = await showFinanceFormSheet<Map<String, dynamic>>(
+      context: context,
+      style: _style,
+      title: 'Record cash donation',
+      child: const RecordDonationForm(),
+      actions: const [],
+    );
+    if (result == null) return;
+    try {
+      await ref.read(donationsRepositoryProvider).createManualCashDonation(
+            amount: (result['amount'] as num).toDouble(),
+            campaign: result['campaign']?.toString(),
+            donorName: result['donorName']?.toString(),
+            anonymous: result['anonymous'] == true,
+            createdAt: result['date'] as DateTime?,
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Donation recorded.')));
+      ref.invalidate(donationsStreamProvider(200));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not save: $e')));
+    }
+  }
+
+  Widget _headerActions(Widget? exportBtn) => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.end,
+        children: [
+          FilledButton.icon(
+            key: const ValueKey('add-donation'),
+            style: FilledButton.styleFrom(backgroundColor: _style.accent),
+            onPressed: _recordDonation,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add Donation'),
+          ),
+          ?exportBtn,
+        ],
+      );
+
   Widget _buildShell({
     required Widget body,
     List<Widget> summaryChips = const [],
@@ -153,7 +199,7 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
         _to = null;
       }),
       onRefresh: () => ref.invalidate(donationsStreamProvider(200)),
-      exportButton: exportBtn,
+      exportButton: _headerActions(exportBtn),
       summaryChips: summaryChips,
       recordCount: recordCount,
       extraFilters: DropdownButtonFormField<String>(
