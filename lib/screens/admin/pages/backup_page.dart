@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../services/export_service.dart';
 import '../../../services/admin_repository.dart';
+import '../../../services/report_pdf_service.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 class AdminBackupPage extends StatefulWidget {
   const AdminBackupPage({super.key});
@@ -105,13 +107,28 @@ class _AdminBackupPageState extends State<AdminBackupPage> {
       final items = await _fetchRecords();
       final ts = DateTime.now().toIso8601String().replaceAll(':', '-');
       final base = _dataType.replaceAll(' ', '_').toLowerCase();
-      final subtitle = '$_dataType • $_dateRange';
-      await ExportService.exportPdf(
-        'report_${base}_$ts.pdf',
-        items,
-        title: 'Parish Records Report',
-        subtitle: subtitle,
+      final bytes = await ReportPdfService.tableReport(
+        title: 'Parish Records Register',
+        period: '$_dataType · $_dateRange',
+        headers: const ['#', 'Date', 'Name', 'Sacrament', 'Parish', 'Certificate'],
+        rows: [
+          for (var i = 0; i < items.length; i++)
+            [
+              '${i + 1}',
+              ReportPdfService.shortDate(items[i]['date']),
+              (items[i]['name'] ?? '').toString(),
+              ReportPdfService.titleCase((items[i]['type'] ?? '').toString()),
+              (items[i]['parish'] ?? '—').toString(),
+              ReportPdfService.titleCase((items[i]['certificateStatus'] ?? '').toString()),
+            ],
+        ],
+        widths: const {0: pw.FixedColumnWidth(28), 1: pw.FixedColumnWidth(72), 3: pw.FixedColumnWidth(72), 5: pw.FixedColumnWidth(70)},
+        right: const {0},
+        tiles: [['Records', '${items.length}']],
+        landscape: true,
+        generatedBy: ReportPdfService.currentUserLabel(),
       );
+      await ExportService.savePdfBytes(bytes, 'records_register_${base}_$ts.pdf');
       setState(
         () => _history.insert(
           0,

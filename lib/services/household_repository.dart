@@ -1011,17 +1011,33 @@ class HouseholdRepository {
   /// Get household statistics (global or specific)
   Future<Map<String, dynamic>> getHouseholdStats([String? householdId]) async {
     if (householdId != null) {
-      // Get stats for specific household
+      // Stats for one household: the detail page's stat cards read
+      // totalMembers / baptized / confirmed / married.
       final membersSnap = await _firestore
           .collection('household_members')
           .where('householdId', isEqualTo: householdId)
           .where('isActive', isEqualTo: true)
-          .count()
           .get();
 
+      bool linked(Map<String, dynamic> m, String key) =>
+          (m[key] ?? '').toString().trim().isNotEmpty;
+
+      var baptized = 0, confirmed = 0, married = 0;
+      for (final doc in membersSnap.docs) {
+        final m = doc.data();
+        if (linked(m, 'baptismRecordId')) baptized++;
+        if (linked(m, 'confirmationRecordId')) confirmed++;
+        if (linked(m, 'marriageRecordId')) married++;
+      }
+      final total = membersSnap.docs.length;
+
       return {
-        'memberCount': membersSnap.count ?? 0,
         'householdId': householdId,
+        'memberCount': total,
+        'totalMembers': total,
+        'baptized': baptized,
+        'confirmed': confirmed,
+        'married': married,
       };
     } else {
       // Get global stats

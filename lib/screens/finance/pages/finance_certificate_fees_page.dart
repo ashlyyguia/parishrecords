@@ -4,8 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:universal_html/html.dart' as html;
 
@@ -16,6 +14,7 @@ import '../../../widgets/app_loading.dart';
 import '../../admin/widgets/finance_module_design.dart'
     hide formatPaymentMethod;
 import '../widgets/finance_records_layout.dart';
+import '../../../services/report_pdf_service.dart';
 
 class FinanceCertificateFeesPage extends ConsumerStatefulWidget {
   const FinanceCertificateFeesPage({super.key});
@@ -58,110 +57,39 @@ class _FinanceCertificateFeesPageState
     return list;
   }
 
-  String? _dateRangeLabel() {
-    if (_from == null && _to == null) return null;
-    final df = DateFormat.yMMMd();
-    if (_from != null && _to != null) {
-      return 'Period: ${df.format(_from!)} – ${df.format(_to!)}';
-    }
-    if (_from != null) return 'From: ${df.format(_from!)}';
-    return 'To: ${df.format(_to!)}';
-  }
-
   Future<void> _exportPdf(List<Map<String, dynamic>> rows) async {
     if (_exportBusy) return;
     setState(() => _exportBusy = true);
     try {
       final filtered = _filterRows(rows);
-      final pdf = pw.Document();
-
-      double grandTotal = 0;
-      for (final r in filtered) {
-        grandTotal += (r['amount'] as num?)?.toDouble() ?? 0;
-      }
-
-      final rangeLabel = _dateRangeLabel();
-
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(32),
-          build: (ctx) => [
-            pw.Center(
-              child: pw.Text(
-                'Certificate Payments Report',
-                style: pw.TextStyle(
-                  fontSize: 20,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ),
-            pw.SizedBox(height: 4),
-            pw.Center(
-              child: pw.Text(
-                'Generated: ${DateFormat('MMMM d, yyyy').format(DateTime.now())}',
-                style: const pw.TextStyle(fontSize: 10),
-              ),
-            ),
-            if (rangeLabel != null)
-              pw.Center(
-                child: pw.Text(
-                  rangeLabel,
-                  style: const pw.TextStyle(fontSize: 10),
-                ),
-              ),
-            pw.SizedBox(height: 16),
-            pw.TableHelper.fromTextArray(
-              headerStyle: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                fontSize: 10,
-              ),
-              cellStyle: const pw.TextStyle(fontSize: 9),
-              headers: ['Date', 'Payer', 'Method', 'Amount (₱)'],
-              data: filtered.map((r) {
-                final ts = r['created_at'];
-                String dateStr = '—';
-                if (ts != null) {
-                  try {
-                    final dt = ts is DateTime
-                        ? ts
-                        : DateTime.tryParse(ts.toString());
-                    if (dt != null) {
-                      dateStr = DateFormat('MM/dd/yyyy').format(dt);
-                    }
-                  } catch (_) {}
-                }
-                final payer = r['anonymous'] == true
-                    ? 'Anonymous'
-                    : (r['donor_name']?.toString().trim().isNotEmpty == true
-                          ? r['donor_name'].toString()
-                          : '—');
-                return [
-                  dateStr,
-                  payer,
-                  formatPaymentMethod(
-                    (r['method'] ?? 'cash').toString(),
-                  ),
-                  ((r['amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2),
-                ];
-              }).toList(),
-            ),
-            pw.SizedBox(height: 12),
-            pw.Align(
-              alignment: pw.Alignment.centerRight,
-              child: pw.Text(
-                'Grand Total: ₱${grandTotal.toStringAsFixed(2)}',
-                style: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
-        ),
+      final grandTotal = filtered.fold<double>(0, (t, r) => t + ((r['amount'] as num?)?.toDouble() ?? 0));
+      final bytesNew = await ReportPdfService.tableReport(
+        title: 'Certificate Payments Report',
+        period: [
+          ReportPdfService.periodLabel(_from, _to),
+        ].join(' · '),
+        headers: const ['Date', 'Payer', 'Certificate', 'Method', 'Amount'],
+        rows: [
+          for (final r in filtered)
+            [
+              ReportPdfService.shortDate(r['created_at']),
+              ReportPdfService.donorName(r),
+              (r['certificate_type'] ?? '—').toString(),
+              formatPaymentMethod((r['method'] ?? 'cash').toString()),
+              r['amount_pending'] == true ? 'Pending' : ReportPdfService.peso((r['amount'] as num?) ?? 0),
+            ],
+        ],
+        right: const {4},
+        tiles: [
+          ['Total collected', ReportPdfService.peso(grandTotal), '${filtered.length} records'],
+        ],
+        totalLine: 'Grand total: ${ReportPdfService.peso(grandTotal)}',
+        landscape: false,
+        signatures: const [['Prepared by:', 'Finance Officer'], ['Verified by:', 'Parish Administrator']],
+        generatedBy: ReportPdfService.currentUserLabel(),
       );
 
-      final bytes = await pdf.save();
+      final bytes = bytesNew;
       final name =
           'certificate_payments_${DateTime.now().millisecondsSinceEpoch}.pdf';
 

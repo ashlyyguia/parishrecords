@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:universal_html/html.dart' as html;
@@ -16,6 +15,7 @@ import '../../../widgets/record_date_range_filters.dart';
 import '../../../services/certificate_fee_repository.dart';
 import '../../../services/donations_repository.dart';
 import '../widgets/finance_module_design.dart';
+import '../../../services/report_pdf_service.dart';
 
 class AdminCertificateFeesPage extends ConsumerStatefulWidget {
   const AdminCertificateFeesPage({super.key});
@@ -36,84 +36,33 @@ class _AdminCertificateFeesPageState
     if (_feePdfBusy) return;
     setState(() => _feePdfBusy = true);
     try {
-      final pdf = pw.Document();
-      double total = 0;
-      for (final r in rows) {
-        total += (r['amount'] as num?)?.toDouble() ?? 0;
-      }
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(32),
-          build: (ctx) => [
-            pw.Center(
-              child: pw.Text(
-                'Certificate Payments Report',
-                style: pw.TextStyle(
-                  fontSize: 20,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ),
-            pw.SizedBox(height: 4),
-            pw.Center(
-              child: pw.Text(
-                _from != null || _to != null
-                    ? 'Filter: ${_from != null ? DateFormat('MMM d, yyyy').format(_from!) : '…'} – ${_to != null ? DateFormat('MMM d, yyyy').format(_to!) : '…'}'
-                    : 'All records',
-                style: const pw.TextStyle(fontSize: 10),
-              ),
-            ),
-            pw.SizedBox(height: 4),
-            pw.Center(
-              child: pw.Text(
-                'Generated: ${DateFormat('MMMM d, yyyy h:mm a').format(DateTime.now())} · ${rows.length} record(s)',
-                style: const pw.TextStyle(fontSize: 10),
-              ),
-            ),
-            pw.SizedBox(height: 16),
-            pw.TableHelper.fromTextArray(
-              headerStyle: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                fontSize: 10,
-              ),
-              cellStyle: const pw.TextStyle(fontSize: 9),
-              headers: ['Date', 'Payer', 'Certificate', 'Method', 'Amount (₱)'],
-              data: rows.map((r) {
-                final dt = parseFirestoreDate(r['created_at']);
-                final d = dt != null
-                    ? DateFormat('MMM d, yyyy').format(dt)
-                    : '—';
-                final payer = r['anonymous'] == true
-                    ? 'Anonymous'
-                    : (r['donor_name']?.toString().trim().isNotEmpty == true
-                          ? r['donor_name'].toString()
-                          : '—');
-                return [
-                  d,
-                  payer,
-                  _CertificateFeesDataTable.certificateLabel(r),
-                  (r['method'] ?? 'cash').toString().toUpperCase(),
-                  ((r['amount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2),
-                ];
-              }).toList(),
-            ),
-            pw.SizedBox(height: 12),
-            pw.Align(
-              alignment: pw.Alignment.centerRight,
-              child: pw.Text(
-                'Grand Total: ₱${total.toStringAsFixed(2)}',
-                style: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
-        ),
+      final total = rows.fold<double>(0, (t, r) => t + ((r['amount'] as num?)?.toDouble() ?? 0));
+      final bytes = await ReportPdfService.tableReport(
+        title: 'Certificate Payments Report',
+        period: ReportPdfService.periodLabel(_from, _to),
+        headers: const ['Date', 'Payer', 'Certificate', 'Method', 'Amount'],
+        rows: [
+          for (final r in rows)
+            [
+              ReportPdfService.shortDate(r['created_at']),
+              ReportPdfService.donorName(r),
+              _CertificateFeesDataTable.certificateLabel(r),
+              formatPaymentMethod((r['method'] ?? 'cash').toString()),
+              ReportPdfService.peso((r['amount'] as num?) ?? 0),
+            ],
+        ],
+        widths: const {0: pw.FixedColumnWidth(72), 3: pw.FixedColumnWidth(58), 4: pw.FixedColumnWidth(78)},
+        right: const {4},
+        tiles: [
+          ['Total collected', ReportPdfService.peso(total), '${rows.length} payments'],
+          ['Average fee', ReportPdfService.peso(rows.isEmpty ? 0 : total / rows.length)],
+        ],
+        totalLine: 'Grand total: ${ReportPdfService.peso(total)}',
+        signatures: const [['Prepared by:', 'Finance Officer'], ['Noted by:', 'Parish Priest']],
+        generatedBy: ReportPdfService.currentUserLabel(),
       );
       await _savePdf(
-        await pdf.save(),
+        bytes,
         'certificate_payments_${DateTime.now().millisecondsSinceEpoch}.pdf',
       );
       if (mounted) {

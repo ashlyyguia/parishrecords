@@ -2,13 +2,13 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:universal_html/html.dart' as html;
 
-import '../../../providers/finance_providers.dart';
 import '../../../widgets/page_header.dart';
+import '../../../services/report_pdf_service.dart';
+import '../../../services/donations_repository.dart';
+import '../../../utils/firestore_date.dart';
 
 class FinanceReportsPage extends ConsumerStatefulWidget {
   const FinanceReportsPage({super.key});
@@ -48,63 +48,15 @@ class _FinanceReportsPageState extends ConsumerState<FinanceReportsPage> {
 
     setState(() => _busy = true);
     try {
-      final resp = await ref.read(financialReportsRepositoryProvider).generate(
-            template: _template,
-            from: _from,
-            to: _to,
-          );
-
-      final pdf = pw.Document();
-
-      final byMethod = resp['by_method'] as Map<String, dynamic>? ?? {};
-      final byCampaign = resp['by_campaign'] as Map<String, dynamic>? ?? {};
-
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          build: (context) => [
-            pw.Header(
-              level: 0,
-              child: pw.Text('Financial Report', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-            ),
-            pw.SizedBox(height: 20),
-            pw.TableHelper.fromTextArray(
-              context: context,
-              data: <List<String>>[
-                ['Template', resp['template'].toString().toUpperCase()],
-                ['From', resp['from'].toString().split('T').first],
-                ['To', resp['to'].toString().split('T').first],
-                ['Generated At', resp['generated_at'].toString().split('T').first],
-              ],
-            ),
-            pw.SizedBox(height: 20),
-            pw.Header(level: 1, text: 'OVERVIEW'),
-            pw.TableHelper.fromTextArray(
-              context: context,
-              data: <List<String>>[
-                ['Total Amount', 'PHP ${resp['total_amount']}'],
-                ['Total Donations', '${resp['donation_count']}'],
-              ],
-            ),
-            pw.SizedBox(height: 20),
-            pw.Header(level: 1, text: 'BY PAYMENT METHOD'),
-            pw.TableHelper.fromTextArray(
-              context: context,
-              headers: const ['Method', 'Amount'],
-              data: byMethod.entries.map((e) => [e.key.toUpperCase(), 'PHP ${e.value}']).toList(),
-            ),
-            pw.SizedBox(height: 20),
-            pw.Header(level: 1, text: 'BY CAMPAIGN / CATEGORY'),
-            pw.TableHelper.fromTextArray(
-              context: context,
-              headers: const ['Category', 'Amount'],
-              data: byCampaign.entries.map((e) => [e.key, 'PHP ${e.value}']).toList(),
-            ),
-          ],
-        ),
-      );
-
-      final bytes = await pdf.save();
+      final all = await DonationsRepository().list(limit: 5000);
+      final end = DateTime(_to.year, _to.month, _to.day, 23, 59, 59);
+      final inRange = all.where((d) {
+        final dt = parseFirestoreDate(d['created_at']);
+        return dt != null && !dt.isBefore(_from) && !dt.isAfter(end) && d['amount_pending'] != true;
+      }).toList();
+      final Uint8List bytes = _template == 'donor_statements'
+          ? await ReportPdfService.donorStatements(donations: inRange, from: _from, to: end, generatedBy: ReportPdfService.currentUserLabel())
+          : await ReportPdfService.financialOverview(donations: inRange, from: _from, to: end, generatedBy: ReportPdfService.currentUserLabel());
       final base64Str = base64Encode(bytes);
       final url = 'data:application/pdf;base64,$base64Str';
       final name = 'financial_report_${_template}_${DateTime.now().millisecondsSinceEpoch}.pdf';
