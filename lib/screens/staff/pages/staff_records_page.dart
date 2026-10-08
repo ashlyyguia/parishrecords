@@ -158,6 +158,24 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                   onPressed: () => ManualRegisterLauncher.open(context),
                   isPrimary: true,
                 ),
+                FilledButton.icon(
+                  onPressed: () => context.push('/staff/records/ocr-baptism'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.cyan.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.document_scanner_outlined, size: 18),
+                  label: const Text('Add Record (OCR)'),
+                ),
                 ElevatedButton.icon(
                   onPressed: () => context.push('/staff/certificate-scan'),
                   icon: const Icon(Icons.document_scanner_outlined, size: 18),

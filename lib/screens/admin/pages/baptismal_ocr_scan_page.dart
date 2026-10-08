@@ -62,7 +62,13 @@ class BaptismalOcrScanPage extends ConsumerStatefulWidget {
     this.idTokenProvider,
     this.saveRecords,
     this.existingRecords,
+    this.marriageScanRoute = '/admin/records/ocr-marriage',
   });
+
+  /// Where the "Open the marriage scanner" button goes. Admin and staff each
+  /// have their own copy of the scanner routes so the user stays inside their
+  /// own shell (sidebar, role gate).
+  final String marriageScanRoute;
 
   final BaptismalOcrService? ocrService;
   final Future<Uint8List?> Function(BuildContext context)? imagePicker;
@@ -529,7 +535,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
         const SizedBox(height: 16),
         FilledButton.icon(
           key: const ValueKey('go-to-marriage'),
-          onPressed: () => context.push('/admin/records/ocr-marriage'),
+          onPressed: () => context.push(widget.marriageScanRoute),
           icon: const Icon(Icons.document_scanner_outlined),
           label: const Text('Open the marriage scanner'),
         ),

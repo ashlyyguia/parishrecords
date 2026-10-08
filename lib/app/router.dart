@@ -498,6 +498,16 @@ GoRouter createRouter() {
             },
           ),
           GoRoute(
+            path: '/staff/records/ocr-baptism',
+            builder: (context, state) => const BaptismalOcrScanPage(
+              marriageScanRoute: '/staff/records/ocr-marriage',
+            ),
+          ),
+          GoRoute(
+            path: '/staff/records/ocr-marriage',
+            builder: (context, state) => const MarriageOcrScanPage(),
+          ),
+          GoRoute(
             path: '/staff/records/:id',
             builder: (context, state) {
               final extra = state.extra;
