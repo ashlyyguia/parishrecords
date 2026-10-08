@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +21,17 @@ Future<void> main() async {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
+      if (kIsWeb) {
+        // Keep each browser tab's sign-in separate (sessionStorage), so one
+        // browser can have admin, staff, finance and parishioner signed in
+        // side by side in different tabs. The default (LOCAL) shares one
+        // sign-in across every tab. Trade-off: closing a tab signs it out.
+        try {
+          await FirebaseAuth.instance.setPersistence(Persistence.SESSION);
+        } catch (e) {
+          debugPrint('Could not set per-tab auth persistence: $e');
+        }
+      }
       if (!kIsWeb) {
         FirebaseFirestore.instance.settings = const Settings(
           persistenceEnabled: true,
