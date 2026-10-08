@@ -16,6 +16,7 @@ import '../../../utils/manual_register_notes.dart';
 import '../../../widgets/page_header.dart';
 import '../../../widgets/register_marriage_table.dart';
 import '../../../widgets/ocr_review_fullscreen.dart';
+import '../../../widgets/ocr_scanning_view.dart';
 
 enum _Step { pick, preview, processing, review }
 
@@ -527,18 +528,7 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
   }
 
   Widget _processingStep() {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 16),
-          Text('Reading the register...'),
-          SizedBox(height: 4),
-          Text('Reading both pages — this usually takes 10–30 seconds.'),
-        ],
-      ),
-    );
+    return OcrScanningView(bytes: _bytes, title: 'Reading the marriage register…');
   }
 
   Widget _warningsPanel(BuildContext context, List<String> codes) {

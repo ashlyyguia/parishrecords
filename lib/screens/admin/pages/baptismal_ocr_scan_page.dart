@@ -17,6 +17,7 @@ import '../../../utils/manual_register_notes.dart';
 import '../../../widgets/baptismal_ocr_review_table.dart';
 import '../../../widgets/page_header.dart';
 import '../../../widgets/ocr_review_fullscreen.dart';
+import '../../../widgets/ocr_scanning_view.dart';
 
 enum _Step { pick, preview, processing, review }
 
@@ -774,18 +775,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
   }
 
   Widget _processingStep() {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 16),
-          Text('Reading the register...'),
-          SizedBox(height: 4),
-          Text('Reading both pages — this usually takes 10–30 seconds.'),
-        ],
-      ),
-    );
+    return OcrScanningView(bytes: _bytes, title: 'Reading the baptismal register…');
   }
 
   /// Layout warnings, as a compact collapsible banner. Collapsed by default so
