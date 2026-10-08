@@ -764,6 +764,32 @@ class HouseholdRepository {
     return snap.docs.map(_memberFromFirestore).toList();
   }
 
+  /// Attaches members this user added before they had a household.
+  ///
+  /// The profile page used to allow "Add member" before the household was
+  /// created, which saved members with `householdId: ''` -- and the members
+  /// list only shows a household's own members, so they never appeared.
+  /// Returns how many members were moved into [householdId].
+  Future<int> adoptOrphanMembers(String householdId) async {
+    final uid = _requireUid();
+    if (householdId.isEmpty) return 0;
+    final snap = await _firestore
+        .collection('household_members')
+        .where('userId', isEqualTo: uid)
+        .where('householdId', isEqualTo: '')
+        .get();
+    if (snap.docs.isEmpty) return 0;
+    final batch = _firestore.batch();
+    for (final d in snap.docs) {
+      batch.update(d.reference, {
+        'householdId': householdId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    return snap.docs.length;
+  }
+
   /// Remove a household member (soft delete by setting inactive)
   Future<void> removeHouseholdMember(String memberId) async {
     _requireUid();

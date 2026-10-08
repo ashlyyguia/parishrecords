@@ -59,11 +59,11 @@ class _UserProfileHouseholdScreenState
     super.dispose();
   }
 
-  Future<void> _save() async {
-    if (_saving) return;
+  Future<bool> _save() async {
+    if (_saving) return false;
 
     final formOk = _formKey.currentState?.validate() ?? true;
-    if (!formOk) return;
+    if (!formOk) return false;
 
     setState(() => _saving = true);
     debugPrint('[Profile Save] Household data: $_household');
@@ -134,20 +134,43 @@ class _UserProfileHouseholdScreenState
         'privacy_consent': _consent,
       });
 
+      // Members added before the household existed were saved without a
+      // household; attach them now that it does.
+      await _adoptOrphansAndReload();
+
       ref.invalidate(myProfileProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile and household updated.')),
         );
       }
+      return true;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Save failed: $e')));
       }
+      return false;
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _adoptOrphansAndReload() async {
+    final hid = _linkedHouseholdId;
+    if (hid == null || hid.isEmpty) return;
+    final repo = ref.read(householdRepositoryProvider);
+    try {
+      await repo.adoptOrphanMembers(hid);
+    } catch (e) {
+      debugPrint('Could not attach earlier members: $e');
+    }
+    try {
+      final members = await repo.getHouseholdMembers(hid);
+      if (mounted) setState(() => _members = members);
+    } catch (e) {
+      debugPrint('Could not reload members: $e');
     }
   }
 
@@ -164,6 +187,12 @@ class _UserProfileHouseholdScreenState
         final repo = ref.read(householdRepositoryProvider);
         _household = await repo.getHousehold(_linkedHouseholdId!);
 
+        // Attach any members added before the household existed, then load.
+        try {
+          await repo.adoptOrphanMembers(_linkedHouseholdId!);
+        } catch (e) {
+          debugPrint('Could not attach earlier members: $e');
+        }
         // Load members from household_members collection
         _members = await repo.getHouseholdMembers(_linkedHouseholdId!);
       }
@@ -213,6 +242,24 @@ class _UserProfileHouseholdScreenState
   }
 
   Future<void> _openMemberDialog({HouseholdMember? initial, int? index}) async {
+    if (_linkedHouseholdId == null || _linkedHouseholdId!.isEmpty) {
+      // A member must belong to a household. Create it from the details on
+      // this page first (the same as pressing Save).
+      final created = await _save();
+      if (!mounted) return;
+      if (!created ||
+          _linkedHouseholdId == null ||
+          _linkedHouseholdId!.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Fill in and save your household details first, then add members.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
     final firstNameCtrl = TextEditingController(text: initial?.firstName ?? '');
     final contactCtrl = TextEditingController(
       text: initial?.contactNumber ?? '',
