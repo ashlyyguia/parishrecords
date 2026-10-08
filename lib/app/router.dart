@@ -61,6 +61,7 @@ import '../screens/staff/pages/staff_dashboard_page.dart';
 import '../screens/staff/pages/staff_ocr_preprocess_page.dart';
 import '../screens/staff/pages/staff_ocr_bulk_records_page.dart';
 import '../screens/staff/pages/staff_ocr_upload_page.dart';
+import '../screens/staff/pages/staff_payments_page.dart';
 import '../screens/staff/pages/staff_ocr_verify_page.dart';
 import '../screens/staff/pages/staff_requests_inbox_page.dart';
 import '../models/register_marriage_entry.dart';
@@ -450,6 +451,16 @@ GoRouter createRouter() {
           GoRoute(
             path: '/staff/requests',
             builder: (context, state) => const StaffRequestsInboxPage(),
+          ),
+          GoRoute(
+            path: '/staff/donations',
+            builder: (context, state) =>
+                const StaffPaymentsPage(kind: StaffPaymentKind.donation),
+          ),
+          GoRoute(
+            path: '/staff/certificate-fees',
+            builder: (context, state) =>
+                const StaffPaymentsPage(kind: StaffPaymentKind.certificateFee),
           ),
           GoRoute(
             path: '/staff/records',

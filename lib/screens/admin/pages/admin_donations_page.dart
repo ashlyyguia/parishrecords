@@ -97,7 +97,7 @@ class _AdminDonationsPageState extends ConsumerState<AdminDonationsPage> {
       context: context,
       style: FinanceModuleStyle.of(FinanceModuleKind.donations),
       title: 'Record cash donation',
-      child: const _RecordDonationForm(),
+      child: const RecordDonationForm(),
       actions: const [],
     );
     if (result != null) {
@@ -1098,13 +1098,13 @@ class _DonationsDataTable extends StatelessWidget {
 }
 
 // ── Record Donation Form ─────────────────────────────────────────────────────
-class _RecordDonationForm extends StatefulWidget {
-  const _RecordDonationForm();
+class RecordDonationForm extends StatefulWidget {
+  const RecordDonationForm({super.key});
   @override
-  State<_RecordDonationForm> createState() => _RecordDonationFormState();
+  State<RecordDonationForm> createState() => _RecordDonationFormState();
 }
 
-class _RecordDonationFormState extends State<_RecordDonationForm> {
+class _RecordDonationFormState extends State<RecordDonationForm> {
   final _formKey = GlobalKey<FormState>();
   final _donorCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();

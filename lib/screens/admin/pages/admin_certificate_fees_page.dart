@@ -95,7 +95,7 @@ class _AdminCertificateFeesPageState
       context: context,
       style: FinanceModuleStyle.of(FinanceModuleKind.certificateFees),
       title: 'Record certificate fee',
-      child: const _RecordCertificateFeeForm(),
+      child: const RecordCertificateFeeForm(),
       actions: const [],
     );
     if (result != null) {
@@ -1017,14 +1017,14 @@ class _CertificateFeesDataTable extends StatelessWidget {
   }
 }
 
-class _RecordCertificateFeeForm extends StatefulWidget {
-  const _RecordCertificateFeeForm();
+class RecordCertificateFeeForm extends StatefulWidget {
+  const RecordCertificateFeeForm({super.key});
   @override
-  State<_RecordCertificateFeeForm> createState() =>
+  State<RecordCertificateFeeForm> createState() =>
       _RecordCertificateFeeFormState();
 }
 
-class _RecordCertificateFeeFormState extends State<_RecordCertificateFeeForm> {
+class _RecordCertificateFeeFormState extends State<RecordCertificateFeeForm> {
   final _formKey = GlobalKey<FormState>();
   final _payerCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();

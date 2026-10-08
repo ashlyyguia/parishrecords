@@ -14,6 +14,16 @@ class StaffShell extends ConsumerWidget {
     _NavItem('Records', Icons.folder_copy_outlined, '/staff/records'),
     _NavItem('Requests', Icons.assignment_outlined, '/staff/requests'),
     _NavItem(
+      'Donations',
+      Icons.volunteer_activism_outlined,
+      '/staff/donations',
+    ),
+    _NavItem(
+      'Certificate Fees',
+      Icons.receipt_long_outlined,
+      '/staff/certificate-fees',
+    ),
+    _NavItem(
       'Notifications',
       Icons.notifications_outlined,
       '/staff/notifications',

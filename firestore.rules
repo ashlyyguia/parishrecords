@@ -283,6 +283,9 @@
       match /donations/{donationId} {
         // Finance/Admin: any query (list must not be OR'd with donor-only constraint).
         allow list: if isFinance() || isAdmin();
+        // Staff record walk-in donations and certificate fees; they may list
+        // only the entries they recorded (query must filter donor_id == uid).
+        allow list: if isStaff() && resource.data.donor_id == request.auth.uid;
         // Parishioners: own donations; finance/admin: all.
         allow get: if isFinance() || isAdmin()
           || (isSignedIn() && resource.data.donor_id == request.auth.uid);
@@ -322,6 +325,7 @@
             || (isSignedIn()
               && resource.data.donor_id == request.auth.uid
               && resource.data.source == 'online')
+            || (isStaff() && resource.data.donor_id == request.auth.uid)
           );
 
         allow delete: if isFinance() || isAdmin();

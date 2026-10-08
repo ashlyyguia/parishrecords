@@ -75,6 +75,32 @@ class DonationsRepository {
     return _mapDonationDocs(snap.docs);
   }
 
+  /// Entries the signed-in user recorded (manual cash donations and
+  /// certificate fees store the recorder's uid in `donor_id`). Staff may list
+  /// only these -- see firestore.rules. Newest first.
+  Future<List<Map<String, dynamic>>> listRecordedByMe({int limit = 300}) async {
+    final uid = _requireUid();
+    final snap = await _firestore
+        .collection('donations')
+        .where('donor_id', isEqualTo: uid)
+        .limit(limit)
+        .get()
+        .timeout(
+          _timeout,
+          onTimeout: () =>
+              throw TimeoutException('Donations request timed out'),
+        );
+    final rows = _mapDonationDocs(snap.docs);
+    DateTime at(Map<String, dynamic> r) {
+      final v = r['created_at'];
+      if (v is Timestamp) return v.toDate();
+      if (v is DateTime) return v;
+      return DateTime.tryParse(v?.toString() ?? '') ?? DateTime(1970);
+    }
+    rows.sort((a, b) => at(b).compareTo(at(a)));
+    return rows;
+  }
+
   Future<bool> reconcile(String donationId, {bool? reconciled}) async {
     _requireUid();
 
