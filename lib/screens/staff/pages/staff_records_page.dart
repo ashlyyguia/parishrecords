@@ -11,6 +11,11 @@ import '../../../widgets/manual_register_launcher.dart';
 import '../../../widgets/record_date_range_filters.dart';
 import '../../admin/admin_design_system.dart';
 
+/// Scan Certificate and the plain "Add Record" form are hidden for now; the
+/// register workflow is Manual Register and Add Record (OCR). Set to true to
+/// show them again (routes and screens are unchanged).
+const bool _showScanCertificateAndAddRecord = false;
+
 bool _isTemporaryManualRecord(ParishRecord record) {
   final data = ManualRegisterNotes.tryDecode(record.notes);
   if (data == null) return false;
@@ -176,25 +181,26 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                   icon: const Icon(Icons.document_scanner_outlined, size: 18),
                   label: const Text('Add Record (OCR)'),
                 ),
-                ElevatedButton.icon(
-                  onPressed: () => context.push('/staff/certificate-scan'),
-                  icon: const Icon(Icons.document_scanner_outlined, size: 18),
-                  label: const Text('Scan Certificate'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    elevation: 2,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                if (_showScanCertificateAndAddRecord)
+                  ElevatedButton.icon(
+                    onPressed: () => context.push('/staff/certificate-scan'),
+                    icon: const Icon(Icons.document_scanner_outlined, size: 18),
+                    label: const Text('Scan Certificate'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      elevation: 2,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
-                ),
                 AdminDesignSystem.actionButton(
                   context,
                   label: 'Refresh',
@@ -300,8 +306,9 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                           AppFilterChip(
                             label: 'Temporary only',
                             selected: _temporaryOnly,
-                            onTap: () =>
-                                setState(() => _temporaryOnly = !_temporaryOnly),
+                            onTap: () => setState(
+                              () => _temporaryOnly = !_temporaryOnly,
+                            ),
                           ),
                         ],
                       ),

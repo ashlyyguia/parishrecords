@@ -15,6 +15,11 @@ import '../../../utils/manual_register_notes.dart';
 import '../../../widgets/manual_register_launcher.dart';
 import '../admin_design_system.dart';
 
+/// Scan Certificate and the plain "Add Record" form are hidden for now; the
+/// register workflow is Manual Register and Add Record (OCR). Set to true to
+/// show them again (routes and screens are unchanged).
+const bool _showScanCertificateAndAddRecord = false;
+
 class AdminRecordsPage extends StatefulWidget {
   const AdminRecordsPage({super.key});
 
@@ -391,20 +396,22 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                   icon: const Icon(Icons.document_scanner_outlined),
                   label: const Text('Add Record (OCR)'),
                 ),
-                FilledButton.icon(
-                  onPressed: () => context.push('/admin/certificate-scan'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
+                if (_showScanCertificateAndAddRecord)
+                  FilledButton.icon(
+                    onPressed: () => context.push('/admin/certificate-scan'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.badge_outlined),
+                    label: const Text('Scan Certificate'),
                   ),
-                  icon: const Icon(Icons.badge_outlined),
-                  label: const Text('Scan Certificate'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _openNewRecord,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Add Record'),
-                ),
+                if (_showScanCertificateAndAddRecord)
+                  OutlinedButton.icon(
+                    onPressed: _openNewRecord,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Add Record'),
+                  ),
                 OutlinedButton.icon(
                   onPressed: _backupBusy ? null : _backupFiltered,
                   icon: _backupBusy
