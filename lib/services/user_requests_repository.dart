@@ -136,17 +136,28 @@ class UserRequestsRepository {
     return _normalizeRequest(doc.id, doc.data() ?? {});
   }
 
+  /// A parishioner may cancel only while the parish office hasn't acted.
+  static bool canCancel(String status) =>
+      status.trim().toLowerCase() == 'pending';
+
   Future<void> cancel(String requestId) async {
     _requireUid();
 
-    await _firestore
-        .collection('requests')
-        .doc(requestId)
-        .update({
-          'status': 'cancelled',
-          'cancelled_at': FieldValue.serverTimestamp(),
-        })
-        .timeout(_timeout);
+    final ref = _firestore.collection('requests').doc(requestId);
+    final snap = await ref.get().timeout(_timeout);
+    final current = (snap.data()?['status'] ?? '').toString();
+    if (!canCancel(current)) {
+      throw Exception(
+        'This request was already ${current.toLowerCase()} by the parish office '
+        'and can no longer be cancelled.',
+      );
+    }
+
+    await ref.update({
+      'status': 'cancelled',
+      'cancelled_at': FieldValue.serverTimestamp(),
+      'updated_at': FieldValue.serverTimestamp(),
+    }).timeout(_timeout);
   }
 
   Future<Map<String, dynamic>> createRequest(Map<String, dynamic> data) async {

@@ -269,9 +269,10 @@
         allow update: if isSignedIn() && (
           isAdmin() || isStaff() ||
           (
-            // Owner can only cancel their own request
+            // Owner can only cancel their own request, and only while pending
             resource.data.created_by_uid == request.auth.uid &&
-            request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updated_at']) &&
+            resource.data.status == 'pending' &&
+            request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updated_at','cancelled_at']) &&
             request.resource.data.status == 'cancelled'
           )
         );

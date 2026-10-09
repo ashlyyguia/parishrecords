@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../providers/user_providers.dart';
 import '../../services/requests_repository.dart';
@@ -46,10 +47,8 @@ class UserRequestDetailScreen extends ConsumerWidget {
               ? (row['timeline'] as List)
               : const [];
 
-          final cancellable =
-              status.toLowerCase() != 'ready' &&
-              status.toLowerCase() != 'approved' &&
-              status.toLowerCase() != 'cancelled';
+          // Only a request the parish office hasn't acted on can be cancelled.
+          final cancellable = UserRequestsRepository.canCancel(status);
 
           final typeLabel = RequestsRepository.certificateTypeLabel(type);
           final personName = (row['certificate_for_name'] ??
@@ -257,17 +256,7 @@ class UserRequestDetailScreen extends ConsumerWidget {
                   label: const Text('Cancel Request'),
                 )
               else
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'This request can no longer be cancelled.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurface.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ),
-                ),
+                _ClosedRequestFooter(status: status),
             ],
           );
         },
@@ -387,5 +376,56 @@ Color _statusBannerIconColor(String status, ColorScheme colorScheme) {
       return colorScheme.error;
     default:
       return colorScheme.primary;
+  }
+}
+
+/// Shown instead of "Cancel Request" once the request is no longer pending.
+class _ClosedRequestFooter extends StatelessWidget {
+  const _ClosedRequestFooter({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final s = status.trim().toLowerCase();
+    final rejected = s == 'rejected';
+    final message = switch (s) {
+      'rejected' =>
+        'The parish office did not approve this request, so there is nothing '
+            'to cancel. You can submit a new request with corrected details.',
+      'cancelled' => 'You cancelled this request.',
+      _ =>
+        'The parish office has already processed this request, so it can no '
+            'longer be cancelled.',
+    };
+    return Card(
+      key: const ValueKey('closed-request-footer'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: cs.onSurface.withValues(alpha: 0.75),
+              ),
+            ),
+            if (rejected || s == 'cancelled') ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: const ValueKey('request-again'),
+                onPressed: () =>
+                    context.go('/records/certificate-request?user=1'),
+                icon: const Icon(Icons.add_circle_outline),
+                label: const Text('Submit a new request'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
