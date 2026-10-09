@@ -758,12 +758,21 @@ class _MarriageOcrScanPageState extends ConsumerState<MarriageOcrScanPage> {
               ),
               if (!_fullscreen) ...[
                 const SizedBox(width: 12),
-                OutlinedButton.icon(
-                  key: const ValueKey('open-fullscreen'),
-                  onPressed: _openFullscreen,
-                  icon: const Icon(Icons.fullscreen),
-                  label: const Text('Full screen'),
-                ),
+                if (_wideReview)
+                  OutlinedButton.icon(
+                    key: const ValueKey('open-fullscreen'),
+                    onPressed: _openFullscreen,
+                    icon: const Icon(Icons.fullscreen),
+                    label: const Text('Full screen'),
+                  )
+                else
+                  // Phones: icon only, so Vol. No. and Series keep their width.
+                  IconButton.outlined(
+                    key: const ValueKey('open-fullscreen'),
+                    tooltip: 'Full screen',
+                    onPressed: _openFullscreen,
+                    icon: const Icon(Icons.fullscreen),
+                  ),
               ],
             ],
           ),

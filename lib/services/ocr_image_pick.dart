@@ -12,6 +12,16 @@ class OcrImagePick {
 
   static final _picker = ImagePicker();
 
+  /// Long-edge cap for "full resolution" register photos on phones.
+  ///
+  /// Uploading the camera original is not safe on Android/iOS: 50–108 MP
+  /// sensors produce 10–25 MB JPEGs, over the backend's 10 MB limit (and slow
+  /// on mobile data). 4096 px keeps every detail the grid + OCR pipeline uses
+  /// -- all 67 sample register photos are ~4032 px and scan correctly -- while
+  /// the native picker does the resize (fast, memory-safe, keeps EXIF
+  /// orientation, and turns HEIF gallery photos into JPEG).
+  static const double registerMaxEdge = 4096;
+
   static bool get _useFilePicker =>
       kIsWeb ||
       defaultTargetPlatform == TargetPlatform.windows ||
@@ -20,9 +30,8 @@ class OcrImagePick {
 
   /// Gallery / filesystem (always available where OCR runs).
   ///
-  /// [fullResolution] skips image_picker's downscaling so OCR gets the camera's
-  /// native pixels — important for dense handwritten registers. Off by default
-  /// to keep the normal upload flow's memory/size behavior unchanged.
+  /// [fullResolution] keeps register photos large (up to [registerMaxEdge] on
+  /// the long side) for dense handwriting, instead of the normal 2000 px.
   static Future<List<XFile>> pickImages({
     bool allowMultiple = true,
     bool fullResolution = false,
@@ -50,8 +59,8 @@ class OcrImagePick {
       return out;
     }
 
-    final maxDim = fullResolution ? null : 2000.0;
-    final quality = fullResolution ? 100 : 92;
+    final maxDim = fullResolution ? registerMaxEdge : 2000.0;
+    const quality = 92;
 
     if (allowMultiple) {
       final picked = await _picker.pickMultiImage(
@@ -133,9 +142,9 @@ class OcrImagePick {
     if (!ocrSupportsCamera) return null;
     return _picker.pickImage(
       source: ImageSource.camera,
-      maxWidth: fullResolution ? null : 2000,
-      maxHeight: fullResolution ? null : 2000,
-      imageQuality: fullResolution ? 100 : 92,
+      maxWidth: fullResolution ? registerMaxEdge : 2000.0,
+      maxHeight: fullResolution ? registerMaxEdge : 2000.0,
+      imageQuality: 92,
     );
   }
 
