@@ -4,8 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../providers/user_providers.dart';
 
-/// Opens the parishioner certificate request form only when a household
-/// member has linked sacrament records.
+/// Opens the parishioner certificate request form.
 class UserCertificateRequestLauncher {
   UserCertificateRequestLauncher._();
 
@@ -13,38 +12,10 @@ class UserCertificateRequestLauncher {
     return ref.read(userSacramentsRepositoryProvider).hasLinkedSacramentRecords();
   }
 
+  /// Always opens the form. Requests without a linked record are sent with
+  /// the details the parishioner types, and the office verifies them.
   static Future<void> open(BuildContext context, WidgetRef ref) async {
-    final linked = await hasLinkedRecords(ref);
     if (!context.mounted) return;
-
-    if (linked) {
-      context.go('/records/certificate-request?user=1');
-      return;
-    }
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.link_off_outlined),
-        title: const Text('Link a sacrament record first'),
-        content: const Text(
-          'Certificate requests are only available after you add a family member '
-          'in My Profile and link their baptism or confirmation record to the parish register.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              context.go('/user/profile');
-            },
-            child: const Text('Go to My Profile'),
-          ),
-        ],
-      ),
-    );
+    context.go('/records/certificate-request?user=1');
   }
 }

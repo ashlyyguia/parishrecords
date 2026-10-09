@@ -41,6 +41,27 @@ class _Match {
 }
 
 /// Repository for Household and HouseholdMember CRUD operations
+/// A parish register entry that may be this member's record, shown in the
+/// "Find parish record" picker so the parishioner can choose it.
+class SacramentRecordCandidate {
+  const SacramentRecordCandidate({
+    required this.type,
+    required this.collection,
+    required this.recordId,
+    required this.name,
+    required this.score,
+    this.recordDate,
+  });
+
+  /// baptism / confirmation / marriage / death
+  final String type;
+  final String collection;
+  final String recordId;
+  final String name;
+  final int score;
+  final DateTime? recordDate;
+}
+
 class HouseholdRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -422,6 +443,153 @@ class HouseholdRepository {
         .update(updates);
   }
 
+  static const Map<String, String> _linkFieldByType = {
+    'baptism': 'baptismRecordId',
+    'confirmation': 'confirmationRecordId',
+    'marriage': 'marriageRecordId',
+    'death': 'deathRecordId',
+  };
+
+  /// True when the member has at least one register record attached.
+  static bool memberHasLinks(HouseholdMember m) =>
+      (m.baptismRecordId ?? '').isNotEmpty ||
+      (m.confirmationRecordId ?? '').isNotEmpty ||
+      (m.marriageRecordId ?? '').isNotEmpty ||
+      (m.deathRecordId ?? '').isNotEmpty;
+
+  /// Runs automatic matching only for a member with no links yet, so it never
+  /// replaces a record the parishioner picked by hand. Best-effort.
+  Future<void> autoLinkIfUnlinked(String memberId) async {
+    try {
+      final m = await getHouseholdMember(memberId);
+      if (m == null || memberHasLinks(m)) return;
+      await autoLinkSacramentRecords(memberId);
+    } catch (_) {}
+  }
+
+  /// The closest register entries for [member], best first, up to [perType]
+  /// per sacrament. Unlike automatic linking there is no score threshold
+  /// beyond "shares at least one name"; the parishioner decides.
+  Future<List<SacramentRecordCandidate>> findRecordCandidates(
+    HouseholdMember member, {
+    int perType = 4,
+  }) async {
+    final memberName = _memberDisplayName(member);
+    if (memberName.isEmpty) return const [];
+    final dob = member.birthDate;
+    final out = <SacramentRecordCandidate>[];
+
+    int scoreDoc(Map<String, dynamic> data) {
+      var best = 0;
+      for (final c in _candidatesFromRecordData(data)) {
+        var s = _nameMatchScore(memberName, c.fullName);
+        if (s == 0) continue;
+        if (dob != null && c.dateOfBirth != null) {
+          s += _sameYmd(dob, c.dateOfBirth!) ? 15 : -15;
+        }
+        if (s > best) best = s;
+      }
+      return best;
+    }
+
+    Future<void> scan(String type, String collection, {String? legacyType}) async {
+      final found = <SacramentRecordCandidate>[];
+      Future<void> fromQuery(Query<Map<String, dynamic>> q, String coll) async {
+        try {
+          final snap = await q.limit(1000).get();
+          for (final d in snap.docs) {
+            final data = d.data();
+            if (legacyType != null && coll == 'records') {
+              final t = (data['type'] ?? '').toString().toLowerCase();
+              if (t.isNotEmpty && t != legacyType) continue;
+            }
+            final score = scoreDoc(data);
+            if (score <= 0) continue;
+            found.add(SacramentRecordCandidate(
+              type: type,
+              collection: coll,
+              recordId: d.id,
+              name: (data['text'] ?? data['name'] ?? '').toString(),
+              score: score,
+              recordDate: _tryParseIsoDate(data['created_at'] ?? data['createdAt']),
+            ));
+          }
+        } catch (_) {}
+      }
+
+      await fromQuery(_firestore.collection(collection), collection);
+      if (legacyType != null) {
+        await fromQuery(
+          _firestore.collection('records').where('type', isEqualTo: legacyType),
+          'records',
+        );
+      }
+      found.sort((a, b) => b.score.compareTo(a.score));
+      out.addAll(found.take(perType));
+    }
+
+    await scan('baptism', 'baptism_records', legacyType: 'baptism');
+    await scan('confirmation', 'confirmation_records', legacyType: 'confirmation');
+    await scan('marriage', 'marriage_records', legacyType: 'marriage');
+    await scan('death', 'funeral_records', legacyType: 'death');
+    return out;
+  }
+
+  /// Attaches one chosen register record to the member (replacing any earlier
+  /// record of the same sacrament) and keeps `linkedSacraments` in step, so
+  /// the certificate request form lists it.
+  Future<void> linkRecordCandidate({
+    required String memberId,
+    required SacramentRecordCandidate record,
+  }) async {
+    _requireUid();
+    final field = _linkFieldByType[record.type];
+    if (field == null) throw ArgumentError('Unknown sacrament type ${record.type}');
+    final ref = _firestore.collection('household_members').doc(memberId);
+    final snap = await ref.get();
+    final data = snap.data() ?? const <String, dynamic>{};
+    final memberName = (data['fullName'] ?? data['firstName'] ?? '').toString();
+    final existing = (data['linkedSacraments'] is List)
+        ? List<dynamic>.from(data['linkedSacraments'] as List)
+        : <dynamic>[];
+    existing.removeWhere((e) => e is Map && e['type'] == record.type);
+    existing.add({
+      'type': record.type,
+      'recordId': record.recordId,
+      'title': record.name,
+      'date': record.recordDate?.toIso8601String(),
+      'memberName': memberName,
+      'linkedBy': 'parishioner',
+    });
+    await ref.update({
+      field: record.recordId,
+      'linkedSacraments': existing,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Removes the link for one sacrament type from the member.
+  Future<void> unlinkSacramentRecord({
+    required String memberId,
+    required String type,
+  }) async {
+    _requireUid();
+    final field = _linkFieldByType[type];
+    if (field == null) return;
+    final ref = _firestore.collection('household_members').doc(memberId);
+    final snap = await ref.get();
+    final data = snap.data() ?? const <String, dynamic>{};
+    final existing = (data['linkedSacraments'] is List)
+        ? List<dynamic>.from(data['linkedSacraments'] as List)
+        : <dynamic>[];
+    existing.removeWhere((e) => e is Map && e['type'] == type);
+    await ref.update({
+      field: null,
+      'linkedSacraments': existing,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   /// Links parish sacrament records to a member (client-side; no paid Cloud Functions).
   Future<SacramentAutoLinkResult> autoLinkSacramentRecords(
     String memberId,
@@ -787,6 +955,11 @@ class HouseholdRepository {
       });
     }
     await batch.commit();
+    // These members never went through matching against a household, so give
+    // them that chance now (only ones still unlinked).
+    for (final d in snap.docs) {
+      await autoLinkIfUnlinked(d.id);
+    }
     return snap.docs.length;
   }
 

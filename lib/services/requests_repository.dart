@@ -99,9 +99,16 @@ class RequestsRepository {
     String? submittedByName,
     String? recordId,
     String? parishId,
+    Map<String, dynamic>? details,
   }) async {
     final uid = _requireUid();
     final submitted = submittedByName?.trim() ?? '';
+    final hasRecord = (recordId ?? '').trim().isNotEmpty;
+    final cleanDetails = <String, dynamic>{
+      for (final e in (details ?? const <String, dynamic>{}).entries)
+        if (e.value != null && e.value.toString().trim().isNotEmpty)
+          e.key: e.value is String ? (e.value as String).trim() : e.value,
+    };
     final docRef = await _db
         .collection('requests')
         .add({
@@ -110,6 +117,10 @@ class RequestsRepository {
           'certificate_for_name': requesterName,
           if (submitted.isNotEmpty) 'submitted_by_name': submitted,
           'record_id': recordId,
+          // false = the parishioner typed the details (no linked register
+          // record); staff must find the record before approving.
+          'record_verified': hasRecord,
+          if (cleanDetails.isNotEmpty) 'request_details': cleanDetails,
           'parish_id': parishId,
           'status': 'pending',
           'requested_at': FieldValue.serverTimestamp(),
@@ -136,6 +147,33 @@ class RequestsRepository {
     return (request['certificate_for_name'] ?? request['requester_name'] ?? '')
         .toString()
         .trim();
+  }
+
+  /// True when the request was typed in by hand (no linked register record).
+  static bool needsRecordCheck(Map<String, dynamic> request) {
+    if (request['record_verified'] == false) return true;
+    final id = (request['record_id'] ?? '').toString().trim();
+    return id.isEmpty && request['request_details'] != null;
+  }
+
+  /// Human labels for the typed-in details, in display order.
+  static List<MapEntry<String, String>> detailLines(Map<String, dynamic> request) {
+    final d = request['request_details'];
+    if (d is! Map) return const [];
+    const labels = {
+      'full_name': 'Full name',
+      'sacrament_date': 'Date of sacrament',
+      'birth_date': 'Date of birth',
+      'father_name': "Father's name",
+      'mother_name': "Mother's maiden name",
+      'parish': 'Parish / church',
+      'notes': 'Notes',
+    };
+    return [
+      for (final k in labels.keys)
+        if ((d[k] ?? '').toString().trim().isNotEmpty)
+          MapEntry(labels[k]!, d[k].toString().trim()),
+    ];
   }
 
   static String submittedByName(Map<String, dynamic> request) {

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../app/app_colors.dart';
 import '../../../providers/requests_provider.dart';
 import '../../../services/requests_repository.dart';
+import '../../../widgets/request_record_check.dart';
 import '../../../services/audit_service.dart';
 import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/page_header.dart';
@@ -96,6 +97,7 @@ class _StaffRequestsInboxPageState
               const SizedBox(height: 8),
               if (request['purpose'] != null)
                 Text('Purpose: ${request['purpose']}'),
+              RequestDetailLines(request: request),
             ],
           ),
         ),
@@ -336,6 +338,7 @@ class _StaffRequestsInboxPageState
                       type: type,
                       status: status,
                       createdAt: createdAt,
+                      request: r,
                       onTap: () => _viewRequestDetails(context, r),
                       onApprove: status == 'pending'
                           ? () => _setStatus(r, 'approved')
@@ -361,6 +364,7 @@ class _RequestCard extends StatelessWidget {
   final String type;
   final String status;
   final String createdAt;
+  final Map<String, dynamic> request;
   final VoidCallback onTap;
   final VoidCallback? onApprove;
   final VoidCallback? onReject;
@@ -373,6 +377,7 @@ class _RequestCard extends StatelessWidget {
     required this.type,
     required this.status,
     required this.createdAt,
+    required this.request,
     required this.onTap,
     this.onApprove,
     this.onReject,
@@ -448,6 +453,10 @@ class _RequestCard extends StatelessWidget {
                             color: colorScheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
+                        if (RequestsRepository.needsRecordCheck(request)) ...[
+                          const SizedBox(height: 6),
+                          RequestRecordCheckBadge(request: request),
+                        ],
                       ],
                     ),
                   ),

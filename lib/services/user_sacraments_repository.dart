@@ -258,19 +258,24 @@ class UserSacramentsRepository {
       final linkedHouseholdId =
           userSnap.data()?['linkedHouseholdId']?.toString();
 
+      // Same household My Profile shows. Other households the user happens
+      // to have created are NOT counted: they are invisible on My Profile, so
+      // counting them let an account request certificates for members it
+      // could not see (and hid the real reason another account could not).
+      // Only when no household is linked yet do we fall back to owned ones.
       final householdIds = <String>{};
       if (linkedHouseholdId != null && linkedHouseholdId.isNotEmpty) {
         householdIds.add(linkedHouseholdId);
-      }
-
-      final ownedSnap = await _firestore
-          .collection('households')
-          .where('created_by', isEqualTo: uid)
-          .where('isArchived', isEqualTo: false)
-          .get()
-          .timeout(_timeout);
-      for (final doc in ownedSnap.docs) {
-        householdIds.add(doc.id);
+      } else {
+        final ownedSnap = await _firestore
+            .collection('households')
+            .where('created_by', isEqualTo: uid)
+            .where('isArchived', isEqualTo: false)
+            .get()
+            .timeout(_timeout);
+        for (final doc in ownedSnap.docs) {
+          householdIds.add(doc.id);
+        }
       }
 
       for (final householdId in householdIds) {
@@ -317,7 +322,11 @@ class UserSacramentsRepository {
           }
         }
       }
-    } catch (_) {}
+    } on Exception catch (e) {
+      // Surface the failure: callers show "couldn't load your linked records"
+      // instead of wrongly telling the user nothing is linked.
+      throw Exception('Could not load linked records: $e');
+    }
 
     return stubs;
   }

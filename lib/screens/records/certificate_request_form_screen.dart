@@ -63,6 +63,17 @@ class _CertificateRequestFormScreenState
   String? _selectedLinkedStubKey;
   Map<String, dynamic>? _selectedLinkedStub;
 
+  // Manual request (no linked register record): the parishioner types the
+  // details and staff look the record up before approving.
+  bool _manualEntry = false;
+  final _manualNameCtrl = TextEditingController();
+  final _manualSacramentDateCtrl = TextEditingController();
+  final _manualBirthDateCtrl = TextEditingController();
+  final _manualFatherCtrl = TextEditingController();
+  final _manualMotherCtrl = TextEditingController();
+  final _manualParishCtrl = TextEditingController();
+  final _manualNotesCtrl = TextEditingController();
+
   // Baptism fields
   final _baptismChildNameCtrl = TextEditingController();
   DateTime? _baptismDob;
@@ -135,7 +146,8 @@ class _CertificateRequestFormScreenState
       _recordType = initial;
     }
     if (widget.userMode) {
-      if (_recordType != 'Baptism' && _recordType != 'Confirmation') {
+      const allowed = {'Baptism', 'Marriage', 'Death', 'Confirmation'};
+      if (!allowed.contains(_recordType)) {
         _recordType = 'Baptism';
       }
       _preferredPickupDate = DateTime.now();
@@ -206,6 +218,17 @@ class _CertificateRequestFormScreenState
 
   @override
   void dispose() {
+    for (final c in [
+      _manualNameCtrl,
+      _manualSacramentDateCtrl,
+      _manualBirthDateCtrl,
+      _manualFatherCtrl,
+      _manualMotherCtrl,
+      _manualParishCtrl,
+      _manualNotesCtrl,
+    ]) {
+      c.dispose();
+    }
     _purposeCtrl.dispose();
     _contactCtrl.dispose();
     _emailCtrl.dispose();
@@ -409,26 +432,18 @@ class _CertificateRequestFormScreenState
           await ref.read(householdLinkedSacramentStubsProvider.future);
       final typeKey = _mapRecordTypeToRequestType();
       final matching = stubs
-          .where((s) => (s['type'] ?? '').toString().toLowerCase() == typeKey)
+          .where((s) => _stubTypeKey(s) == typeKey)
           .toList();
 
-      if (matching.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Link a ${_recordType.toLowerCase()} record in My Profile before requesting this certificate.',
-            ),
-          ),
-        );
-        return;
-      }
+      // No linked record of this type, or the user chose to type details:
+      // a manual request, validated by the form fields below.
+      if (matching.isEmpty) _manualEntry = true;
 
-      if (_selectedLinkedStub == null ||
+      if (!_manualEntry && (_selectedLinkedStub == null ||
           _selectedLinkedStubKey == null ||
           !matching.any(
             (s) => UserSacramentsRepository.stubKey(s) == _selectedLinkedStubKey,
-          )) {
+          ))) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -463,7 +478,8 @@ class _CertificateRequestFormScreenState
 
       final requestsRepo = RequestsRepository();
       final requestType = _mapRecordTypeToRequestType();
-      final linkedRecordId = widget.userMode
+      final manual = widget.userMode && _manualEntry;
+      final linkedRecordId = widget.userMode && !manual
           ? (_selectedLinkedStub?['id'] ?? '').toString().trim()
           : '';
       await requestsRepo.create(
@@ -473,6 +489,7 @@ class _CertificateRequestFormScreenState
             ? _userSubmittedByNameCtrl.text.trim()
             : null,
         recordId: linkedRecordId.isNotEmpty ? linkedRecordId : null,
+        details: manual ? _manualDetails() : null,
       );
       ref.invalidate(myRequestsProvider);
       ref.invalidate(myDashboardProvider);
@@ -480,7 +497,15 @@ class _CertificateRequestFormScreenState
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Request submitted.')));
+      ).showSnackBar(
+        SnackBar(
+          content: Text(
+            manual
+                ? 'Request submitted. The parish staff will find the record and update you.'
+                : 'Request submitted.',
+          ),
+        ),
+      );
 
       // Return to the previous screen if possible.
       if (Navigator.of(context).canPop()) {
@@ -501,6 +526,9 @@ class _CertificateRequestFormScreenState
   }
 
   String _resolveDisplayName() {
+    if (widget.userMode && _manualEntry) {
+      return _manualNameCtrl.text.trim();
+    }
     if (widget.userMode && _selectedLinkedStub != null) {
       return UserSacramentsRepository.stubCertificateName(_selectedLinkedStub!);
     }
@@ -538,70 +566,9 @@ class _CertificateRequestFormScreenState
 
   @override
   Widget build(BuildContext context) {
-    if (widget.userMode) {
-      final linkedAsync = ref.watch(hasLinkedSacramentsProvider);
-      return linkedAsync.when(
-        loading: () => const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
-        error: (_, _) => _buildLinkRequiredScaffold(context),
-        data: (hasLinked) =>
-            hasLinked ? _buildForm(context) : _buildLinkRequiredScaffold(context),
-      );
-    }
+    // Parishioners are never blocked: with a linked record the request is one
+    // tap; without one they type the details for staff to verify.
     return _buildForm(context);
-  }
-
-  Widget _buildLinkRequiredScaffold(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('New Request'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.link_off_outlined,
-                  size: 64,
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Link a sacrament record first',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Add a family member in My Profile and link their baptism or '
-                  'confirmation record before requesting a certificate.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: () => context.go('/user/profile'),
-                  icon: const Icon(Icons.person_outline),
-                  label: const Text('Go to My Profile'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildForm(BuildContext context) {
@@ -683,7 +650,7 @@ class _CertificateRequestFormScreenState
                       const SizedBox(height: 8),
                       Text(
                         widget.userMode
-                            ? 'Choose the certificate type, then select a linked sacrament record from your family profile. You cannot request a certificate without a linked parish record.'
+                            ? 'Choose the certificate type, then select the parish record linked to your family member. If it is not linked yet, enter the details and the parish staff will find it in the register.'
                             : 'Please provide the full name for the certificate and select the sacrament type.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: colorScheme.onSurfaceVariant,
@@ -912,7 +879,9 @@ class _CertificateRequestFormScreenState
       ),
       const SizedBox(height: 8),
       Text(
-        'Select the parish record linked to your family member',
+        _manualEntry
+            ? 'Enter the details as they appear on the certificate'
+            : 'Select the parish record linked to your family member',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           color: colorScheme.onSurfaceVariant,
         ),
@@ -924,9 +893,27 @@ class _CertificateRequestFormScreenState
           padding: EdgeInsets.all(16),
           child: CircularProgressIndicator(),
         )),
-        error: (_, _) => _buildNoLinkedRecordHint(colorScheme),
+        error: (_, _) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _infoBanner(
+              colorScheme,
+              Icons.cloud_off_outlined,
+              "Couldn't load your linked records right now. You can still enter "
+              'the details below; staff will find the record in the register.',
+            ),
+            const SizedBox(height: 16),
+            ..._buildManualFields(colorScheme),
+          ],
+        ),
       ),
     ];
+  }
+
+  /// Stub type normalised to the request type keys (funeral/burial → death).
+  static String _stubTypeKey(Map<String, dynamic> stub) {
+    final t = (stub['type'] ?? '').toString().toLowerCase();
+    return (t == 'funeral' || t == 'burial') ? 'death' : t;
   }
 
   List<Map<String, dynamic>> _linkedStubsForCurrentType(
@@ -934,46 +921,8 @@ class _CertificateRequestFormScreenState
   ) {
     final typeKey = _mapRecordTypeToRequestType();
     return stubs
-        .where((s) => (s['type'] ?? '').toString().toLowerCase() == typeKey)
+        .where((s) => _stubTypeKey(s) == typeKey)
         .toList();
-  }
-
-  Widget _buildNoLinkedRecordHint(ColorScheme colorScheme) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.errorContainer.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colorScheme.error.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'No linked ${_recordType.toLowerCase()} record',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: colorScheme.onErrorContainer,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Add a family member in My Profile and link their '
-            '${_recordType.toLowerCase()} record before you can submit this request.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colorScheme.onErrorContainer,
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextButton.icon(
-            onPressed: () => context.go('/user/profile'),
-            icon: const Icon(Icons.person_outline),
-            label: const Text('Go to My Profile'),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildLinkedRecordPicker(
@@ -981,19 +930,79 @@ class _CertificateRequestFormScreenState
     ColorScheme colorScheme,
   ) {
     final matching = _linkedStubsForCurrentType(stubs);
-    if (matching.isEmpty) {
-      return _buildNoLinkedRecordHint(colorScheme);
+    if (matching.isEmpty || _manualEntry) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _infoBanner(
+            colorScheme,
+            Icons.edit_note_outlined,
+            matching.isEmpty
+                ? 'No ${_recordType.toLowerCase()} record is linked to your family '
+                    'profile yet. Enter the details below and the parish staff '
+                    'will find the record in the register before approving.'
+                : 'Enter the details below; the parish staff will find the '
+                    'record in the register before approving.',
+          ),
+          const SizedBox(height: 16),
+          ..._buildManualFields(colorScheme),
+          if (matching.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            TextButton.icon(
+              onPressed: () => setState(() => _manualEntry = false),
+              icon: const Icon(Icons.link),
+              label: const Text('Use a linked record instead'),
+            ),
+          ],
+          if (matching.isEmpty) ...[
+            const SizedBox(height: 4),
+            TextButton.icon(
+              onPressed: () => context.go('/user/profile'),
+              icon: const Icon(Icons.person_search_outlined),
+              label: const Text('Or link the record in My Profile'),
+            ),
+          ],
+        ],
+      );
     }
 
     final items = matching
         .map(
           (stub) => DropdownMenuItem<String>(
             value: UserSacramentsRepository.stubKey(stub),
-            child: Text(UserSacramentsRepository.stubDisplayLabel(stub)),
+            child: Text(
+              UserSacramentsRepository.stubDisplayLabel(stub),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         )
         .toList();
 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _linkedDropdown(matching, items, colorScheme),
+        const SizedBox(height: 4),
+        TextButton.icon(
+          key: const ValueKey('record-not-listed'),
+          onPressed: () => setState(() {
+            _manualEntry = true;
+            _selectedLinkedStub = null;
+            _selectedLinkedStubKey = null;
+          }),
+          icon: const Icon(Icons.edit_note_outlined),
+          label: const Text("The record isn't listed — enter details instead"),
+        ),
+      ],
+    );
+  }
+
+  Widget _linkedDropdown(
+    List<Map<String, dynamic>> matching,
+    List<DropdownMenuItem<String>> items,
+    ColorScheme colorScheme,
+  ) {
     return DropdownButtonFormField<String>(
       initialValue: _selectedLinkedStubKey != null &&
               matching.any(
@@ -1004,6 +1013,20 @@ class _CertificateRequestFormScreenState
           ? _selectedLinkedStubKey
           : null,
       items: items,
+      // Long couple names (marriage records) must not overflow the field.
+      isExpanded: true,
+      selectedItemBuilder: (context) => matching
+          .map(
+            (stub) => Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(
+                UserSacramentsRepository.stubDisplayLabel(stub),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          )
+          .toList(),
       decoration: InputDecoration(
         labelText: 'Linked record',
         hintText: 'Select a linked sacrament record',
@@ -1027,9 +1050,184 @@ class _CertificateRequestFormScreenState
     );
   }
 
+  Widget _infoBanner(ColorScheme cs, IconData icon, String text) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: cs.primary, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildManualFields(ColorScheme cs) {
+    InputDecoration deco(String label, IconData icon, {String? hint}) =>
+        InputDecoration(
+          labelText: label,
+          hintText: hint,
+          prefixIcon: Icon(icon),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          filled: true,
+          fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.3),
+        );
+    final isMarriage = _recordType == 'Marriage';
+    final isFuneral = _recordType == 'Death';
+    final sacrament = isFuneral ? 'funeral' : _recordType.toLowerCase();
+    final nameLabel = isMarriage
+        ? 'Names of the couple *'
+        : isFuneral
+            ? 'Full name of the deceased *'
+            : 'Full name of person *';
+    final nameHint = isMarriage
+        ? 'Groom & bride, as written on the marriage record'
+        : 'Name as written on the $sacrament record';
+    final dateLabel = isFuneral
+        ? 'Date of death or funeral *'
+        : 'Date of $sacrament *';
+    Widget gap() => const SizedBox(height: 12);
+    return [
+      TextFormField(
+        key: const ValueKey('manual-full-name'),
+        controller: _manualNameCtrl,
+        decoration: deco(nameLabel, Icons.badge_outlined, hint: nameHint),
+        textInputAction: TextInputAction.next,
+        validator: (v) => (v == null || v.trim().isEmpty)
+            ? "Please enter the person's full name"
+            : null,
+      ),
+      gap(),
+      _manualDateField(
+        key: const ValueKey('manual-sacrament-date'),
+        controller: _manualSacramentDateCtrl,
+        decoration: deco(dateLabel, Icons.event_outlined,
+            hint: 'Tap to choose the date'),
+        required: true,
+        requiredMessage: 'Choose the date',
+      ),
+      gap(),
+      _manualDateField(
+        key: const ValueKey('manual-birth-date'),
+        controller: _manualBirthDateCtrl,
+        decoration: deco('Date of birth', Icons.cake_outlined,
+            hint: 'Optional — helps staff find the right record'),
+      ),
+      gap(),
+      TextFormField(
+        controller: _manualFatherCtrl,
+        decoration: deco("Father's name", Icons.man_outlined),
+        textInputAction: TextInputAction.next,
+      ),
+      gap(),
+      TextFormField(
+        controller: _manualMotherCtrl,
+        decoration: deco("Mother's maiden name", Icons.woman_outlined),
+        textInputAction: TextInputAction.next,
+      ),
+      gap(),
+      TextFormField(
+        controller: _manualParishCtrl,
+        decoration: deco('Parish / church', Icons.church_outlined,
+            hint: 'Holy Rosary Parish, Oroquieta City (if not, write which)'),
+        textInputAction: TextInputAction.next,
+      ),
+      gap(),
+      TextFormField(
+        controller: _manualNotesCtrl,
+        decoration: deco('Notes for the parish office', Icons.notes_outlined),
+        maxLines: 2,
+      ),
+      const SizedBox(height: 8),
+    ];
+  }
+
+  static final DateFormat _manualDateFormat = DateFormat('MMMM d, yyyy');
+
+  /// Read-only field that opens a date picker; the picked date is written to
+  /// [controller] as e.g. "March 12, 2005".
+  Widget _manualDateField({
+    required Key key,
+    required TextEditingController controller,
+    required InputDecoration decoration,
+    bool required = false,
+    String requiredMessage = 'Choose a date',
+  }) {
+    Future<void> pick() async {
+      DateTime? current;
+      try {
+        current = controller.text.trim().isEmpty
+            ? null
+            : _manualDateFormat.parseStrict(controller.text.trim());
+      } catch (_) {
+        current = null;
+      }
+      final now = DateTime.now();
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: current ?? now,
+        firstDate: DateTime(1900),
+        lastDate: now,
+        initialEntryMode: DatePickerEntryMode.calendar,
+        helpText: decoration.labelText?.replaceAll(' *', ''),
+      );
+      if (picked != null) {
+        setState(() => controller.text = _manualDateFormat.format(picked));
+      }
+    }
+
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) => TextFormField(
+        key: key,
+        controller: controller,
+        readOnly: true,
+        onTap: pick,
+        decoration: decoration.copyWith(
+          suffixIcon: value.text.isEmpty
+              ? const Icon(Icons.calendar_month_outlined)
+              : IconButton(
+                  tooltip: 'Clear date',
+                  icon: const Icon(Icons.clear),
+                  onPressed: () => setState(controller.clear),
+                ),
+        ),
+        validator: required
+            ? (v) => (v == null || v.trim().isEmpty) ? requiredMessage : null
+            : null,
+      ),
+    );
+  }
+
+  Map<String, dynamic> _manualDetails() => {
+        'full_name': _manualNameCtrl.text,
+        'sacrament_date': _manualSacramentDateCtrl.text,
+        'birth_date': _manualBirthDateCtrl.text,
+        'father_name': _manualFatherCtrl.text,
+        'mother_name': _manualMotherCtrl.text,
+        'parish': _manualParishCtrl.text,
+        'notes': _manualNotesCtrl.text,
+      };
+
   Widget _buildSacramentTypeDropdown(ColorScheme colorScheme) {
     return DropdownButtonFormField<String>(
       initialValue: _recordType,
+      isExpanded: true,
       items: const [
         DropdownMenuItem(
           value: 'Baptism',
@@ -1038,6 +1236,26 @@ class _CertificateRequestFormScreenState
               Icon(Icons.water_drop_outlined, size: 20),
               SizedBox(width: 10),
               Text('Baptism Certificate'),
+            ],
+          ),
+        ),
+        DropdownMenuItem(
+          value: 'Marriage',
+          child: Row(
+            children: [
+              Icon(Icons.favorite_border, size: 20),
+              SizedBox(width: 10),
+              Text('Marriage Certificate'),
+            ],
+          ),
+        ),
+        DropdownMenuItem(
+          value: 'Death',
+          child: Row(
+            children: [
+              Icon(Icons.local_florist_outlined, size: 20),
+              SizedBox(width: 10),
+              Text('Funeral Certificate'),
             ],
           ),
         ),
@@ -1056,6 +1274,7 @@ class _CertificateRequestFormScreenState
         if (v == null) return;
         setState(() {
           _recordType = v;
+          _manualEntry = false;
           _selectedLinkedStub = null;
           _selectedLinkedStubKey = null;
           _attachment1 = false;

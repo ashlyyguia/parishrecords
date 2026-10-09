@@ -12,6 +12,7 @@ import '../../providers/household_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../models/household.dart';
 import '../../widgets/app_loading.dart';
+import '../../widgets/member_parish_records_sheet.dart';
 
 class UserProfileHouseholdScreen extends ConsumerStatefulWidget {
   const UserProfileHouseholdScreen({super.key});
@@ -44,7 +45,6 @@ class _UserProfileHouseholdScreenState
   Household? _household;
   String? _linkedHouseholdId;
   List<HouseholdMember> _members = [];
-  List<Map<String, dynamic>> _sacraments = const [];
   List<Map<String, dynamic>> _requests = const [];
 
   @override
@@ -561,6 +561,7 @@ class _UserProfileHouseholdScreenState
         }
       } else if (initial != null) {
         await repo.updateMember(saved);
+        await repo.autoLinkIfUnlinked(saved.id);
         savedMember = await repo.getMember(saved.id);
       }
 
@@ -624,7 +625,7 @@ class _UserProfileHouseholdScreenState
                       .where((s) => s.isNotEmpty)
                       .join(' · '),
                   avatarColor: avatarColor,
-                  onSacraments: () => _viewMemberSacraments(member.toJson()),
+                  onSacraments: () => _openParishRecords(member),
                   onEdit: () => _openMemberDialog(initial: member, index: i),
                   onRemove: () => _removeMember(i),
                 ),
@@ -697,82 +698,25 @@ class _UserProfileHouseholdScreenState
     }
   }
 
-  List<Map<String, dynamic>> _normalizeSacraments(dynamic raw) {
-    if (raw is! List) return const [];
-    return raw.whereType<Map<String, dynamic>>().toList();
-  }
-
   List<Map<String, dynamic>> _normalizeRequests(dynamic raw) {
     if (raw is! List) return const [];
     return raw.whereType<Map<String, dynamic>>().toList();
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'approved':
-      case 'ready':
-      case 'completed':
-        return Colors.green;
-      case 'processing':
-      case 'in_progress':
-        return Colors.blue;
-      case 'cancelled':
-      case 'rejected':
-        return Colors.red;
-      default:
-        return Colors.orange;
-    }
-  }
-
-  Future<void> _viewMemberSacraments(Map<String, dynamic> member) async {
-    final memberName = member['name']?.toString() ?? 'Member';
-    final memberSacraments = _sacraments.where((s) {
-      final sName = s['recipientName']?.toString().toLowerCase() ?? '';
-      return sName == memberName.toLowerCase();
-    }).toList();
-
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('$memberName\'s Sacraments'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: memberSacraments.isEmpty
-              ? const Text('No sacrament records found for this member.')
-              : ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: memberSacraments.length,
-                  itemBuilder: (context, i) {
-                    final s = memberSacraments[i];
-                    return ListTile(
-                      leading: const Icon(
-                        Icons.church_outlined,
-                        color: Colors.purple,
-                      ),
-                      title: Text(s['type']?.toString() ?? 'Sacrament'),
-                      subtitle: Text(s['date']?.toString() ?? 'Date unknown'),
-                      trailing: Chip(
-                        label: Text(
-                          s['status']?.toString() ?? 'completed',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        backgroundColor: _getStatusColor(
-                          s['status']?.toString() ?? 'completed',
-                        ).withValues(alpha: 0.2),
-                        side: BorderSide.none,
-                      ),
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+  Future<void> _openParishRecords(HouseholdMember member) async {
+    final hid = member.householdId.isNotEmpty
+        ? member.householdId
+        : (_linkedHouseholdId ?? '');
+    final changed = await MemberParishRecordsSheet.show(
+      context,
+      householdId: hid,
+      memberId: member.id,
     );
+    if (!changed || !mounted || _linkedHouseholdId == null) return;
+    final members = await ref
+        .read(householdRepositoryProvider)
+        .getHouseholdMembers(_linkedHouseholdId!);
+    if (mounted) setState(() => _members = members);
   }
 
   String? _phoneValidator(String? v) {
@@ -812,7 +756,6 @@ class _UserProfileHouseholdScreenState
             _loadLinkedHousehold().then((_) {
               if (mounted) setState(() {});
             });
-            _sacraments = _normalizeSacraments(m['sacraments']);
             _requests = _normalizeRequests(m['requests']);
           }
 

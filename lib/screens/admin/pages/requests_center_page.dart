@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../../services/requests_repository.dart';
 import '../../../widgets/app_search_bar.dart';
+import '../../../widgets/request_record_check.dart';
 import '../admin_design_system.dart';
 
 class AdminRequestsCenterPage extends StatefulWidget {
@@ -455,6 +456,7 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
                 'Requested: ${_formatDateTime(requestedAt)}',
                 style: TextStyle(fontSize: 11, color: colorScheme.outline),
               ),
+            RequestDetailLines(request: request),
           ],
         ),
         trailing: ConstrainedBox(

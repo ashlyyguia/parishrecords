@@ -32,6 +32,7 @@ class _FinanceCertificateFeesPageState
     extends ConsumerState<FinanceCertificateFeesPage> {
   bool _exportBusy = false;
   bool _actionBusy = false;
+  String _filterType = 'All';
 
   static const _certificateTypes = ['Baptism', 'Marriage', 'Confirmation', 'Death'];
 
@@ -56,6 +57,9 @@ class _FinanceCertificateFeesPageState
 
   List<Map<String, dynamic>> _filterRows(List<Map<String, dynamic>> rows) {
     var list = _certificateRows(rows);
+    if (_filterType != 'All') {
+      list = list.where((r) => _certTypeKey(r) == _filterType).toList();
+    }
     if (_from != null || _to != null) {
       list = list
           .where(
@@ -80,6 +84,8 @@ class _FinanceCertificateFeesPageState
         title: 'Certificate Payments Report',
         period: [
           ReportPdfService.periodLabel(_from, _to),
+          if (_filterType != 'All')
+            'Certificate: ${CertificateFeeRepository.getDisplayName(_filterType)}',
         ].join(' · '),
         headers: const ['Date', 'Payer', 'Certificate', 'Method', 'Amount'],
         rows: [
@@ -378,6 +384,27 @@ class _FinanceCertificateFeesPageState
       exportButton: _headerActions(exportBtn),
       summaryChips: summaryChips,
       recordCount: recordCount,
+      extraFilters: DropdownButtonFormField<String>(
+        key: const ValueKey('certificate-type-filter'),
+        initialValue: _filterType,
+        decoration: InputDecoration(
+          labelText: 'Certificate type',
+          prefixIcon: Icon(Icons.verified_outlined, color: _style.accent),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          isDense: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        ),
+        items: [
+          const DropdownMenuItem(value: 'All', child: Text('All')),
+          for (final t in _certificateTypes)
+            DropdownMenuItem(
+              value: t,
+              child: Text(CertificateFeeRepository.getDisplayName(t)),
+            ),
+        ],
+        onChanged: (v) => setState(() => _filterType = v ?? 'All'),
+      ),
       body: body,
     );
   }
