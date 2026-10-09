@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'app/app_theme.dart';
 import 'app/router.dart';
+import 'services/ocr_save_guard.dart';
 import 'services/push_service.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'firebase_options.dart';
@@ -38,6 +39,7 @@ Future<void> main() async {
         );
       }
       await Hive.initFlutter();
+      HiveOcrPendingSaveStore.hiveReady = true;
       await PushService.init();
 
       // Crashlytics: only supported on iOS/Android. Skip on web and Windows to avoid

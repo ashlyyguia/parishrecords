@@ -21,6 +21,30 @@ class MarriagePartyInfo {
   String sponsors;
 
   bool get hasData => name.trim().isNotEmpty;
+
+  Map<String, dynamic> toStoredJson() => {
+    'name': name,
+    'legalStatus': legalStatus,
+    'actualAddress': actualAddress,
+    'datesPlaceOfBirth': datesPlaceOfBirth,
+    'datesPlaceOfBaptism': datesPlaceOfBaptism,
+    'parents': parents,
+    'sponsors': sponsors,
+  };
+
+  factory MarriagePartyInfo.fromStoredJson(dynamic raw) {
+    final m = raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    String s(String k) => (m[k] ?? '').toString();
+    return MarriagePartyInfo(
+      name: s('name'),
+      legalStatus: s('legalStatus'),
+      actualAddress: s('actualAddress'),
+      datesPlaceOfBirth: s('datesPlaceOfBirth'),
+      datesPlaceOfBaptism: s('datesPlaceOfBaptism'),
+      parents: s('parents'),
+      sponsors: s('sponsors'),
+    );
+  }
 }
 
 /// One marriage register entry = groom row + bride row + shared fields.
@@ -66,6 +90,38 @@ class RegisterMarriageEntry {
       licenseNumber: s('licenseNumber'),
       observations: s('observations'),
       selected: true,
+    );
+  }
+
+  /// Local (on-device) copy used to keep reviewed entries safe while a save
+  /// is waiting for the connection. Keeps [id] so a retry writes the same
+  /// Firestore document.
+  Map<String, dynamic> toStoredJson() => {
+    'id': id,
+    'lineNo': lineNo,
+    'groom': groom.toStoredJson(),
+    'bride': bride.toStoredJson(),
+    'dateOfMarriage': dateOfMarriage,
+    'minister': minister,
+    'licenseNumber': licenseNumber,
+    'observations': observations,
+    'selected': selected,
+  };
+
+  factory RegisterMarriageEntry.fromStoredJson(Map<String, dynamic> m) {
+    String s(String k) => (m[k] ?? '').toString();
+    final id = s('id');
+    final ln = m['lineNo']?.toString();
+    return RegisterMarriageEntry(
+      id: id.isEmpty ? const Uuid().v4() : id,
+      lineNo: (ln == null || ln.isEmpty) ? null : ln,
+      groom: MarriagePartyInfo.fromStoredJson(m['groom']),
+      bride: MarriagePartyInfo.fromStoredJson(m['bride']),
+      dateOfMarriage: s('dateOfMarriage'),
+      minister: s('minister'),
+      licenseNumber: s('licenseNumber'),
+      observations: s('observations'),
+      selected: m['selected'] != false,
     );
   }
 

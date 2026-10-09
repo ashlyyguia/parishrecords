@@ -113,6 +113,7 @@ class RegisterRecordDraft {
     this.imagePath,
     /// `temporary` for manual register drafts; `official` is the default.
     this.recordStatus = 'official',
+    this.docId,
   });
 
   final RecordType type;
@@ -122,4 +123,8 @@ class RegisterRecordDraft {
   final String? notes;
   final String? imagePath;
   final String recordStatus;
+
+  /// Fixed Firestore document id. When set, saving the same draft twice
+  /// writes the same document (no duplicates on retry). Null = random id.
+  final String? docId;
 }

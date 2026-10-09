@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 /// Ordered field keys captured for a baptismal register row, matching the
 /// register columns the parish tracks: No. (lineNo, handled separately) then
 /// these left-to-right.
@@ -67,6 +69,26 @@ class OcrField {
     return inherited || confidence < kOcrReviewThreshold;
   }
 
+  /// Local (on-device) copy, including [edited]. Used to keep reviewed rows
+  /// safe while a save is waiting for the connection.
+  Map<String, dynamic> toStoredJson() => {
+    'value': value,
+    'confidence': confidence,
+    'inherited': inherited,
+    'edited': edited,
+  };
+
+  factory OcrField.fromStoredJson(Map<String, dynamic>? json) {
+    if (json == null) return OcrField(value: '', confidence: 0);
+    final rawConfidence = json['confidence'];
+    return OcrField(
+      value: json['value']?.toString() ?? '',
+      confidence: rawConfidence is num ? rawConfidence.toDouble() : 0,
+      inherited: json['inherited'] == true,
+      edited: json['edited'] == true,
+    );
+  }
+
   factory OcrField.fromJson(Map<String, dynamic>? json) {
     if (json == null) return OcrField(value: '', confidence: 0);
     final rawConfidence = json['confidence'];
@@ -94,7 +116,13 @@ class BaptismalRegisterRow {
     required this.lineNo,
     required this.fields,
     this.selected = true,
-  });
+    String? rowKey,
+  }) : rowKey = rowKey ?? const Uuid().v4();
+
+  /// Stable identity for this row within a scan. It survives edits, inserts
+  /// and deletes of other rows, so a retried save writes the same Firestore
+  /// document instead of a duplicate.
+  final String rowKey;
 
   String lineNo;
   final Map<String, OcrField> fields;
@@ -104,6 +132,33 @@ class BaptismalRegisterRow {
 
   void setValue(String key, String value) {
     fields[key] = field(key).copyWith(value: value);
+  }
+
+  Map<String, dynamic> toStoredJson() => {
+    'rowKey': rowKey,
+    'lineNo': lineNo,
+    'selected': selected,
+    'fields': {
+      for (final e in fields.entries) e.key: e.value.toStoredJson(),
+    },
+  };
+
+  factory BaptismalRegisterRow.fromStoredJson(Map<String, dynamic> json) {
+    final rawFields = json['fields'];
+    final map = <String, OcrField>{};
+    for (final key in baptismalFieldKeys) {
+      final raw = rawFields is Map ? rawFields[key] : null;
+      map[key] = OcrField.fromStoredJson(
+        raw is Map ? Map<String, dynamic>.from(raw) : null,
+      );
+    }
+    final key = json['rowKey']?.toString();
+    return BaptismalRegisterRow(
+      lineNo: json['lineNo']?.toString() ?? '',
+      fields: map,
+      selected: json['selected'] != false,
+      rowKey: (key == null || key.isEmpty) ? null : key,
+    );
   }
 
   factory BaptismalRegisterRow.fromJson(Map<String, dynamic> json) {
@@ -150,6 +205,7 @@ class BaptismalRegisterRow {
       lineNo: lineNo,
       fields: merged,
       selected: selected || other.selected,
+      rowKey: rowKey,
     );
   }
 }

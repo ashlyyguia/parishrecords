@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,11 +15,13 @@ import '../../../providers/records_provider.dart';
 import '../../../services/baptismal_ocr_service.dart';
 import '../../../services/baptismal_row_validation.dart';
 import '../../../services/ocr_image_pick.dart';
+import '../../../services/ocr_save_guard.dart';
 import '../../../utils/manual_register_notes.dart';
 import '../../../widgets/baptismal_ocr_review_table.dart';
 import '../../../widgets/page_header.dart';
 import '../../../widgets/ocr_review_fullscreen.dart';
 import '../../../widgets/ocr_scanning_view.dart';
+import '../../../widgets/ocr_save_banners.dart';
 
 enum _Step { pick, preview, processing, review }
 
@@ -65,7 +69,17 @@ class BaptismalOcrScanPage extends ConsumerStatefulWidget {
     this.saveRecords,
     this.existingRecords,
     this.marriageScanRoute = '/admin/records/ocr-marriage',
+    this.pendingSaveStore,
+    this.saveTimeout = const Duration(seconds: 30),
   });
+
+  /// Keeps reviewed rows on the device until the server confirms the save.
+  /// Defaults to [HiveOcrPendingSaveStore]; tests inject a memory store.
+  final OcrPendingSaveStore? pendingSaveStore;
+
+  /// How long Save waits for the server before telling the user it is
+  /// waiting for the connection (the write keeps going in the background).
+  final Duration saveTimeout;
 
   /// Where the "Open the marriage scanner" button goes. Admin and staff each
   /// have their own copy of the scanner routes so the user stays inside their
@@ -133,8 +147,42 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
   int? _highlightedRow;
   bool _saving = false;
 
+  static const _kind = 'baptism';
+  late final OcrPendingSaveStore _pendingStore =
+      widget.pendingSaveStore ?? HiveOcrPendingSaveStore();
+  List<OcrPendingSave> _pendingSaves = const [];
+  OcrSaveStatus? _saveStatus;
+
+  /// Set once the rows are safely saved (or deliberately left), so the
+  /// "unsaved rows" leave warning stops guarding the page.
+  bool _leaving = false;
+
+  /// Scans whose save the server has confirmed — a late confirmation and a
+  /// retry can both arrive; only the first one is announced.
+  final Set<String> _confirmedScans = {};
+
   final _volCtrl = TextEditingController();
   final _seriesCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPendingSaves();
+  }
+
+  String? get _uid {
+    try {
+      return FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _loadPendingSaves() async {
+    final saves = await _pendingStore.list(_kind, ownerUid: _uid);
+    if (!mounted) return;
+    setState(() => _pendingSaves = saves);
+  }
 
   @override
   void dispose() {
@@ -193,6 +241,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
       _scanId = _uuid.v4();
       _imagePath = null;
       _archiveFailed = false;
+      _saveStatus = null;
       _failure = null;
       _rows = [];
       _warnings = const [];
@@ -269,7 +318,9 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
   }
 
   Future<void> _save() async {
-    setState(() => _saving = true);
+    if (_saving) return;
+    if (_scanId.isEmpty) _scanId = _uuid.v4();
+    final scanId = _scanId;
     final selected = _rows.where((r) => r.selected).toList();
     final drafts = <RegisterRecordDraft>[];
 
@@ -292,39 +343,210 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
           // pressed Save -- toBaptismalOcrNotesMap defaults status to
           // 'official', so this call must never happen speculatively.
           notes: _encodeNotes(row, fields),
+          // Same scan + same row => same document, so pressing Save again
+          // after a dropped connection can't create duplicates.
+          docId: ocrRecordDocId(_kind, scanId, row.rowKey),
         ),
       );
     }
 
-    try {
-      // COVERAGE NOTE: every test in test/baptismal_ocr_scan_page_test.dart
-      // injects widget.saveRecords, so this `?? (...)` fallback -- the
-      // actual recordsProvider.notifier.addRecordsBatch call that writes
-      // sacramental records to Firestore -- is never exercised by the
-      // automated suite. RecordsNotifier (records_provider.dart, which is
-      // on the do-not-touch list) touches live FirebaseFirestore.instance
-      // in an eager field initializer that runs before build(), so a
-      // widget test cannot reach this line without a real Firebase app.
-      // See the fix report for the manual verification this needs.
-      final saveRecords =
-          widget.saveRecords ??
-          ((List<RegisterRecordDraft> d) =>
-              ref.read(recordsProvider.notifier).addRecordsBatch(d));
-      final saved = await saveRecords(drafts);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved $saved baptismal record(s).')),
-      );
-      _closeFullscreen();
-      Navigator.of(context).maybePop();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Save failed: $e')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
+    setState(() {
+      _saving = true;
+      _saveStatus = null;
+    });
+
+    // Keep the reviewed rows on this device until the server confirms the
+    // save. Not awaited: the safety copy must never delay the save itself.
+    unawaited(_pendingStore.put(_pendingSnapshot(scanId, drafts.length)));
+
+    final write = widget.saveRecords ?? _defaultSaveRecords;
+    final result = await guardedOcrSave(
+      write: () => write(drafts),
+      timeout: widget.saveTimeout,
+      onLateSuccess: (count) => _onSaved(scanId, count, late: true),
+      onLateFailure: (e) {
+        if (!mounted || _confirmedScans.contains(scanId)) return;
+        setState(() => _saveStatus = OcrSaveStatus.failed(drafts.length, e));
+      },
+    );
+    if (!mounted) {
+      if (result.outcome == OcrSaveOutcome.saved) {
+        unawaited(_pendingStore.remove(_kind, scanId));
+      }
+      return;
     }
+    setState(() => _saving = false);
+
+    switch (result.outcome) {
+      case OcrSaveOutcome.saved:
+        _onSaved(scanId, result.count);
+      case OcrSaveOutcome.waitingForConnection:
+        setState(() => _saveStatus = OcrSaveStatus.waiting(drafts.length));
+      case OcrSaveOutcome.failed:
+        setState(
+          () => _saveStatus = OcrSaveStatus.failed(drafts.length, result.error),
+        );
+        ScaffoldMessenger.of(context)
+          ..removeCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(content: Text('Save failed: ${result.error}')),
+          );
+    }
+  }
+
+  /// Production save: writes through the repository, then refreshes the
+  /// records list. A failed refresh (e.g. the connection dropped right after
+  /// the write) must not turn a good save into "Save failed".
+  ///
+  /// COVERAGE NOTE: every test in test/baptismal_ocr_scan_page_test.dart
+  /// injects widget.saveRecords, so this default -- which writes sacramental
+  /// records to live Firestore -- is never exercised by the automated suite.
+  Future<int> _defaultSaveRecords(List<RegisterRecordDraft> drafts) async {
+    final count = await ref.read(recordsRepositoryProvider).addBatch(drafts);
+    try {
+      unawaited(
+        ref.read(recordsProvider.notifier).load().then((_) {}, onError: (_) {}),
+      );
+    } catch (_) {}
+    return count;
+  }
+
+  void _onSaved(String scanId, int count, {bool late = false}) {
+    unawaited(_pendingStore.remove(_kind, scanId));
+    if (!mounted || !_confirmedScans.add(scanId)) return;
+    ScaffoldMessenger.of(context)
+      ..removeCurrentSnackBar()
+      ..showSnackBar(
+      SnackBar(
+        content: Text(
+          late
+              ? 'Connection restored — saved $count baptismal record(s).'
+              : 'Saved $count baptismal record(s).',
+        ),
+      ),
+    );
+    // Only leave if the user is still on this scan's review.
+    if (_scanId != scanId || _step != _Step.review) return;
+    setState(() {
+      _saveStatus = null;
+      _leaving = true;
+    });
+    _closeFullscreen();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).maybePop();
+    });
+  }
+
+  OcrPendingSave _pendingSnapshot(String scanId, int rowCount) {
+    return OcrPendingSave(
+      kind: _kind,
+      scanId: scanId,
+      savedAt: DateTime.now(),
+      rowCount: rowCount,
+      ownerUid: _uid,
+      state: {
+        'vol': _volCtrl.text,
+        'series': _seriesCtrl.text,
+        'imagePath': _imagePath,
+        'warnings': _warnings,
+        'rows': [for (final r in _rows) r.toStoredJson()],
+      },
+    );
+  }
+
+  /// Puts an interrupted scan back on the review step.
+  void _resumePending(OcrPendingSave save) {
+    final st = save.state;
+    final rawRows = st['rows'];
+    final rows = rawRows is List
+        ? rawRows
+            .whereType<Map>()
+            .map((r) => BaptismalRegisterRow.fromStoredJson(
+                  Map<String, dynamic>.from(r),
+                ))
+            .toList()
+        : <BaptismalRegisterRow>[];
+    final rawWarnings = st['warnings'];
+    setState(() {
+      _bytes = null;
+      _scanId = save.scanId;
+      _imagePath = st['imagePath']?.toString();
+      _archiveFailed = false;
+      _rows = rows;
+      _warnings = rawWarnings is List
+          ? rawWarnings.map((w) => w.toString()).toList()
+          : const [];
+      _volCtrl.text = (st['vol'] ?? '').toString();
+      _seriesCtrl.text = (st['series'] ?? '').toString();
+      _failure = null;
+      _highlightedRow = null;
+      _search = '';
+      _searchCtrl.clear();
+      _saveStatus = null;
+      _leaving = false;
+      _step = _Step.review;
+    });
+  }
+
+  Future<void> _discardPending(OcrPendingSave save) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard unsaved scan?'),
+        content: Text(
+          'The ${save.rowCount} reviewed row(s) kept on this device will be '
+          'removed. Rows that already reached the server stay saved.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _pendingStore.remove(save.kind, save.scanId);
+    await _loadPendingSaves();
+  }
+
+  bool get _hasUnsavedReview =>
+      !_leaving && _step == _Step.review && _rows.isNotEmpty;
+
+  Future<void> _confirmLeave() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(_saving || _saveStatus != null
+            ? 'Leave before the save is confirmed?'
+            : 'Leave without saving?'),
+        content: Text(
+          _saving || _saveStatus != null
+              ? 'The server has not confirmed the save yet. Your reviewed rows '
+                  'are kept on this device — open this scanner again to resume.'
+              : "The rows you've reviewed haven't been saved and will be lost.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _leaving = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).maybePop();
+    });
   }
 
   /// Confirms the reviewer is willing to lose the rows they've reviewed and
@@ -361,6 +583,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
       _scanId = '';
       _imagePath = null;
       _archiveFailed = false;
+      _saveStatus = null;
       _rows = [];
       _warnings = const [];
       _failure = null;
@@ -430,7 +653,12 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
     // Full width from the header through the cards below — no centred max-width
     // cap. The header and each step share the same 16px side padding so they
     // line up edge to edge.
-    return Scaffold(
+    return PopScope(
+      canPop: !_hasUnsavedReview,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: Scaffold(
       backgroundColor: colorScheme.surface,
       body: SafeArea(
         child: Column(
@@ -454,6 +682,7 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -595,6 +824,12 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          OcrPendingSavesBanner(
+            saves: _pendingSaves,
+            label: 'baptismal',
+            onResume: _resumePending,
+            onDiscard: _discardPending,
+          ),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -1032,6 +1267,12 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
             padding: const EdgeInsets.all(12),
             child: Column(
               children: [
+                if (_saveStatus != null)
+                  OcrSaveStatusBanner(
+                    status: _saveStatus!,
+                    retrying: _saving,
+                    onRetry: _save,
+                  ),
                 if (blocking > 0)
                   Text(
                     '$blocking field(s) need attention before saving.',
@@ -1044,7 +1285,11 @@ class _BaptismalOcrScanPageState extends ConsumerState<BaptismalOcrScanPage> {
                   key: const ValueKey('save-rows'),
                   onPressed: _canSave ? _save : null,
                   icon: const Icon(Icons.save_outlined),
-                  label: Text('Save $selected record(s)'),
+                  label: Text(
+                    _saving
+                        ? 'Saving $selected record(s)…'
+                        : 'Save $selected record(s)',
+                  ),
                 ),
                 const SizedBox(height: 8),
                 // Start-over actions: scan a different page, or switch the

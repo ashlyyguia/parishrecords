@@ -263,8 +263,15 @@ class RecordsRepository {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('Not authenticated');
 
+    // Drafts with a fixed id may already be on the server: a previous save
+    // went through but its reply was lost (dropped connection), and the user
+    // pressed Save again. Those are skipped so a retry never overwrites the
+    // record (or anything staff changed on it since).
+    final alreadySaved = await _existingDraftIds(drafts);
+
     const chunkSize = 400;
     var saved = 0;
+    var skipped = 0;
 
     for (var offset = 0; offset < drafts.length; offset += chunkSize) {
       final end = (offset + chunkSize < drafts.length)
@@ -272,12 +279,20 @@ class RecordsRepository {
           : drafts.length;
       final chunk = drafts.sublist(offset, end);
       final batch = _firestore.batch();
+      var writes = 0;
 
       for (final draft in chunk) {
         final trimmedName = draft.name.trim();
         if (trimmedName.isEmpty) continue;
 
-        final ref = _collectionForType(draft.type).doc();
+        final fixedId = draft.docId;
+        if (fixedId != null && alreadySaved.contains(fixedId)) {
+          skipped++;
+          continue;
+        }
+
+        final col = _collectionForType(draft.type);
+        final ref = fixedId != null ? col.doc(fixedId) : col.doc();
         batch.set(ref, {
           'text': trimmedName,
           'type': _typeString(draft.type),
@@ -289,23 +304,64 @@ class RecordsRepository {
           'created_by_uid': user.uid,
           'created_at': Timestamp.fromDate(draft.date),
         });
+        writes++;
       }
 
-      await batch.commit();
+      if (writes > 0) await batch.commit();
       saved += chunk.length;
     }
 
-    developer.log('Bulk saved $saved records', name: 'RecordsRepository');
+    developer.log(
+      'Bulk saved $saved records ($skipped already on the server)',
+      name: 'RecordsRepository',
+    );
 
     try {
       await AuditService.log(
         action: 'record_bulk_create',
         userId: user.uid,
-        details: 'Bulk created $saved register OCR records',
+        details: skipped > 0
+            ? 'Bulk created ${saved - skipped} register OCR records '
+                '($skipped were already saved)'
+            : 'Bulk created $saved register OCR records',
       );
     } catch (_) {}
 
     return saved;
+  }
+
+  /// Ids of fixed-id drafts that already exist on the server. Best effort:
+  /// when the check can't reach the server (offline), returns what it found
+  /// so far and the batch writes the rest under the same fixed ids, which
+  /// still can't create duplicates.
+  Future<Set<String>> _existingDraftIds(List<RegisterRecordDraft> drafts) async {
+    final byType = <RecordType, List<String>>{};
+    for (final d in drafts) {
+      final id = d.docId;
+      if (id == null || id.isEmpty) continue;
+      byType.putIfAbsent(d.type, () => []).add(id);
+    }
+    final found = <String>{};
+    try {
+      for (final entry in byType.entries) {
+        final col = _collectionForType(entry.key);
+        final ids = entry.value;
+        for (var i = 0; i < ids.length; i += 10) {
+          final part = ids.sublist(i, i + 10 > ids.length ? ids.length : i + 10);
+          final snap = await col
+              .where(FieldPath.documentId, whereIn: part)
+              .get(const GetOptions(source: Source.server))
+              .timeout(const Duration(seconds: 8));
+          found.addAll(snap.docs.map((d) => d.id));
+        }
+      }
+    } catch (e) {
+      developer.log(
+        'Could not check for already-saved OCR records: $e',
+        name: 'RecordsRepository',
+      );
+    }
+    return found;
   }
 
   Future<void> update(
