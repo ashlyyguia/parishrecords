@@ -7,6 +7,7 @@ import '../../services/requests_repository.dart';
 import '../../services/user_requests_repository.dart';
 import '../../widgets/app_empty_state.dart';
 import '../../widgets/app_search_bar.dart';
+import '../../widgets/reject_request_dialog.dart';
 import '../../widgets/user_certificate_request_launcher.dart';
 
 class UserRequestsListScreen extends ConsumerStatefulWidget {
@@ -428,6 +429,7 @@ class _UserRequestsListScreenState
                   ),
                 ),
               ],
+              RequestStatusNote(request: r),
             ],
           ),
         ),

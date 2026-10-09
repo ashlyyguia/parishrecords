@@ -176,6 +176,11 @@ class RequestsRepository {
     ];
   }
 
+  /// Message staff wrote when changing the status (e.g. rejection reason).
+  static String statusNote(Map<String, dynamic> request) {
+    return (request['status_note'] ?? '').toString().trim();
+  }
+
   static String submittedByName(Map<String, dynamic> request) {
     return (request['submitted_by_name'] ?? '').toString().trim();
   }
@@ -202,8 +207,10 @@ class RequestsRepository {
     required String status,
     required String typeLabel,
     String requesterName = '',
+    String note = '',
   }) {
     final name = requesterName.trim();
+    final message = note.trim();
     final greeting = name.isNotEmpty ? 'Hi $name, ' : '';
 
     switch (status.trim().toLowerCase()) {
@@ -220,6 +227,7 @@ class RequestsRepository {
           title: 'Certificate request update',
           body:
               '${greeting}your $typeLabel certificate request was not approved. '
+              '${message.isNotEmpty ? 'Message from the parish office: "$message". ' : ''}'
               'Please contact the parish office for assistance.',
         );
       case 'completed':
@@ -246,6 +254,7 @@ class RequestsRepository {
     required String requestType,
     required String certificateForName,
     String? submittedByName,
+    String note = '',
   }) async {
     final typeLabel = certificateTypeLabel(requestType);
     final greetName = (submittedByName != null && submittedByName.isNotEmpty)
@@ -255,6 +264,7 @@ class RequestsRepository {
       status: status,
       typeLabel: typeLabel,
       requesterName: greetName,
+      note: note,
     );
     try {
       await _notifications.createSystemNotification(
@@ -273,6 +283,7 @@ class RequestsRepository {
     required String status,
     bool? notificationSent,
     String? parishId,
+    String? note,
   }) async {
     final canManage = await _canManageRequests();
     if (!canManage) {
@@ -299,6 +310,13 @@ class RequestsRepository {
     if (parishId != null) {
       patch['parish_id'] = parishId;
     }
+    final cleanNote = (note ?? '').trim();
+    if (cleanNote.isNotEmpty) {
+      patch['status_note'] = cleanNote;
+    } else if (newStatus != previousStatus) {
+      // A note belongs to the status it was written for.
+      patch['status_note'] = FieldValue.delete();
+    }
 
     final shouldNotify =
         ownerUid.isNotEmpty && newStatus != previousStatus;
@@ -322,6 +340,7 @@ class RequestsRepository {
         requestType: (beforeData['request_type'] ?? 'certificate').toString(),
         certificateForName: personOnCertificate(beforeData),
         submittedByName: submitted.isNotEmpty ? submitted : null,
+        note: cleanNote,
       );
     }
   }

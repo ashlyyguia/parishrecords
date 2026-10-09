@@ -6,6 +6,7 @@ import '../../../app/app_colors.dart';
 import '../../../providers/requests_provider.dart';
 import '../../../services/requests_repository.dart';
 import '../../../widgets/request_record_check.dart';
+import '../../../widgets/reject_request_dialog.dart';
 import '../../../services/audit_service.dart';
 import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/page_header.dart';
@@ -37,8 +38,25 @@ class _StaffRequestsInboxPageState
     final id = (row['request_id'] ?? '').toString();
     if (id.isEmpty) return;
 
+    String? note;
+    if (status == 'rejected') {
+      note = await showRejectRequestDialog(
+        context,
+        typeLabel: RequestsRepository.certificateTypeLabel(
+          (row['request_type'] ?? '').toString(),
+        ),
+        personName: RequestsRepository.personOnCertificate(row),
+      );
+      if (note == null || !mounted) return;
+    }
+
     final repo = RequestsRepository();
-    await repo.updateStatus(id, status: status, notificationSent: true);
+    await repo.updateStatus(
+      id,
+      status: status,
+      notificationSent: true,
+      note: note,
+    );
 
     final requester = RequestsRepository.personOnCertificate(row);
     final type = (row['request_type'] ?? '').toString();
@@ -47,7 +65,8 @@ class _StaffRequestsInboxPageState
       await AuditService.log(
         action: 'request_status_change',
         userId: 'staff',
-        details: 'Request $id ($type / $requester) updated to $status',
+        details: 'Request $id ($type / $requester) updated to $status'
+            '${note != null ? ' — reason: $note' : ''}',
       );
     } catch (_) {}
 
@@ -56,7 +75,9 @@ class _StaffRequestsInboxPageState
     if (!mounted) return;
     final snackMessage = status == 'approved'
         ? 'Approved. User notified: certificate ready for pickup in ~5 minutes.'
-        : 'Request updated: ${status.toUpperCase()}';
+        : status == 'rejected'
+            ? 'Request rejected. The parishioner was notified with your message.'
+            : 'Request updated: ${status.toUpperCase()}';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(snackMessage),
@@ -98,6 +119,10 @@ class _StaffRequestsInboxPageState
               if (request['purpose'] != null)
                 Text('Purpose: ${request['purpose']}'),
               RequestDetailLines(request: request),
+              RequestStatusNote(
+                request: request,
+                title: 'Message sent to parishioner',
+              ),
             ],
           ),
         ),
@@ -457,6 +482,10 @@ class _RequestCard extends StatelessWidget {
                           const SizedBox(height: 6),
                           RequestRecordCheckBadge(request: request),
                         ],
+                        RequestStatusNote(
+                          request: request,
+                          title: 'Message sent to parishioner',
+                        ),
                       ],
                     ),
                   ),

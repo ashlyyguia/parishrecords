@@ -5,6 +5,7 @@ import '../../providers/user_providers.dart';
 import '../../services/requests_repository.dart';
 import '../../services/user_requests_repository.dart';
 import '../../widgets/app_loading.dart';
+import '../../widgets/reject_request_dialog.dart';
 
 class UserRequestDetailScreen extends ConsumerWidget {
   final String requestId;
@@ -97,6 +98,11 @@ class UserRequestDetailScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                ),
+              if (RequestsRepository.statusNote(row).isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: RequestStatusNote(request: row),
                 ),
               Card(
                 child: Padding(

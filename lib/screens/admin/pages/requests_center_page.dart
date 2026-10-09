@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../services/requests_repository.dart';
 import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/request_record_check.dart';
+import '../../../widgets/reject_request_dialog.dart';
 import '../admin_design_system.dart';
 
 class AdminRequestsCenterPage extends StatefulWidget {
@@ -33,9 +34,28 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
     });
   }
 
-  Future<void> _updateStatus(String requestId, String newStatus) async {
+  Future<void> _updateStatus(
+    String requestId,
+    String newStatus, {
+    Map<String, dynamic>? request,
+  }) async {
+    String? note;
+    if (newStatus == 'rejected') {
+      note = await showRejectRequestDialog(
+        context,
+        typeLabel: request == null
+            ? ''
+            : RequestsRepository.certificateTypeLabel(
+                (request['request_type'] ?? '').toString(),
+              ),
+        personName: request == null
+            ? ''
+            : RequestsRepository.personOnCertificate(request),
+      );
+      if (note == null || !mounted) return;
+    }
     try {
-      await _repo.updateStatus(requestId, status: newStatus);
+      await _repo.updateStatus(requestId, status: newStatus, note: note);
       if (!mounted) return;
       final snackMessage = newStatus == 'approved'
           ? 'Request approved. The parishioner was notified they can receive their certificate in about 5 minutes.'
@@ -457,6 +477,10 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
                 style: TextStyle(fontSize: 11, color: colorScheme.outline),
               ),
             RequestDetailLines(request: request),
+            RequestStatusNote(
+              request: request,
+              title: 'Message sent to parishioner',
+            ),
           ],
         ),
         trailing: ConstrainedBox(
@@ -480,7 +504,8 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
                 ),
                 IconButton(
                   tooltip: 'Reject',
-                  onPressed: () => _updateStatus(requestId, 'rejected'),
+                  onPressed: () =>
+                      _updateStatus(requestId, 'rejected', request: request),
                   icon: const Icon(Icons.cancel_outlined, color: Colors.red),
                   constraints: const BoxConstraints(
                     minWidth: 40,
