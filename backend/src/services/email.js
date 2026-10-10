@@ -164,7 +164,7 @@ function buildWelcomeEmail({ displayName, email }) {
     'If you did not create this account, please contact the parish office.',
     '',
     'God bless,',
-    `The ${PARISH_NAME} Parish Office`,
+    `The ${PARISH_NAME} Office`,
   ].join('\n');
 
   const li = (t) => `<li style="margin:4px 0">${t}</li>`;
@@ -191,7 +191,7 @@ ${li('Stay informed with parish announcements and Mass schedules')}
 <p style="margin:0 0 22px"><a href="${escapeHtml(APP_URL)}" style="display:inline-block;background:#5b2c83;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-family:Arial,sans-serif;font-size:15px">Open ${escapeHtml(PARISH_NAME)}</a></p>
 <p style="margin:0 0 4px;font-size:13px;color:#6b6b6b">If you did not create this account, please contact the parish office.</p>
 </td></tr>
-<tr><td style="padding:18px 28px;background:#faf7f0;font-size:14px;color:#555">God bless,<br>The ${escapeHtml(PARISH_NAME)} Parish Office</td></tr>
+<tr><td style="padding:18px 28px;background:#faf7f0;font-size:14px;color:#555">God bless,<br>The ${escapeHtml(PARISH_NAME)} Office</td></tr>
 </table>
 </td></tr></table>
 </body></html>`;
