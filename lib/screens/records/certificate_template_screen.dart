@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,9 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../models/record.dart';
-import '../../providers/auth_provider.dart';
 import '../../providers/records_provider.dart';
-import '../../services/certificate_signature_service.dart';
 import '../../services/register_ocr_parser.dart';
 import '../../utils/manual_register_notes.dart';
 
@@ -601,12 +598,6 @@ class _CertificateTemplateScreenState
   Uint8List? _archdioceseLogoBytes;
   Uint8List? _parishLogoBytes;
 
-  // Parish Priest/Vicar e-signature (settings/certificate_signature).
-  final _signatureService = CertificateSignatureService();
-  Uint8List? _signatureBytes;
-  bool _applySignature = true;
-  bool _signatureBusy = false;
-
   // Controllers
   late final TextEditingController _nameCtrl;
   late final TextEditingController _fatherCtrl;
@@ -631,180 +622,6 @@ class _CertificateTemplateScreenState
     _setupNameListener();
     _loadRecordData();
     _loadCertificateLogos();
-    _loadSignature();
-  }
-
-  bool get _isAdmin =>
-      ref.read(authProvider).user?.role.trim().toLowerCase() == 'admin';
-
-  bool get _showSignature => _applySignature && _signatureBytes != null;
-
-  Future<void> _loadSignature() async {
-    try {
-      final bytes = await _signatureService.load();
-      if (mounted) setState(() => _signatureBytes = bytes);
-    } catch (_) {
-      // No access or offline: certificates print without the e-signature.
-    }
-  }
-
-  Future<void> _uploadSignature() async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      withData: true,
-    );
-    final raw = picked?.files.single.bytes;
-    if (raw == null) return;
-    setState(() => _signatureBusy = true);
-    try {
-      final png = await _signatureService.save(raw);
-      if (!mounted) return;
-      setState(() {
-        _signatureBytes = png;
-        _applySignature = true;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('E-signature saved.')),
-      );
-    } on FormatException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.message)));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save the e-signature: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _signatureBusy = false);
-    }
-  }
-
-  Future<void> _removeSignature() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Remove e-signature?'),
-        content: const Text(
-          'Certificates will print without a signature until a new one is uploaded.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    setState(() => _signatureBusy = true);
-    try {
-      await _signatureService.clear();
-      if (mounted) setState(() => _signatureBytes = null);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not remove the e-signature: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _signatureBusy = false);
-    }
-  }
-
-  Widget _buildSignatureControls(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final has = _signatureBytes != null;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.draw_outlined, color: scheme.primary, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('E-signature', style: theme.textTheme.titleSmall),
-              ),
-              if (has)
-                Switch(
-                  value: _applySignature,
-                  onChanged: (v) => setState(() => _applySignature = v),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (has)
-            Container(
-              height: 64,
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: scheme.outlineVariant),
-              ),
-              child: Image.memory(_signatureBytes!, fit: BoxFit.contain),
-            )
-          else
-            Text(
-              _isAdmin
-                  ? 'No e-signature yet. Upload a photo or scan of the Parish '
-                      'Priest\'s signature in dark ink on white paper; the '
-                      'background is removed automatically.'
-                  : 'No e-signature has been set. Ask an administrator to upload one.',
-              style: theme.textTheme.bodySmall,
-            ),
-          if (has)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                _applySignature
-                    ? 'Printed above the Parish Priest/Vicar name.'
-                    : 'Turned off for this certificate.',
-                style: theme.textTheme.bodySmall,
-              ),
-            ),
-          if (_isAdmin) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _signatureBusy ? null : _uploadSignature,
-                  icon: _signatureBusy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.upload_outlined, size: 18),
-                  label: Text(has ? 'Replace' : 'Upload signature'),
-                ),
-                if (has)
-                  TextButton.icon(
-                    onPressed: _signatureBusy ? null : _removeSignature,
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('Remove'),
-                  ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
   }
 
   Future<void> _loadCertificateLogos() async {
@@ -1329,22 +1146,11 @@ class _CertificateTemplateScreenState
                   ),
                 ),
                 padding: const pw.EdgeInsets.only(bottom: 2),
-                child: pw.Column(
-                  mainAxisSize: pw.MainAxisSize.min,
-                  children: [
-                    if (_showSignature)
-                      pw.Image(
-                        pw.MemoryImage(_signatureBytes!),
-                        height: 30,
-                        fit: pw.BoxFit.contain,
-                      ),
-                    pw.Text(
-                      _certificateData.parishPriest.toUpperCase(),
-                      style: pw.TextStyle(font: bold, fontSize: 8),
-                      textAlign: pw.TextAlign.center,
-                      maxLines: 2,
-                    ),
-                  ],
+                child: pw.Text(
+                  _certificateData.parishPriest.toUpperCase(),
+                  style: pw.TextStyle(font: bold, fontSize: 8),
+                  textAlign: pw.TextAlign.center,
+                  maxLines: 2,
                 ),
               ),
             ],
@@ -2084,8 +1890,6 @@ class _CertificateTemplateScreenState
                               label: 'Parish Priest/Vicar',
                               icon: Icons.person_outline,
                             ),
-                            const SizedBox(height: 12),
-                            _buildSignatureControls(context),
 
                             const SizedBox(height: 24),
 
@@ -2488,26 +2292,14 @@ class _CertificateTemplateScreenState
                     ],
                     Row(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text('Rev.  ', style: TextStyle(fontSize: 8)),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_showSignature)
-                              Image.memory(
-                                _signatureBytes!,
-                                height: 30,
-                                fit: BoxFit.contain,
-                              ),
-                            Text(
-                              _priestCtrl.text.toUpperCase(),
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 8,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          _priestCtrl.text.toUpperCase(),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 8,
+                          ),
                         ),
                       ],
                     ),
