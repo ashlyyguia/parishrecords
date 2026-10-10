@@ -196,7 +196,14 @@ ${li('Stay informed with parish announcements and Mass schedules')}
 </td></tr></table>
 </body></html>`;
 
-  return { subject, text, html };
+  // Same content without the <!doctype>/<html>/<body> wrapper, for services
+  // (EmailJS) that put the message inside their own HTML document.
+  const htmlBody = html
+    .replace(/^[\s\S]*?<body[^>]*>/i, '')
+    .replace(/<\/body>[\s\S]*$/i, '')
+    .trim();
+
+  return { subject, text, html, htmlBody };
 }
 
 function emailjsWelcomeConfigured() {
@@ -247,7 +254,7 @@ async function sendWelcomeViaEmailjs(to, displayName, message) {
       to_email: to,
       to_name: displayName || 'Parishioner',
       subject: message.subject,
-      message_html: message.html,
+      message_html: message.htmlBody,
       message_text: message.text,
       from_name: EMAILJS_FROM_NAME || PARISH_NAME,
       reply_to: EMAILJS_REPLY_TO || undefined,
