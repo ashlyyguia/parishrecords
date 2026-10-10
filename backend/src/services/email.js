@@ -253,6 +253,11 @@ async function sendWelcomeViaEmailjs(to, displayName, message) {
       email: to,
       to_email: to,
       to_name: displayName || 'Parishioner',
+      // The EmailJS "Welcome" template holds the design itself and only
+      // fills in these plain values (EmailJS escapes HTML inside variables).
+      first_name: ((displayName || '').toString().trim().split(/\s+/)[0]) || 'Parishioner',
+      parish_name: PARISH_NAME,
+      app_url: APP_URL,
       subject: message.subject,
       message_html: message.htmlBody,
       message_text: message.text,
