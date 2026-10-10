@@ -132,12 +132,11 @@
       // - Signed-in: read
       // - Admin: write
       match /settings/{docId} {
-        // certificate_signature holds the Parish Priest's e-signature image:
-        // readable by admin and staff only, writable by admin only.
-        allow get: if docId != 'certificate_signature' || isAdmin() || isStaff();
+        // The retired e-signature (settings/certificate_signature) is never
+        // readable, so an old stored copy can't be fetched by anyone.
+        allow get: if docId != 'certificate_signature';
         allow list: if isAdmin() || isFinance();
-        allow create: if isAdmin() && (docId == 'app' || docId == 'certificate_fees' || docId == 'certificate_signature');
-        allow update: if isAdmin() && docId == 'certificate_signature';
+        allow create: if isAdmin() && (docId == 'app' || docId == 'certificate_fees');
         allow update: if isAdmin() && docId == 'app'
           && request.resource.data.diff(resource.data).changedKeys().hasOnly(['themeMode','updatedAt']);
         allow update: if isAdmin() && docId == 'certificate_fees';
