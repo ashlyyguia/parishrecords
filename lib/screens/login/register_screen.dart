@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../services/welcome_email_service.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -66,6 +69,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           'verificationCodeExpiresAt': expiresAt,
           'verificationCodeVerified': true, // Auto verify!
         }, SetOptions(merge: true));
+
+        // Email the new parishioner a welcome / "successfully registered"
+        // message. Not awaited: sign-up never waits on the email.
+        unawaited(WelcomeEmailService.send());
       }
 
       if (!mounted) return;

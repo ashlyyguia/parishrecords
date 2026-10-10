@@ -58,6 +58,41 @@ router.get('/me', verifyFirebaseToken, async (req, res) => {
   }
 });
 
+// Welcome email after a parishioner registers. The address comes from the
+// verified Firebase ID token (never from the request body), and it is sent
+// at most once per account (users/{uid}.welcome_email_sent_at).
+router.post('/welcome-email', verifyFirebaseToken, async (req, res) => {
+  try {
+    const uid = req.user && req.user.uid ? req.user.uid.toString() : null;
+    const email = req.user && req.user.email ? req.user.email.toString() : null;
+    if (!uid || !email) {
+      return res.status(400).json({ error: 'Signed-in account has no email' });
+    }
+
+    const db = getAdmin().firestore();
+    const userRef = db.collection('users').doc(uid);
+    const snap = await userRef.get();
+    const data = snap.exists ? (snap.data() || {}) : {};
+    if (data.welcome_email_sent_at) {
+      return res.json({ ok: true, sent: false, reason: 'already_sent' });
+    }
+
+    const displayName =
+      data.displayName || data.display_name || req.user.name || '';
+    const result = await emailService.sendWelcomeEmail(email, displayName);
+    if (result.sent) {
+      await userRef.set(
+        { welcome_email_sent_at: new Date().toISOString() },
+        { merge: true },
+      );
+    }
+    return res.json({ ok: true, sent: result.sent, transport: result.transport });
+  } catch (error) {
+    console.error('Welcome email error:', error);
+    return res.status(502).json({ error: 'Failed to send welcome email' });
+  }
+});
+
 // Send 6-digit verification code email
 router.post('/send-code', verifyFirebaseToken, async (req, res) => {
   try {
