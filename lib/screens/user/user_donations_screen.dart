@@ -35,8 +35,8 @@ class UserDonationsScreen extends ConsumerWidget {
           final recorded = await context.push<bool>('/donate');
           if (recorded == true) ref.invalidate(_myDonationsProvider);
         },
-        icon: const Icon(Icons.qr_code_scanner),
-        label: const Text('Donate Now'),
+        icon: const Icon(Icons.volunteer_activism_rounded),
+        label: const Text('How to Donate'),
       ),
       body: donationsAsync.when(
         loading: () => const AppLoading(message: 'Loading donations...'),
@@ -183,7 +183,7 @@ class UserDonationsScreen extends ConsumerWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      campaign.isNotEmpty ? campaign : 'General Donation',
+                                      campaign.isNotEmpty ? campaign : 'Donation',
                                       style: theme.textTheme.titleSmall?.copyWith(
                                         fontWeight: FontWeight.w700,
                                       ),

@@ -75,7 +75,7 @@ class _QuickLinks extends StatelessWidget {
       _QuickLinkCard(
         icon: Icons.volunteer_activism_rounded,
         title: 'Give a Donation',
-        description: 'Support the parish securely via GCash.',
+        description: 'Support the parish — give at the parish office.',
         onTap: () => context.go('/donations'),
       ),
     ];

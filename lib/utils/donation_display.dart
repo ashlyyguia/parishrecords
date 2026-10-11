@@ -31,6 +31,20 @@ String formatPaymentMethod(String method) {
   }
 }
 
+/// Donation categories the parish records (walk-in cash). "General" was
+/// retired; older records that still carry it keep their label.
+const List<String> kDonationCategories = ['Tithes', 'Projects', 'Outreach'];
+
+/// [raw] when it is a current category, otherwise the first one (Tithes) —
+/// used to pre-select a category when editing an older record.
+String donationCategoryOrDefault(String? raw) {
+  final v = (raw ?? '').trim();
+  for (final c in kDonationCategories) {
+    if (c.toLowerCase() == v.toLowerCase()) return c;
+  }
+  return kDonationCategories.first;
+}
+
 String donationTypeLabel(Map<String, dynamic> d) {
   final type = (d['donation_type'] ?? d['campaign'] ?? '').toString().trim();
   return formatDonationTypeLabel(type);
@@ -39,7 +53,7 @@ String donationTypeLabel(Map<String, dynamic> d) {
 /// Display label for donation / campaign keys (Projects, Certificate fees, etc.).
 String formatDonationTypeLabel(String raw) {
   final id = raw.trim().toLowerCase();
-  if (id.isEmpty) return 'General';
+  if (id.isEmpty) return 'Unspecified';
   switch (id) {
     case 'certificate':
       return 'Certificate fees';

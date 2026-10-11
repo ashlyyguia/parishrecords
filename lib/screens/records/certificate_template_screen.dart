@@ -588,6 +588,7 @@ class _CertificateTemplateScreenState
   bool _isLoading = true;
   bool _isGenerating = false;
   bool _recordApplied = false;
+  final _formKey = GlobalKey<FormState>();
 
   Uint8List? _archdioceseLogoBytes;
   Uint8List? _parishLogoBytes;
@@ -1560,9 +1561,248 @@ class _CertificateTemplateScreenState
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          // Preview only: certificate details come from the parish record
-          // and are not edited here.
-          : Container(
+          : Row(
+              children: [
+                // Left panel - Form
+                Expanded(
+                  flex: 1,
+                  child: Container(
+                    color: colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.3,
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Certificate Details',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'These details come from the parish record and cannot be edited here.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.6,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+
+                            // Person Information
+                            _buildSectionHeader(context, 'Person Information'),
+                            const SizedBox(height: 12),
+                            _buildTextField(
+                              controller: _nameCtrl,
+                              label: 'Full Name',
+                              icon: Icons.person,
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _fatherCtrl,
+                                    label: 'Father\'s Name',
+                                    icon: Icons.man,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _motherCtrl,
+                                    label: 'Mother\'s Name',
+                                    icon: Icons.woman,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            _buildTextField(
+                              controller: _birthplaceCtrl,
+                              label: 'Place of Birth',
+                              icon: Icons.location_on,
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildDateField(
+                                    label: 'Date of Birth',
+                                    date: _certificateData.birthDate,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildDateField(
+                                    label:
+                                        widget.recordType == RecordType.marriage
+                                        ? 'Marriage Date'
+                                        : widget.recordType ==
+                                              RecordType.funeral
+                                        ? 'Date of Death'
+                                        : '${_certificateTitle.replaceAll("Certificate of ", "")} Date',
+                                    date: _certificateData.sacramentDate,
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Sacrament Details
+                            _buildSectionHeader(context, 'Sacrament Details'),
+                            const SizedBox(height: 12),
+                            _buildTextField(
+                              controller: _ministerCtrl,
+                              label: 'Minister (Rev. Fr.)',
+                              icon: Icons.church,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildTextField(
+                              controller: _sponsorCtrl,
+                              label: widget.recordType == RecordType.marriage
+                                  ? 'Witnesses'
+                                  : 'Sponsor/Godparent(s)',
+                              icon: Icons.people,
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Parish Information
+                            _buildSectionHeader(context, 'Parish Information'),
+                            const SizedBox(height: 12),
+                            _buildTextField(
+                              controller: _parishCtrl,
+                              label: 'Parish Name',
+                              icon: Icons.account_balance,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildTextField(
+                              controller: _parishLocationCtrl,
+                              label: 'Parish Location',
+                              icon: Icons.location_city,
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Registry Information
+                            _buildSectionHeader(
+                              context,
+                              'Registry Information',
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _pageCtrl,
+                                    label: 'Page',
+                                    icon: Icons.article,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _volumeCtrl,
+                                    label: 'Volume',
+                                    icon: Icons.folder,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            _buildTextField(
+                              controller: _seriesCtrl,
+                              label: 'Series',
+                              icon: Icons.format_list_numbered,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildDateField(
+                              label: 'Date Issued',
+                              date: _certificateData.issueDate,
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Parish Priest
+                            _buildSectionHeader(context, 'Authorization'),
+                            const SizedBox(height: 12),
+                            _buildTextField(
+                              controller: _priestCtrl,
+                              label: 'Parish Priest/Vicar',
+                              icon: Icons.person_outline,
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Notes
+                            _buildSectionHeader(context, 'Additional Notes'),
+                            const SizedBox(height: 12),
+                            _buildTextField(
+                              controller: _notesCtrl,
+                              label: 'Notes (optional)',
+                              icon: Icons.notes,
+                              maxLines: 3,
+                            ),
+
+                            const SizedBox(height: 32),
+
+                            // Create Button
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: _isGenerating
+                                    ? null
+                                    : () async {
+                                        if (_formKey.currentState?.validate() ??
+                                            false) {
+                                          await _generateAndPrint();
+                                        }
+                                      },
+                                icon: _isGenerating
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(Icons.card_membership),
+                                label: Text(
+                                  _isGenerating
+                                      ? 'Generating...'
+                                      : 'Create Certificate',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Right panel - Preview
+                Expanded(
+                  flex: 1,
+                  child: Container(
                     color: Colors.grey[200],
                     child: Column(
                       children: [
@@ -1606,6 +1846,117 @@ class _CertificateTemplateScreenState
                       ],
                     ),
                   ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildSectionHeader(BuildContext context, String title) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 20,
+          decoration: BoxDecoration(
+            color: colorScheme.primary,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            color: colorScheme.primary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    int maxLines = 1,
+    FocusNode? focusNode,
+  }) {
+    // Read-only: the certificate shows the parish record as it is.
+    return TextFormField(
+      controller: controller,
+      focusNode: focusNode,
+      maxLines: maxLines,
+      readOnly: true,
+      enableInteractiveSelection: true,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        suffixIcon: const Icon(Icons.lock_outline, size: 18),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true,
+        fillColor: Colors.grey.shade100,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateField({
+    required String label,
+    required DateTime? date,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          border: Border.all(color: colorScheme.outline.withValues(alpha: 0.5)),
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.grey.shade100,
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_today, color: colorScheme.primary, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    date != null
+                        ? DateFormat.yMMMMd().format(date)
+                        : 'Not recorded',
+                    style: TextStyle(
+                      fontWeight: date != null
+                          ? FontWeight.w500
+                          : FontWeight.normal,
+                      color: date != null
+                          ? colorScheme.onSurface
+                          : colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.lock_outline,
+              size: 18,
+              color: colorScheme.onSurface.withValues(alpha: 0.4),
+            ),
+          ],
+        ),
     );
   }
 

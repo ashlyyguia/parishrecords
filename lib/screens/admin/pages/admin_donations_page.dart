@@ -172,9 +172,10 @@ class _AdminDonationsPageState extends ConsumerState<AdminDonationsPage> {
     final donorController = TextEditingController(
       text: record['donor_name']?.toString() ?? '',
     );
-    final campaigns = ['Tithes', 'Projects', 'Outreach', 'General'];
+    const campaigns = kDonationCategories;
     const selectedMethod = 'cash';
-    String selectedCampaign = record['campaign']?.toString() ?? 'General';
+    String selectedCampaign =
+        donationCategoryOrDefault(record['campaign']?.toString());
     bool anonymous = record['anonymous'] == true;
 
     await showDialog(
@@ -243,7 +244,7 @@ class _AdminDonationsPageState extends ConsumerState<AdminDonationsPage> {
                           )
                           .toList(),
                       onChanged: (v) => setDialogState(
-                        () => selectedCampaign = v ?? 'General',
+                        () => selectedCampaign = v ?? kDonationCategories.first,
                       ),
                     ),
                   ],
@@ -443,7 +444,7 @@ class _DonationsPanel extends StatelessWidget {
     required this.onDelete,
   });
 
-  static const _donationTypes = ['Tithes', 'Projects', 'Outreach', 'General'];
+  static const _donationTypes = kDonationCategories;
 
   @override
   Widget build(BuildContext context) {
@@ -496,7 +497,7 @@ class _DonationsPanel extends StatelessWidget {
         for (final d in donations) {
           final amt = (d['amount'] as num?)?.toDouble() ?? 0;
           final cat = (d['campaign'] as String?)?.trim();
-          final key = (cat == null || cat.isEmpty) ? 'General' : cat;
+          final key = formatDonationTypeLabel(cat ?? '');
           byCategory[key] = (byCategory[key] ?? 0) + amt;
           grandTotal += amt;
         }
@@ -1108,13 +1109,8 @@ class _RecordDonationFormState extends State<RecordDonationForm> {
   final _formKey = GlobalKey<FormState>();
   final _donorCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
-  static const _defaultCategories = [
-    'Tithes',
-    'Projects',
-    'Outreach',
-    'General',
-  ];
-  String _category = 'General';
+  static const _defaultCategories = kDonationCategories;
+  String _category = kDonationCategories.first;
   DateTime _selectedDate = DateTime.now();
   bool _anonymous = false;
 
@@ -1219,7 +1215,8 @@ class _RecordDonationFormState extends State<RecordDonationForm> {
             items: _defaultCategories
                 .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                 .toList(),
-            onChanged: (v) => setState(() => _category = v ?? 'General'),
+            onChanged: (v) =>
+                setState(() => _category = v ?? kDonationCategories.first),
           ),
           CheckboxListTile(
             value: _anonymous,
