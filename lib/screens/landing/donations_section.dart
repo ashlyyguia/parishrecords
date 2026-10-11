@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_colors.dart';
 import '../../widgets/app_card.dart';
-import '../../widgets/online_donation_flow.dart';
+import '../../widgets/give_in_person_guide.dart';
 import 'landing_kit.dart';
 
 class DonationsSection extends StatelessWidget {
@@ -14,9 +14,7 @@ class DonationsSection extends StatelessWidget {
 
     final flowCard = AppCard(
       padding: EdgeInsets.all(compact ? 18 : 24),
-      child: const OnlineDonationFlow(
-        visualStyle: OnlineDonationVisualStyle.landing,
-      ),
+      child: const GiveInPersonGuide(),
     );
 
     final aside = Column(
@@ -25,10 +23,10 @@ class DonationsSection extends StatelessWidget {
         LandingImageFrame(aspectRatio: 4 / 3),
         SizedBox(height: 18),
         _GiveInfo(
-          icon: Icons.qr_code_2_rounded,
-          title: 'Fast & secure via GCash',
-          text: 'Choose a type, enter your name, scan the QR, and pay right in '
-              'the GCash app.',
+          icon: Icons.storefront_rounded,
+          title: 'Received at the parish office',
+          text: 'Give in person during office hours and receive a receipt '
+              'from the Finance office.',
         ),
         SizedBox(height: 12),
         _GiveInfo(
@@ -53,8 +51,8 @@ class DonationsSection extends StatelessWidget {
           eyebrow: 'SUPPORT OUR PARISH',
           title: 'Give a\ndonation',
           subtitle:
-              'Online giving via GCash — simple, secure, and a real help to our '
-              'parish community.',
+              'Give in person at the parish office — every gift is a real help '
+              'to our parish community.',
           glyph: Icons.volunteer_activism_rounded,
         ),
         SizedBox(height: compact ? 28 : 44),
