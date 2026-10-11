@@ -180,7 +180,7 @@ class NotificationsRepository {
     String? campaign,
     String method = 'cash',
   }) async {
-    final camp = (campaign ?? 'General').trim();
+    final camp = (campaign ?? '').trim().isEmpty ? 'Unspecified' : campaign!.trim();
     final methodLabel = method.toLowerCase() == 'cash' ? 'cash' : method;
     await notifyFinanceAudience(
       title: 'Cash donation recorded',

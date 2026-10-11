@@ -35,7 +35,7 @@ class FinanceRepository {
       final data = doc.data();
       final amount = (data['amount'] as num?)?.toDouble() ?? 0;
       final method = data['method'] as String? ?? 'cash';
-      final campaign = data['campaign'] as String? ?? 'General';
+      final campaign = data['campaign'] as String? ?? 'Unspecified';
 
       total += amount;
       count++;

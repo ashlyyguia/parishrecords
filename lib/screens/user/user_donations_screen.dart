@@ -183,7 +183,7 @@ class UserDonationsScreen extends ConsumerWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      campaign.isNotEmpty ? campaign : 'General Donation',
+                                      campaign.isNotEmpty ? campaign : 'Donation',
                                       style: theme.textTheme.titleSmall?.copyWith(
                                         fontWeight: FontWeight.w700,
                                       ),

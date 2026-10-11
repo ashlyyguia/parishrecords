@@ -32,13 +32,7 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
   DateTime? _from;
   DateTime? _to;
 
-  static const _campaigns = [
-    'All',
-    'Tithes',
-    'Projects',
-    'Outreach',
-    'General',
-  ];
+  static const _campaigns = ['All', ...kDonationCategories];
 
   static const _methods = ['cash', 'gcash', 'bank_transfer', 'check', 'card'];
 
@@ -53,7 +47,7 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
     if (_filterCampaign != 'All') {
       list = list
           .where(
-            (r) => (r['campaign'] ?? 'General').toString() == _filterCampaign,
+            (r) => (r['campaign'] ?? '').toString() == _filterCampaign,
           )
           .toList();
     }
@@ -261,7 +255,7 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
         for (final r in filtered) {
           final amt = (r['amount'] as num?)?.toDouble() ?? 0;
           total += amt;
-          final cat = r['campaign']?.toString() ?? 'General';
+          final cat = formatDonationTypeLabel(r['campaign']?.toString() ?? '');
           byType[cat] = (byType[cat] ?? 0) + amt;
         }
 
@@ -421,7 +415,8 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
       text: record['donor_name']?.toString() ?? '',
     );
     String selectedMethod = record['method']?.toString() ?? 'cash';
-    String selectedCampaign = record['campaign']?.toString() ?? 'General';
+    String selectedCampaign =
+        donationCategoryOrDefault(record['campaign']?.toString());
     bool anonymous = record['anonymous'] == true;
 
     await showDialog(
@@ -493,7 +488,7 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
                           )
                           .toList(),
                       onChanged: (v) => setDialogState(
-                        () => selectedCampaign = v ?? 'General',
+                        () => selectedCampaign = v ?? kDonationCategories.first,
                       ),
                     ),
                   ],

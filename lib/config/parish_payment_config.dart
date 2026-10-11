@@ -43,7 +43,6 @@ class ParishPaymentConfig {
     'Tithes',
     'Projects',
     'Outreach',
-    'General',
   ];
 
   /// Full list for signed-in app donate flow.

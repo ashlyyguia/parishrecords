@@ -12,7 +12,7 @@ class ParishGivingInfo {
   static const officeDays = 'Monday – Saturday';
   static const officeHours = '8:00 AM – 5:00 PM';
   static const email = 'parishoffice@holyrosary.ph';
-  static const purposes = ['Tithes', 'Projects', 'Outreach', 'General'];
+  static const purposes = ['Tithes', 'Projects', 'Outreach'];
 }
 
 /// Step-by-step instructions for giving in person at the parish office.
