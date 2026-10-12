@@ -156,7 +156,7 @@ class _VerifyRequestDialogState extends State<_VerifyRequestDialog> {
       icon: Icon(Icons.fact_check_outlined, color: cs.primary),
       title: const Text('Verify request'),
       content: SizedBox(
-        width: 560,
+        width: 680,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -246,7 +246,10 @@ class _VerifyRequestDialogState extends State<_VerifyRequestDialog> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
         children: [
           const Icon(Icons.menu_book_outlined, color: Colors.green),
           const SizedBox(width: 10),
@@ -274,6 +277,12 @@ class _VerifyRequestDialogState extends State<_VerifyRequestDialog> {
             }),
             child: const Text('Change'),
           ),
+        ],
+      ),
+          if (r.fields.isNotEmpty) ...[
+            const Divider(height: 16),
+            RegisterRecordFieldsView(fields: r.fields),
+          ],
         ],
       ),
     );
@@ -333,22 +342,103 @@ class _VerifyRequestDialogState extends State<_VerifyRequestDialog> {
               style: theme.textTheme.bodySmall,
             ),
           ),
-        for (final r in _results)
-          ListTile(
-            key: ValueKey('verify-result-${r.id}'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.menu_book_outlined),
-            title: Text(r.name.isEmpty ? '(no name)' : r.name),
-            subtitle: Text(
-              [
-                if (r.date != null) _fmt(r.date),
-                if (r.details.isNotEmpty) r.details,
-              ].join(' · '),
+        if (_results.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 4),
+            child: Text(
+              '${_results.length} matching record${_results.length == 1 ? '' : 's'} '
+              '— compare every detail with the request before choosing.',
+              style: theme.textTheme.bodySmall,
             ),
-            trailing: TextButton(
-              onPressed: () => setState(() => _selected = r),
-              child: const Text('Use this'),
+          ),
+        for (final r in _results)
+          Container(
+            key: ValueKey('verify-result-${r.id}'),
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.menu_book_outlined, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            r.name.isEmpty ? '(no name)' : r.name,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            [
+                              if (r.date != null) 'Recorded date: ${_fmt(r.date)}',
+                              'ID ${r.id}',
+                            ].join(' · '),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: () => setState(() => _selected = r),
+                      child: const Text('Use this'),
+                    ),
+                  ],
+                ),
+                if (r.fields.isNotEmpty) ...[
+                  const Divider(height: 16),
+                  RegisterRecordFieldsView(fields: r.fields),
+                ] else
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'No other details are stored for this record.',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Every stored detail of a register record, as aligned label/value rows.
+class RegisterRecordFieldsView extends StatelessWidget {
+  const RegisterRecordFieldsView({super.key, required this.fields});
+
+  final List<MapEntry<String, String>> fields;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final labelStyle = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final valueStyle = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurface,
+      fontWeight: FontWeight.w500,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final f in fields)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: 150, child: Text(f.key, style: labelStyle)),
+                const SizedBox(width: 8),
+                Expanded(child: Text(f.value, style: valueStyle)),
+              ],
             ),
           ),
       ],

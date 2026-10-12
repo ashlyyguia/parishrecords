@@ -4,7 +4,15 @@ import 'package:parishrecord/services/register_record_search.dart';
 import 'package:parishrecord/services/requests_repository.dart';
 import 'package:parishrecord/widgets/verify_request_dialog.dart';
 
-const _rec = RegisterRecordOption(id: 'r1', name: 'Maria Santos', details: 'Vol 3');
+const _rec = RegisterRecordOption(
+  id: 'r1',
+  name: 'Maria Santos',
+  fields: [
+    MapEntry('Vol. No.', '3'),
+    MapEntry('Parents', 'Jose Santos & Ana Cruz'),
+    MapEntry('Sponsors', 'Pedro Reyes'),
+  ],
+);
 
 Future<VerifyRequestResult?> _open(
   WidgetTester tester,
@@ -66,6 +74,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('verify-search-button')));
     await tester.pumpAndSettle();
+    // Every stored detail is shown in the search result.
+    expect(find.text('Jose Santos & Ana Cruz'), findsOneWidget);
+    expect(find.text('Pedro Reyes'), findsOneWidget);
     await tester.tap(find.text('Use this'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('verify-selected-record')), findsOneWidget);
@@ -115,6 +126,27 @@ void main() {
     expect(result!.checks.values.every((v) => v), isTrue);
     expect(result!.note, 'Book 3, Page 12');
     await tester.binding.setSurfaceSize(null);
+  });
+
+  test('register details are labelled, ordered and skip internal keys', () {
+    final fields = registerRecordFields({
+      'source': 'Bunga, Oroquieta',
+      'notes': '{"source":"baptismal_ocr_vision","status":"official",'
+          '"sponsors":"Pedro Reyes","volNo":"3","lineNo":"7",'
+          '"nameOfChild":"MARIA SANTOS","parents":"Jose & Ana",'
+          '"ocrScanId":"abc","originalImagePath":"x.jpg","minister":"",'
+          '"groom":{"name":"Juan","parents":"A & B"}}',
+    });
+    final labels = fields.map((e) => e.key).toList();
+    expect(labels.first, 'Vol. No.');
+    expect(labels, containsAll(['Line No.', 'Name of child', 'Parents', 'Sponsors']));
+    expect(labels, contains('Groom — Name'));
+    expect(labels, contains('Groom — Parents'));
+    expect(labels, isNot(contains('Minister'))); // empty value skipped
+    expect(labels.any((l) => l.toLowerCase().contains('scan')), isFalse);
+    expect(labels.any((l) => l.toLowerCase().contains('image')), isFalse);
+    expect(fields.last.key, 'Residence / source');
+    expect(fields.last.value, 'Bunga, Oroquieta');
   });
 
   test('parishioners get a "verified" notification', () {
