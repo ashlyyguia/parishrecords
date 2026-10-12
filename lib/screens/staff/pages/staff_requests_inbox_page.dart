@@ -7,6 +7,7 @@ import '../../../providers/requests_provider.dart';
 import '../../../services/requests_repository.dart';
 import '../../../widgets/request_record_check.dart';
 import '../../../widgets/reject_request_dialog.dart';
+import '../../../widgets/verify_request_dialog.dart';
 import '../../../services/audit_service.dart';
 import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/page_header.dart';
@@ -51,12 +52,23 @@ class _StaffRequestsInboxPageState
     }
 
     final repo = RequestsRepository();
-    await repo.updateStatus(
-      id,
-      status: status,
-      notificationSent: true,
-      note: note,
-    );
+    try {
+      await repo.updateStatus(
+        id,
+        status: status,
+        notificationSent: true,
+        note: note,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return;
+    }
 
     final requester = RequestsRepository.personOnCertificate(row);
     final type = (row['request_type'] ?? '').toString();
@@ -86,6 +98,54 @@ class _StaffRequestsInboxPageState
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
+  }
+
+  /// Checks a pending request against the parish register; approval is
+  /// only possible afterwards.
+  Future<void> _verify(Map<String, dynamic> row) async {
+    final id = (row['request_id'] ?? '').toString();
+    if (id.isEmpty) return;
+    final result = await showVerifyRequestDialog(context, request: row);
+    if (result == null || !mounted) return;
+    try {
+      await RequestsRepository().verify(
+        id,
+        recordId: result.record.id,
+        recordName: result.record.name,
+        recordDate: result.record.date,
+        checks: result.checks,
+        note: result.note,
+      );
+      try {
+        await AuditService.log(
+          action: 'request_verified',
+          userId: 'staff',
+          details: 'Request $id verified against register record '
+              '${result.record.id} (${result.record.name})',
+        );
+      } catch (_) {}
+      _reload();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Request verified. The parishioner was notified; you can now approve it.',
+          ),
+          backgroundColor: Colors.blue,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not verify: ${e.toString().replaceFirst('Exception: ', '')}',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
   }
 
   void _viewRequestDetails(BuildContext context, Map<String, dynamic> request) {
@@ -119,6 +179,7 @@ class _StaffRequestsInboxPageState
               if (request['purpose'] != null)
                 Text('Purpose: ${request['purpose']}'),
               RequestDetailLines(request: request),
+              RequestVerificationInfo(request: request),
               RequestStatusNote(
                 request: request,
                 title: 'Message sent to parishioner',
@@ -193,6 +254,7 @@ class _StaffRequestsInboxPageState
     final filters = [
       ('all', 'All Requests'),
       ('pending', 'Pending'),
+      ('verified', 'Verified'),
       ('approved', 'Approved'),
       ('rejected', 'Rejected'),
     ];
@@ -365,10 +427,11 @@ class _StaffRequestsInboxPageState
                       createdAt: createdAt,
                       request: r,
                       onTap: () => _viewRequestDetails(context, r),
-                      onApprove: status == 'pending'
+                      onVerify: status == 'pending' ? () => _verify(r) : null,
+                      onApprove: status == 'verified'
                           ? () => _setStatus(r, 'approved')
                           : null,
-                      onReject: status == 'pending'
+                      onReject: status == 'pending' || status == 'verified'
                           ? () => _setStatus(r, 'rejected')
                           : null,
                       colorScheme: colorScheme,
@@ -391,6 +454,7 @@ class _RequestCard extends StatelessWidget {
   final String createdAt;
   final Map<String, dynamic> request;
   final VoidCallback onTap;
+  final VoidCallback? onVerify;
   final VoidCallback? onApprove;
   final VoidCallback? onReject;
   final ColorScheme colorScheme;
@@ -404,6 +468,7 @@ class _RequestCard extends StatelessWidget {
     required this.createdAt,
     required this.request,
     required this.onTap,
+    this.onVerify,
     this.onApprove,
     this.onReject,
     required this.colorScheme,
@@ -482,6 +547,7 @@ class _RequestCard extends StatelessWidget {
                           const SizedBox(height: 6),
                           RequestRecordCheckBadge(request: request),
                         ],
+                        RequestVerificationInfo(request: request, compact: true),
                         RequestStatusNote(
                           request: request,
                           title: 'Message sent to parishioner',
@@ -527,13 +593,28 @@ class _RequestCard extends StatelessWidget {
                   ],
                 ),
               ],
-              if (status == 'pending' &&
-                  (onApprove != null || onReject != null)) ...[
+              if (onVerify != null || onApprove != null || onReject != null) ...[
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 12),
                 Row(
                   children: [
+                    if (onVerify != null)
+                      Expanded(
+                        child: FilledButton.icon(
+                          key: const ValueKey('request-verify'),
+                          onPressed: onVerify,
+                          icon: const Icon(Icons.fact_check_outlined, size: 18),
+                          label: const Text('Verify'),
+                          style: FilledButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (onVerify != null && onReject != null)
+                      const SizedBox(width: 12),
                     if (onApprove != null)
                       Expanded(
                         child: FilledButton.icon(
@@ -583,6 +664,8 @@ class _RequestCard extends StatelessWidget {
     switch (status) {
       case 'pending':
         return Colors.orange;
+      case 'verified':
+        return Colors.blue;
       case 'approved':
         return Colors.green;
       case 'rejected':
@@ -596,6 +679,8 @@ class _RequestCard extends StatelessWidget {
     switch (status) {
       case 'pending':
         return Icons.pending_outlined;
+      case 'verified':
+        return Icons.verified_outlined;
       case 'approved':
         return Icons.check_circle_outline;
       case 'rejected':

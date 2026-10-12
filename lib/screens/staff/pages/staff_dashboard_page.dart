@@ -389,7 +389,11 @@ class StaffDashboardPage extends ConsumerWidget {
   ) {
     return requestsAsync.when(
       data: (requests) {
-        final pending = requests.where((r) => r['status'] == 'pending').length;
+        // Still needs the office's action: pending (to verify) or verified
+        // (to approve).
+        final pending = requests
+            .where((r) => r['status'] == 'pending' || r['status'] == 'verified')
+            .length;
         final approved = requests
             .where((r) => r['status'] == 'approved')
             .length;
@@ -1349,7 +1353,7 @@ class _TaskItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isPending =
-        status == 'pending' || status == 'in_review';
+        status == 'pending' || status == 'in_review' || status == 'verified';
     final row = Row(
         children: [
           Container(

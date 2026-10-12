@@ -222,6 +222,14 @@ class RequestsRepository {
               'In about 5 minutes you may come to the parish office to receive '
               'your certificate, or open My Requests in the app for details.',
         );
+      case 'verified':
+        return (
+          title: 'Certificate request verified',
+          body:
+              '${greeting}the parish office has verified your $typeLabel '
+              'certificate request against the parish register. It is now '
+              'awaiting approval; we will notify you again once it is approved.',
+        );
       case 'rejected':
         return (
           title: 'Certificate request update',
@@ -300,6 +308,11 @@ class RequestsRepository {
         (beforeData['status'] ?? 'pending').toString().trim().toLowerCase();
     final newStatus = status.trim().toLowerCase();
     final ownerUid = (beforeData['created_by_uid'] ?? '').toString();
+    if (newStatus == 'approved' && previousStatus != 'verified') {
+      throw Exception(
+        'Verify the request against the parish register before approving it.',
+      );
+    }
 
     final patch = <String, dynamic>{
       'status': newStatus,
@@ -344,6 +357,104 @@ class RequestsRepository {
       );
     }
   }
+
+  /// Staff/admin: marks a pending request as checked against the parish
+  /// register. Approval is only possible after this step.
+  Future<void> verify(
+    String requestId, {
+    required String recordId,
+    required String recordName,
+    DateTime? recordDate,
+    required Map<String, bool> checks,
+    String? note,
+  }) async {
+    final canManage = await _canManageRequests();
+    if (!canManage) {
+      throw Exception('Staff access required');
+    }
+    if (recordId.trim().isEmpty) {
+      throw Exception('Link the parish register record first.');
+    }
+    if (checks.values.any((v) => v != true)) {
+      throw Exception('Complete every check before verifying.');
+    }
+
+    final docRef = _db.collection('requests').doc(requestId);
+    final before = await docRef.get().timeout(
+      _timeout,
+      onTimeout: () => throw TimeoutException('Load request timed out'),
+    );
+    final beforeData = before.data() ?? {};
+    final previousStatus =
+        (beforeData['status'] ?? 'pending').toString().trim().toLowerCase();
+    if (previousStatus != 'pending') {
+      throw Exception('Only pending requests can be verified.');
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    final verifierName = (user?.displayName ?? '').trim().isNotEmpty
+        ? user!.displayName!.trim()
+        : (user?.email ?? 'Parish office');
+    final cleanNote = (note ?? '').trim();
+
+    await docRef.set({
+      'status': 'verified',
+      'record_id': recordId,
+      'record_verified': true,
+      'verification': {
+        'verified_by': _requireUid(),
+        'verified_by_name': verifierName,
+        'verified_at': FieldValue.serverTimestamp(),
+        'checks': checks,
+        'record_id': recordId,
+        'record_name': recordName,
+        if (recordDate != null) 'record_date': Timestamp.fromDate(recordDate),
+        if (cleanNote.isNotEmpty) 'note': cleanNote,
+      },
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true)).timeout(
+      _timeout,
+      onTimeout: () => throw TimeoutException('Verify request timed out'),
+    );
+
+    final ownerUid = (beforeData['created_by_uid'] ?? '').toString();
+    if (ownerUid.isNotEmpty) {
+      final submitted = submittedByName(beforeData);
+      await _notifyRequestStatusChange(
+        userId: ownerUid,
+        requestId: requestId,
+        status: 'verified',
+        requestType: (beforeData['request_type'] ?? 'certificate').toString(),
+        certificateForName: personOnCertificate(beforeData),
+        submittedByName: submitted.isNotEmpty ? submitted : null,
+      );
+    }
+  }
+
+  /// Who verified the request and when, for display ("Verified by Ana · Oct 12").
+  static String verificationSummary(Map<String, dynamic> request) {
+    final v = request['verification'];
+    if (v is! Map) return '';
+    final by = (v['verified_by_name'] ?? '').toString().trim();
+    final at = v['verified_at'];
+    DateTime? when;
+    if (at is Timestamp) when = at.toDate();
+    if (at is DateTime) when = at;
+    if (at is String) when = DateTime.tryParse(at);
+    final date = when == null
+        ? ''
+        : '${_monthAbbr[when.month - 1]} ${when.day}, ${when.year}';
+    final parts = [
+      if (by.isNotEmpty) 'Verified by $by' else 'Verified',
+      if (date.isNotEmpty) date,
+    ];
+    return parts.join(' · ');
+  }
+
+  static const _monthAbbr = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
 
   Future<void> delete(String requestId) async {
     final canManage = await _canManageRequests();

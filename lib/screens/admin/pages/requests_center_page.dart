@@ -5,6 +5,8 @@ import '../../../services/requests_repository.dart';
 import '../../../widgets/app_search_bar.dart';
 import '../../../widgets/request_record_check.dart';
 import '../../../widgets/reject_request_dialog.dart';
+import '../../../widgets/verify_request_dialog.dart';
+import '../../../services/audit_service.dart';
 import '../admin_design_system.dart';
 
 class AdminRequestsCenterPage extends StatefulWidget {
@@ -32,6 +34,52 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
     setState(() {
       _requestsFuture = _repo.list(limit: 100);
     });
+  }
+
+  /// Checks a pending request against the parish register; approval is
+  /// only possible afterwards.
+  Future<void> _verify(Map<String, dynamic> request) async {
+    final id = (request['request_id'] ?? '').toString();
+    if (id.isEmpty) return;
+    final result = await showVerifyRequestDialog(context, request: request);
+    if (result == null || !mounted) return;
+    try {
+      await _repo.verify(
+        id,
+        recordId: result.record.id,
+        recordName: result.record.name,
+        recordDate: result.record.date,
+        checks: result.checks,
+        note: result.note,
+      );
+      try {
+        await AuditService.log(
+          action: 'request_verified',
+          userId: 'admin',
+          details: 'Request $id verified against register record '
+              '${result.record.id} (${result.record.name})',
+        );
+      } catch (_) {}
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Request verified. The parishioner was notified; you can now approve it.',
+          ),
+        ),
+      );
+      _loadRequests();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not verify: ${e.toString().replaceFirst('Exception: ', '')}',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
   }
 
   Future<void> _updateStatus(
@@ -70,7 +118,7 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: $e'),
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
@@ -137,6 +185,8 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
       case 'pending':
       case 'in_progress':
         return Colors.orange;
+      case 'verified':
+        return Colors.blue;
       default:
         return Colors.grey;
     }
@@ -152,6 +202,8 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
         return Icons.cancel;
       case 'pending':
         return Icons.pending;
+      case 'verified':
+        return Icons.verified;
       case 'in_progress':
         return Icons.sync;
       default:
@@ -209,6 +261,7 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
                           children: [
                             _statusChip('All', 'all'),
                             _statusChip('Pending', 'pending'),
+                            _statusChip('Verified', 'verified'),
                             _statusChip('Approved', 'approved'),
                             _statusChip('Rejected', 'rejected'),
                           ],
@@ -477,6 +530,7 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
                 style: TextStyle(fontSize: 11, color: colorScheme.outline),
               ),
             RequestDetailLines(request: request),
+            RequestVerificationInfo(request: request),
             RequestStatusNote(
               request: request,
               title: 'Message sent to parishioner',
@@ -488,7 +542,19 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (status.toLowerCase() == 'pending') ...[
+              if (status.toLowerCase() == 'pending')
+                IconButton(
+                  key: const ValueKey('request-verify'),
+                  tooltip: 'Verify against the register',
+                  onPressed: () => _verify(request),
+                  icon: const Icon(Icons.fact_check_outlined, color: Colors.blue),
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
+              if (status.toLowerCase() == 'verified')
                 IconButton(
                   tooltip: 'Approve',
                   onPressed: () => _updateStatus(requestId, 'approved'),
@@ -502,6 +568,8 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
                   ),
                   padding: EdgeInsets.zero,
                 ),
+              if (status.toLowerCase() == 'pending' ||
+                  status.toLowerCase() == 'verified')
                 IconButton(
                   tooltip: 'Reject',
                   onPressed: () =>
@@ -513,7 +581,6 @@ class _AdminRequestsCenterPageState extends State<AdminRequestsCenterPage> {
                   ),
                   padding: EdgeInsets.zero,
                 ),
-              ],
               IconButton(
                 tooltip: 'Delete',
                 onPressed: requestId.isEmpty

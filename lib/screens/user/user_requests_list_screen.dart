@@ -440,9 +440,10 @@ class _UserRequestsListScreenState
   String? _statusHintMessage(Map<String, dynamic> r, String status) {
     final s = status.trim().toLowerCase();
     if (s == 'pending') {
-      return 'Your request is being reviewed. You will be notified when it is approved or if more information is needed.';
+      return 'Your request is being checked against the parish register. You will be notified when it is verified and when it is approved.';
     }
-    if (s != 'approved' && s != 'rejected' && s != 'ready' && s != 'completed') {
+    if (s != 'verified' &&
+        s != 'approved' && s != 'rejected' && s != 'ready' && s != 'completed') {
       return null;
     }
     final typeLabel = RequestsRepository.certificateTypeLabel(

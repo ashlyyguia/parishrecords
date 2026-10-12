@@ -50,6 +50,8 @@ class UserRequestsRepository {
       case 'pending':
       case 'submitted':
         return 'Pending';
+      case 'verified':
+        return 'Verified';
       case 'approved':
         return 'Approved';
       case 'processing':

@@ -87,3 +87,52 @@ class RequestDetailLines extends StatelessWidget {
     );
   }
 }
+
+/// "Verified by Ana · Oct 12, 2026" plus the register record and notes, for
+/// requests the parish office has checked against the register.
+class RequestVerificationInfo extends StatelessWidget {
+  const RequestVerificationInfo({
+    super.key,
+    required this.request,
+    this.compact = false,
+  });
+
+  final Map<String, dynamic> request;
+
+  /// Card view: one line only.
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = request['verification'];
+    if (v is! Map) return const SizedBox.shrink();
+    final summary = RequestsRepository.verificationSummary(request);
+    final record = (v['record_name'] ?? '').toString().trim();
+    final note = (v['note'] ?? '').toString().trim();
+    final theme = Theme.of(context);
+    return Padding(
+      key: const ValueKey('request-verification-info'),
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.verified_outlined, size: 16, color: Colors.blue.shade700),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              [
+                summary,
+                if (!compact && record.isNotEmpty) 'Register record: $record',
+                if (!compact && note.isNotEmpty) 'Notes: $note',
+              ].join('\n'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.blue.shade800,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

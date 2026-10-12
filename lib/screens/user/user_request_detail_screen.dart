@@ -342,9 +342,10 @@ String? _statusGuidance({
 }) {
   final s = status.trim().toLowerCase();
   if (s == 'pending') {
-    return 'Your request is being reviewed. You will receive a notification when it is approved or if the parish needs more information.';
+    return 'Your request is being checked against the parish register. You will be notified when it is verified, and again when it is approved or if the parish needs more information.';
   }
-  if (s == 'approved' ||
+  if (s == 'verified' ||
+      s == 'approved' ||
       s == 'rejected' ||
       s == 'ready' ||
       s == 'completed') {
@@ -396,6 +397,9 @@ class _ClosedRequestFooter extends StatelessWidget {
         'The parish office did not approve this request, so there is nothing '
             'to cancel. You can submit a new request with corrected details.',
       'cancelled' => 'You cancelled this request.',
+      'verified' =>
+        'The parish office has verified this request and it is awaiting '
+            'approval, so it can no longer be cancelled.',
       _ =>
         'The parish office has already processed this request, so it can no '
             'longer be cancelled.',
