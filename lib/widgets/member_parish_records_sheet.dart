@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../models/household.dart';
@@ -188,18 +187,6 @@ class _MemberParishRecordsSheetState
               )
             else
               ..._types.entries.map((e) => _typeSection(e.key, e.value)),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              key: const ValueKey('scan-to-link'),
-              onPressed: () {
-                Navigator.of(context).pop(_changed);
-                context.go(
-                  '/user/households/${widget.householdId}/members/${widget.memberId}/ocr-link',
-                );
-              },
-              icon: const Icon(Icons.document_scanner_outlined),
-              label: const Text('Scan a certificate to find the record'),
-            ),
             const SizedBox(height: 8),
             Text(
               "Can't find the record? You can still request a certificate and "
