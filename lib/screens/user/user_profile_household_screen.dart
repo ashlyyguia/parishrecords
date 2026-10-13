@@ -42,6 +42,7 @@ class _UserProfileHouseholdScreenState
   bool _consent = false;
   bool _saving = false;
   bool _initialized = false;
+  String? _initializedUid;
   Household? _household;
   String? _linkedHouseholdId;
   List<HouseholdMember> _members = [];
@@ -737,8 +738,18 @@ class _UserProfileHouseholdScreenState
       backgroundColor: const Color(0xFFF6F7FB),
       body: async.when(
         data: (m) {
+          // Re-seed the form whenever the profile belongs to a different
+          // account than the one the fields were filled from.
+          final profileUid = m['uid']?.toString();
+          if (_initialized && profileUid != _initializedUid) {
+            _initialized = false;
+            _household = null;
+            _linkedHouseholdId = null;
+            _members = [];
+          }
           if (!_initialized) {
             _initialized = true;
+            _initializedUid = profileUid;
             _nameCtrl.text = (m['displayName'] ?? '').toString();
             _phoneCtrl.text = (m['phone'] ?? '').toString();
             _emailCtrl.text = (m['email'] ?? '').toString();

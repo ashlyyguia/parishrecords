@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/household.dart';
 import '../services/household_repository.dart';
 import '../utils/record_date_filter.dart';
+import 'user_providers.dart' show currentUidProvider;
 
 /// Provider for household repository
 final householdRepositoryProvider = Provider<HouseholdRepository>((ref) {
@@ -241,6 +242,7 @@ final householdOperationsProvider =
 
 /// Provider for current user's households
 final myHouseholdsProvider = FutureProvider<List<Household>>((ref) async {
+  ref.watch(currentUidProvider);
   final repo = ref.watch(householdRepositoryProvider);
   // This fetches households for the currently authenticated user
   // The repository handles the user ID internally via auth state
