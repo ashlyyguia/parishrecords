@@ -13,6 +13,7 @@ import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 import '../../services/register_ocr_parser.dart';
 import '../../utils/manual_register_notes.dart';
+import '../../utils/register_text_parsing.dart';
 
 /// Japan Post standard postcard (郵便ハガキ): 100 × 148 mm, portrait.
 final _japanesePostcardFormat = PdfPageFormat(
@@ -501,9 +502,30 @@ class CertificateData {
       data.personName = summary.isNotEmpty ? summary : record.name.trim();
     }
 
-    // Groom's parents populate the shared "Child of / and" lines.
+    // Groom's parents fill "Child of" (mother) and "and" (father); his date
+    // and place of birth fill "born in" / "on the __ day of __".
     if (groom != null) {
-      _splitParentsIntoCertificate(groom['parents'], data);
+      final parentsText =
+          ManualRegisterNotes.fieldAny(groom, ['parents']);
+      if (parentsText.isNotEmpty) {
+        final surname = groomName.trim().isEmpty
+            ? ''
+            : groomName.trim().split(RegExp(r'\s+')).last;
+        final p = motherAndFather(parentsText, familySurname: surname);
+        data.motherName = p.mother;
+        data.fatherName = p.father;
+      } else {
+        _splitParentsIntoCertificate(groom['parents'], data);
+      }
+      final birth = ManualRegisterNotes.fieldAny(
+        groom,
+        ['datesPlaceOfBirth', 'placeAndDateOfBirth', 'birth'],
+      );
+      if (birth.isNotEmpty) {
+        final split = splitPlaceAndDate(birth);
+        data.birthDate = split.date ?? data.birthDate;
+        if (split.place.isNotEmpty) data.birthplace = split.place;
+      }
     }
 
     final sacramentText =
@@ -585,6 +607,10 @@ class CertificateTemplateScreen extends ConsumerStatefulWidget {
 class _CertificateTemplateScreenState
     extends ConsumerState<CertificateTemplateScreen> {
   late CertificateData _certificateData;
+
+  /// Marriage certificates list the mother on "Child of" and the father on
+  /// the "and" line, as the parish marriage register does.
+  bool get _motherFirst => widget.recordType == RecordType.marriage;
   bool _isLoading = true;
   bool _isGenerating = false;
   bool _recordApplied = false;
@@ -1118,7 +1144,9 @@ class _CertificateTemplateScreenState
                 pw.SizedBox(height: 4),
                 _buildCertRow(
                   'Child of',
-                  _certificateData.fatherName,
+                  _motherFirst
+                      ? _certificateData.motherName
+                      : _certificateData.fatherName,
                   regular,
                   bold,
                   fontSize: bodyFontSize,
@@ -1126,7 +1154,9 @@ class _CertificateTemplateScreenState
                 pw.SizedBox(height: 2),
                 _buildCertRow(
                   'and',
-                  _certificateData.motherName,
+                  _motherFirst
+                      ? _certificateData.fatherName
+                      : _certificateData.motherName,
                   regular,
                   bold,
                   fontSize: bodyFontSize,
@@ -1640,9 +1670,15 @@ class _CertificateTemplateScreenState
             // Person details
             _buildPreviewRow('That', _nameCtrl.text.toUpperCase()),
             const SizedBox(height: 6),
-            _buildPreviewRow('Child of', _fatherCtrl.text),
+            _buildPreviewRow(
+              'Child of',
+              _motherFirst ? _motherCtrl.text : _fatherCtrl.text,
+            ),
             const SizedBox(height: 2),
-            _buildPreviewRow('and', _motherCtrl.text),
+            _buildPreviewRow(
+              'and',
+              _motherFirst ? _fatherCtrl.text : _motherCtrl.text,
+            ),
             const SizedBox(height: 6),
             _buildPreviewRow('born in', _birthplaceCtrl.text),
             const SizedBox(height: 6),
