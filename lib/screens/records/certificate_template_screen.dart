@@ -590,6 +590,11 @@ class _CertificateTemplateScreenState
   bool _recordApplied = false;
   final _formKey = GlobalKey<FormState>();
 
+  // Auto-fill search
+  List<ParishRecord> _searchResults = [];
+  bool _showSuggestions = false;
+  final FocusNode _nameFocusNode = FocusNode();
+
   Uint8List? _archdioceseLogoBytes;
   Uint8List? _parishLogoBytes;
 
@@ -614,6 +619,7 @@ class _CertificateTemplateScreenState
     super.initState();
     _certificateData = CertificateData();
     _initControllers();
+    _setupNameListener();
     _loadRecordData();
     _loadCertificateLogos();
   }
@@ -631,6 +637,46 @@ class _CertificateTemplateScreenState
     } catch (_) {
       // Logos optional — header falls back to text-only.
     }
+  }
+
+  void _setupNameListener() {
+    _nameCtrl.addListener(() {
+      final query = _nameCtrl.text.trim();
+      if (query.length >= 2) {
+        _searchRecords(query);
+      } else {
+        setState(() {
+          _searchResults = [];
+          _showSuggestions = false;
+        });
+      }
+    });
+
+    _nameFocusNode.addListener(() {
+      if (!_nameFocusNode.hasFocus) {
+        setState(() => _showSuggestions = false);
+      }
+    });
+  }
+
+  void _searchRecords(String query) {
+    final records = ref.read(recordsProvider);
+    final lowerQuery = query.toLowerCase();
+
+    final matches = records
+        .where((r) => r.type == widget.recordType)
+        .where((r) => r.name.toLowerCase().contains(lowerQuery))
+        .take(5)
+        .toList();
+
+    setState(() {
+      _searchResults = matches;
+      _showSuggestions = matches.isNotEmpty;
+    });
+  }
+
+  void _fillFromRecord(ParishRecord record) {
+    _applyRecordToForm(record, fromSearch: true);
   }
 
   void _applyRecordToForm(ParishRecord record, {bool fromSearch = false}) {
@@ -664,6 +710,7 @@ class _CertificateTemplateScreenState
     setState(() {
       _certificateData = extracted;
       _updateControllersFromData();
+      _showSuggestions = false;
       _recordApplied = true;
     });
   }
@@ -718,6 +765,7 @@ class _CertificateTemplateScreenState
     _seriesCtrl.dispose();
     _priestCtrl.dispose();
     _notesCtrl.dispose();
+    _nameFocusNode.dispose();
     super.dispose();
   }
 
@@ -825,6 +873,44 @@ class _CertificateTemplateScreenState
         return 'Marriage';
       case RecordType.funeral:
         return 'Funeral';
+    }
+  }
+
+  Future<void> _selectDate(BuildContext context, bool isBirthDate) async {
+    final initialDate = isBirthDate
+        ? (_certificateData.birthDate ?? DateTime.now())
+        : (_certificateData.sacramentDate ?? DateTime.now());
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
+    );
+
+    if (picked != null) {
+      setState(() {
+        if (isBirthDate) {
+          _certificateData.birthDate = picked;
+        } else {
+          _certificateData.sacramentDate = picked;
+        }
+      });
+    }
+  }
+
+  Future<void> _selectIssueDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _certificateData.issueDate ?? DateTime.now(),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
+    );
+
+    if (picked != null) {
+      setState(() {
+        _certificateData.issueDate = picked;
+      });
     }
   }
 
@@ -1585,7 +1671,7 @@ class _CertificateTemplateScreenState
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'These details come from the parish record and cannot be edited here.',
+                              'Edit the information below to update the certificate',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: colorScheme.onSurface.withValues(
                                   alpha: 0.6,
@@ -1597,10 +1683,73 @@ class _CertificateTemplateScreenState
                             // Person Information
                             _buildSectionHeader(context, 'Person Information'),
                             const SizedBox(height: 12),
-                            _buildTextField(
-                              controller: _nameCtrl,
-                              label: 'Full Name',
-                              icon: Icons.person,
+                            // Name field with autocomplete
+                            Stack(
+                              children: [
+                                _buildTextField(
+                                  controller: _nameCtrl,
+                                  label: 'Full Name',
+                                  icon: Icons.person,
+                                  focusNode: _nameFocusNode,
+                                ),
+                                if (_showSuggestions)
+                                  Positioned(
+                                    top: 58,
+                                    left: 0,
+                                    right: 0,
+                                    child: Material(
+                                      elevation: 4,
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Container(
+                                        constraints: const BoxConstraints(
+                                          maxHeight: 200,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.grey.shade300,
+                                          ),
+                                        ),
+                                        child: ListView.builder(
+                                          shrinkWrap: true,
+                                          itemCount: _searchResults.length,
+                                          itemBuilder: (context, index) {
+                                            final record =
+                                                _searchResults[index];
+                                            return ListTile(
+                                              dense: true,
+                                              leading: Icon(
+                                                _getTypeIcon(record.type),
+                                                size: 20,
+                                                color: _getTypeColor(
+                                                  record.type,
+                                                ),
+                                              ),
+                                              title: Text(
+                                                record.name,
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                              subtitle: Text(
+                                                '${record.type.value} • ${DateFormat('MMM d, yyyy').format(record.date)}',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade600,
+                                                ),
+                                              ),
+                                              onTap: () =>
+                                                  _fillFromRecord(record),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                             const SizedBox(height: 12),
                             Row(
@@ -1635,6 +1784,7 @@ class _CertificateTemplateScreenState
                                   child: _buildDateField(
                                     label: 'Date of Birth',
                                     date: _certificateData.birthDate,
+                                    onTap: () => _selectDate(context, true),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -1648,6 +1798,7 @@ class _CertificateTemplateScreenState
                                         ? 'Date of Death'
                                         : '${_certificateTitle.replaceAll("Certificate of ", "")} Date',
                                     date: _certificateData.sacramentDate,
+                                    onTap: () => _selectDate(context, false),
                                   ),
                                 ),
                               ],
@@ -1726,6 +1877,7 @@ class _CertificateTemplateScreenState
                             _buildDateField(
                               label: 'Date Issued',
                               date: _certificateData.issueDate,
+                              onTap: () => _selectIssueDate(context),
                             ),
 
                             const SizedBox(height: 24),
@@ -1884,39 +2036,66 @@ class _CertificateTemplateScreenState
     int maxLines = 1,
     FocusNode? focusNode,
   }) {
-    // Read-only: the certificate shows the parish record as it is.
     return TextFormField(
       controller: controller,
       focusNode: focusNode,
       maxLines: maxLines,
-      readOnly: true,
-      enableInteractiveSelection: true,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),
-        suffixIcon: const Icon(Icons.lock_outline, size: 18),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         filled: true,
-        fillColor: Colors.grey.shade100,
+        fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 12,
         ),
       ),
+      onChanged: (_) => setState(() {}),
     );
+  }
+
+  Color _getTypeColor(RecordType type) {
+    switch (type) {
+      case RecordType.baptism:
+        return Colors.blue;
+      case RecordType.marriage:
+        return Colors.pink;
+      case RecordType.confirmation:
+        return Colors.purple;
+      case RecordType.funeral:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getTypeIcon(RecordType type) {
+    switch (type) {
+      case RecordType.baptism:
+        return Icons.water_drop;
+      case RecordType.marriage:
+        return Icons.favorite;
+      case RecordType.confirmation:
+        return Icons.church;
+      case RecordType.funeral:
+        return Icons.diamond_outlined;
+    }
   }
 
   Widget _buildDateField({
     required String label,
     required DateTime? date,
+    required VoidCallback onTap,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           border: Border.all(color: colorScheme.outline.withValues(alpha: 0.5)),
           borderRadius: BorderRadius.circular(12),
-          color: Colors.grey.shade100,
+          color: Colors.white,
         ),
         child: Row(
           children: [
@@ -1937,7 +2116,7 @@ class _CertificateTemplateScreenState
                   Text(
                     date != null
                         ? DateFormat.yMMMMd().format(date)
-                        : 'Not recorded',
+                        : 'Select date',
                     style: TextStyle(
                       fontWeight: date != null
                           ? FontWeight.w500
@@ -1951,12 +2130,12 @@ class _CertificateTemplateScreenState
               ),
             ),
             Icon(
-              Icons.lock_outline,
-              size: 18,
+              Icons.chevron_right,
               color: colorScheme.onSurface.withValues(alpha: 0.4),
             ),
           ],
         ),
+      ),
     );
   }
 
