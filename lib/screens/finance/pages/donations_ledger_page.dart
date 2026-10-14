@@ -34,7 +34,8 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
 
   static const _campaigns = ['All', ...kDonationCategories];
 
-  static const _methods = ['cash', 'gcash', 'bank_transfer', 'check', 'card'];
+  // The parish only accepts in-person cash gifts for now.
+  static const _methods = ['cash'];
 
   static final _style = FinanceModuleStyle.of(FinanceModuleKind.donations);
 
@@ -414,7 +415,8 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
     final donorController = TextEditingController(
       text: record['donor_name']?.toString() ?? '',
     );
-    String selectedMethod = record['method']?.toString() ?? 'cash';
+    // Only cash can be chosen; older records with another method save as cash.
+    String selectedMethod = 'cash';
     String selectedCampaign =
         donationCategoryOrDefault(record['campaign']?.toString());
     bool anonymous = record['anonymous'] == true;
@@ -467,7 +469,7 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
                           .map(
                             (m) => DropdownMenuItem(
                               value: m,
-                              child: Text(m.toUpperCase()),
+                              child: Text(m == 'cash' ? 'Cash' : m.toUpperCase()),
                             ),
                           )
                           .toList(),
