@@ -1072,33 +1072,50 @@ class _CertificateTemplateScreenState
               ),
             ),
           pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.center,
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              pw.Text('Rev.', style: pw.TextStyle(font: italic, fontSize: 8)),
-              pw.SizedBox(width: 4),
-              pw.Container(
-                width: 110,
-                decoration: const pw.BoxDecoration(
-                  border: pw.Border(
-                    bottom: pw.BorderSide(color: PdfColors.black, width: 1),
-                  ),
-                ),
-                padding: const pw.EdgeInsets.only(bottom: 2),
+              // Lifted so "Rev." sits on the signature line, not beside
+              // the title underneath it.
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 12),
                 child: pw.Text(
-                  _certificateData.parishPriest.toUpperCase(),
-                  style: pw.TextStyle(font: bold, fontSize: 8),
-                  textAlign: pw.TextAlign.center,
-                  maxLines: 2,
+                  'Rev.',
+                  style: pw.TextStyle(font: italic, fontSize: 8),
+                ),
+              ),
+              pw.SizedBox(width: 4),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                  children: [
+                    pw.Container(
+                      decoration: const pw.BoxDecoration(
+                        border: pw.Border(
+                          bottom: pw.BorderSide(
+                            color: PdfColors.black,
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                      padding: const pw.EdgeInsets.only(bottom: 2),
+                      child: pw.Text(
+                        _certificateData.parishPriest.toUpperCase(),
+                        style: pw.TextStyle(font: bold, fontSize: 8),
+                        textAlign: pw.TextAlign.center,
+                        maxLines: 2,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2),
+                    // Centred under the signature line, not past its edge.
+                    pw.Text(
+                      'Parish Priest / VICAR',
+                      style: pw.TextStyle(font: bold, fontSize: 7),
+                      textAlign: pw.TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
             ],
-          ),
-          pw.SizedBox(height: 2),
-          pw.Text(
-            'Parish Priest / VICAR',
-            style: pw.TextStyle(font: bold, fontSize: 7),
-            textAlign: pw.TextAlign.right,
           ),
         ],
       );
@@ -1267,8 +1284,10 @@ class _CertificateTemplateScreenState
                         ),
                       ],
                     ),
-                    pw.Spacer(),
-                    pw.SizedBox(width: 150, child: signatureBlock()),
+                    pw.SizedBox(width: 10),
+                    // Takes the rest of the row so it can never run off the
+                    // right edge of the small certificate page.
+                    pw.Expanded(child: signatureBlock()),
                   ],
                 ),
               ],
@@ -1466,7 +1485,7 @@ class _CertificateTemplateScreenState
           ),
           pw.SizedBox(width: 3),
           pw.Container(
-            width: 72,
+            width: 62,
             decoration: const pw.BoxDecoration(
               border: pw.Border(
                 bottom: pw.BorderSide(color: PdfColors.black, width: 0.8),
@@ -1782,7 +1801,7 @@ class _CertificateTemplateScreenState
                   ),
                 ),
                 Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     if (widget.recordType == RecordType.confirmation) ...[
                       Text(
@@ -1810,12 +1829,12 @@ class _CertificateTemplateScreenState
                       ],
                     ),
                     Text(
-                      'Parish Priest /Vicar',
+                      'Parish Priest / VICAR',
                       style: TextStyle(
-                        fontStyle: FontStyle.italic,
+                        fontWeight: FontWeight.bold,
                         fontSize: 7,
                       ),
-                      textAlign: TextAlign.right,
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
