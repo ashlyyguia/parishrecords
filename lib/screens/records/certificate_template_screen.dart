@@ -836,9 +836,9 @@ class _CertificateTemplateScreenState
     }
   }
 
-  bool get _usesCertificateLogos =>
-      widget.recordType == RecordType.baptism ||
-      widget.recordType == RecordType.confirmation;
+  /// Every certificate type shows the archdiocese and parish logos beside
+  /// its title.
+  bool get _usesCertificateLogos => true;
 
   String get _registerLabel {
     switch (widget.recordType) {
@@ -1003,7 +1003,10 @@ class _CertificateTemplateScreenState
       );
 
       if (archdioceseLogo != null && parishLogo != null) {
-        const logoBox = 44.0;
+        // Marriage certificates carry the most lines, so their logos are a
+        // little smaller to keep everything on the one page.
+        final logoBox =
+            widget.recordType == RecordType.marriage ? 38.0 : 44.0;
         const titleWidth = 168.0;
 
         pw.Widget logoCell(pw.MemoryImage image) => pw.SizedBox(
