@@ -581,7 +581,80 @@ def _fit_declared_row_grid(
     ks = ks_all[on]
     if len(ks) < ROW_ANCHOR_MIN_RUN or (int(ks.max()) - int(ks.min())) < ROW_ANCHOR_MIN_RUN:
         return None
-    return float(start), float(p), 0.0, [0]
+    a, b, c = _refine_declared_rows(ys_arr, float(start), float(p), n, tol_frac)
+    return a, b, c, [0]
+
+
+def _refine_declared_rows(
+    ys: np.ndarray,
+    start: float,
+    pitch: float,
+    n: int,
+    tol_frac: float,
+) -> tuple[float, float, float]:
+    """Bend the comb to follow the page's perspective.
+
+    The comb uses one constant pitch, but a hand-held photo is rarely square on:
+    rows nearer the camera are taller (measured on IMG_3120's left page, the
+    pitch grows from ~76 px at the top to ~90 px at the bottom). A straight comb
+    can only match such a page in the middle; by the last entry it is a whole
+    row out, which pushes the lower half of every row into the next one.
+
+    Keeping the comb's row indexing, re-fit ``y = a + b*k + c*k^2`` to the rules
+    that landed on it, re-assign every detected rule to its nearest row of the
+    bent comb, and repeat until stable. The curvature is bounded so a few
+    stray rules cannot fold the grid, and the result is only kept when it places
+    at least as many rules as the straight comb did.
+    """
+
+    def support(a: float, b: float, c: float) -> tuple[np.ndarray, np.ndarray]:
+        k = np.arange(n + 1, dtype=np.float64)
+        teeth = a + b * k + c * k * k
+        local = np.maximum(b + 2.0 * c * k, 1.0)
+        d = np.abs(teeth[:, None] - ys[None, :])
+        nearest = d.argmin(axis=0)
+        ok = d[nearest, np.arange(len(ys))] <= tol_frac * local[nearest]
+        # One rule per row: keep the closest when two land on the same tooth.
+        keep_k: list[int] = []
+        keep_y: list[float] = []
+        for kk in np.unique(nearest[ok]):
+            idx = np.where(ok & (nearest == kk))[0]
+            best = idx[np.argmin(np.abs(ys[idx] - teeth[kk]))]
+            keep_k.append(int(kk))
+            keep_y.append(float(ys[best]))
+        return np.array(keep_k, dtype=np.float64), np.array(keep_y, dtype=np.float64)
+
+    a, b, c = start, pitch, 0.0
+    ks, ys_on = support(a, b, c)
+    base_hits = len(ks)
+    for _ in range(6):
+        if len(ks) < ROW_ANCHOR_MIN_RUN or ks.max() - ks.min() < n / 2:
+            break
+        # Robust fit: drop the worst-fitting rule until every remaining one sits
+        # within half the comb tolerance of the curve. A rule the straight comb
+        # paired with the wrong row (it reached for a neighbour's tooth at the
+        # far end of the page) would otherwise drag the curve towards itself.
+        fk, fy = ks, ys_on
+        while True:
+            c2, b2, a2 = np.polyfit(fk, fy, 2)
+            res = np.abs(a2 + b2 * fk + c2 * fk * fk - fy)
+            worst = int(res.argmax())
+            if res[worst] <= 0.5 * tol_frac * b2 or len(fk) <= ROW_ANCHOR_MIN_RUN:
+                break
+            fk = np.delete(fk, worst)
+            fy = np.delete(fy, worst)
+        # A real page bends gently: the row height may change by at most 40%
+        # from the first entry to the last.
+        if b2 <= 0 or abs(2.0 * c2 * n) > 0.4 * b2:
+            break
+        new_ks, new_ys = support(a2, b2, c2)
+        if len(new_ks) < base_hits:
+            break
+        a, b, c = float(a2), float(b2), float(c2)
+        if len(new_ks) == len(ks) and np.array_equal(new_ks, ks):
+            break
+        ks, ys_on = new_ks, new_ys
+    return a, b, c
 
 
 def _full_width_row_ys(

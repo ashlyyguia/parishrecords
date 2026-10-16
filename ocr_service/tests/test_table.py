@@ -372,3 +372,26 @@ def test_synthetic_right_page_still_corroborates():
                        gutter_x=0, gutter_side="left")
     assert grid.cols == 5
     assert (grid.column_corroboration or 0.0) >= 0.60
+
+
+def test_declared_rows_follow_perspective_growth():
+    # Rule positions measured on a real tilted photo (IMG_3120, left page): the
+    # pitch grows from ~76 px at the top to ~90 px at the bottom. A straight
+    # comb drifts a whole row by the last entry; the fitted grid must instead
+    # land every boundary on its printed rule.
+    ys = [235, 319, 391, 465, 539, 616, 679, 755, 832, 910, 988, 1068, 1148,
+          1229, 1311, 1393, 1476, 1562, 1630, 1718, 1805, 1896, 1986, 2076, 2164]
+    result = _fit_declared_row_grid(ys, header_top=142, data_row_count=24, height=2268)
+    assert result is not None
+    a, b, c, _ = result
+    teeth = [a + b * k + c * k * k for k in range(25)]
+    worst = max(min(abs(t - y) for y in ys) for t in teeth)
+    assert worst < 0.25 * b  # every row boundary sits on a printed rule
+
+
+def test_declared_rows_stay_straight_on_an_even_page():
+    ys = [200 + 70 * k for k in range(25)]
+    a, b, c, _ = _fit_declared_row_grid(ys, header_top=120, data_row_count=24, height=2268)
+    assert abs(c) < 1e-6
+    assert a == pytest.approx(200, abs=1)
+    assert b == pytest.approx(70, abs=0.5)
