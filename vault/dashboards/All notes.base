@@ -1,0 +1,17 @@
+filters:
+  and:
+    - file.ext == "md"
+    - '!file.inFolder("templates")'
+views:
+  - type: table
+    name: All notes
+    order:
+      - file.name
+      - type
+      - status
+      - tags
+      - updated
+      - summary
+    sort:
+      - property: updated
+        direction: DESC

@@ -13,4 +13,5 @@ if (-not (Test-Path $py)) {
 $env:PYTHONIOENCODING = 'utf-8'
 & $py -m graphify extract . --code-only
 & $py -m graphify cluster-only . --no-label
-Write-Host "Done. Open graphify-out\graph.html or read graphify-out\GRAPH_REPORT.md"
+& $py -m graphify export obsidian --dir graphify-out/obsidian
+Write-Host "Done. Open graphify-out\graph.html, graphify-out\GRAPH_REPORT.md, or the graphify-out\obsidian vault"

@@ -85,3 +85,8 @@ ocr_service/.venv*/
 # graphify (code map tool): local venv and generated output
 .graphify-venv/
 graphify-out/
+
+# Obsidian vault: keep notes and settings, not per-user window state
+vault/.obsidian/workspace*.json
+vault/.obsidian/cache
+vault/.trash/
