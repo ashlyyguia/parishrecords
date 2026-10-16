@@ -442,3 +442,31 @@ def test_grid_is_never_moved_above_the_table_top():
         220.0, pitch, 0.0, n, binary, [int(r) for r in rules], 2268
     )
     assert a >= 200 - 0.25 * pitch
+
+
+def test_right_page_grid_on_the_header_band_is_moved_below_it():
+    # Measured on IMG_3949's right page: the column rules start at the header
+    # band's top (165) and end at the bottom border (1970); the true entries
+    # are 24 rows of ~72 px from ~237. A grid fitted 4% too tall a row and slid
+    # onto the bottom border starts entry 1 at the header's top, so every
+    # entry is read from the row above it. Only the lower half's rules were
+    # detected.
+    n, top, pitch = 24, 237.0, 72.2
+    rules = [int(round(top + pitch * k)) for k in range(10, n + 1)]
+    binary = _ruled_binary(1300, 2268, [100, 400, 700, 1100], 165, rules[-1])
+    bad_pitch = (rules[-1] - 165) / n
+    a, b, c = _anchor_declared_rows_to_table(
+        165.0, bad_pitch, 0.0, n, binary, rules, 2268, header_refit=True
+    )
+    assert a == pytest.approx(top, abs=0.3 * pitch)
+    for k in range(10, n + 1):
+        assert a + b * k + c * k * k == pytest.approx(top + pitch * k, abs=0.2 * pitch)
+
+
+def test_left_page_grid_is_not_moved_by_the_header_check():
+    n, pitch = 24, 70.0
+    rules = [int(round(150 + pitch * k)) for k in range(n + 1)]
+    binary = _ruled_binary(1300, 2268, [100, 400, 700, 1100], 140, rules[-1])
+    assert _anchor_declared_rows_to_table(
+        150.0, pitch, 0.0, n, binary, rules, 2268, header_refit=False
+    ) == (150.0, pitch, 0.0)

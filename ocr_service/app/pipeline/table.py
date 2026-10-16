@@ -671,6 +671,17 @@ ROW_END_SNAP_BOTTOM = 0.6
 # ROW_ORIGIN_MIN_GAIN of a row, so measurement noise never moves a good grid.
 ROW_ORIGIN_MAX_SHIFT = 6
 ROW_ORIGIN_MIN_GAIN = 0.4
+# On a right page, a grid whose entry 1 begins less than this many row heights
+# below where the column rules start has put entry 1 on the printed header
+# band (about one row tall) and is refitted, see _keep_entry_one_below_header.
+ROW_HEADER_MIN_PITCHES = 0.15
+ROW_HEADER_MAX_ABOVE_PITCHES = 0.6
+# How far, in row heights, a detected rule may sit from the expected top of
+# entry 1 and still be taken as it.
+ROW_END_SNAP_TOP = 0.35
+# The refit may change the row height by at most this fraction; a bigger change
+# means the table ends were mismeasured, and the grid is left as it was.
+ROW_HEADER_REFIT_MAX_CHANGE = 0.12
 
 
 def _table_vertical_extent(binary: np.ndarray) -> tuple[int, int] | None:
@@ -707,6 +718,7 @@ def _anchor_declared_rows_to_table(
     binary: np.ndarray,
     strong: list[int],
     height: int,
+    header_refit: bool = False,
 ) -> tuple[float, float, float]:
     """Slide the grid by whole rows so its last boundary meets the table bottom.
 
@@ -759,18 +771,82 @@ def _anchor_declared_rows_to_table(
         if shift == 0:
             continue
         # Entry 1 lies below where the table begins (the header is between).
-        if y(shift) < table_top - ROW_DECLARED_COMB_TOLERANCE * pitch_at(shift):
+        # On a right page a shift down may still leave it a little above that
+        # line: the header refit below then places it properly.
+        if (y(shift) < table_top - ROW_DECLARED_COMB_TOLERANCE * pitch_at(shift)
+                and not (header_refit and shift > 0)):
             continue
         if y(n + shift) > height - 1 + ROW_DECLARED_COMB_TOLERANCE * pitch_at(n + shift):
             continue
         m = misfit(shift)
         if m < best_misfit - ROW_ORIGIN_MIN_GAIN:
             best_shift, best_misfit = shift, m
-    if best_shift == 0:
+    if best_shift != 0:
+        s = best_shift
+        # Re-index so tooth `s` becomes tooth 0: y'(k) = y(k + s).
+        a, b = y(s), pitch_at(s)
+    if header_refit:
+        return _keep_entry_one_below_header(a, b, c, n, table_top, bottom, strong)
+    return a, b, c
+
+
+def _keep_entry_one_below_header(
+    a: float, b: float, c: float, n: int,
+    table_top: int, bottom: float, strong: list[int],
+) -> tuple[float, float, float]:
+    """Fix a grid whose entry 1 begins inside the printed header band.
+
+    When the fitted row height is a little too large, sliding the grid onto the
+    table's bottom border leaves entry 1 at the very top of the table, where
+    the column headings are (measured: the right pages of IMG_3941, IMG_3948,
+    IMG_3949, IMG_3966 and IMG_3971, about 3% too tall a row). Every entry
+    after it is then read from the row above, and the header labels become
+    entry 1. The header band is about one row tall and starts where the
+    column rules start, so pin entry 1 one row below that (snapped to a
+    detected rule), keep the bottom on the border, and refit the row curve
+    through the detected rules numbered up from the bottom, so the rows still
+    follow the page's perspective between the two pinned ends.
+    """
+    offset = (a - table_top) / b
+    # Only a grid whose entry 1 sits ON the header band is refitted. One that
+    # starts well above where the column rules begin means those rules start
+    # low on this page, so their start says nothing about the header there.
+    if offset >= ROW_HEADER_MIN_PITCHES or offset < -ROW_HEADER_MAX_ABOVE_PITCHES:
         return a, b, c
-    s = best_shift
-    # Re-index so tooth `s` becomes tooth 0: y'(k) = y(k + s).
-    return y(s), pitch_at(s), c
+    est = (bottom - table_top) / (n + 1.0)
+    target = table_top + est
+    near = [r for r in strong if abs(r - target) <= ROW_END_SNAP_TOP * est]
+    top = float(min(near, key=lambda r: abs(r - target))) if near else target
+    span = bottom - top
+    if span <= 0 or abs(span / n - b) > ROW_HEADER_REFIT_MAX_CHANGE * b:
+        return a, b, c
+
+    # Number the detected rules upward from the bottom border, one row per
+    # pitch, and fit the curve through them with both ends pinned: the rules
+    # carry the page's perspective, the ends fix which rule is which entry.
+    ks: list[float] = [float(n), 0.0]
+    ys: list[float] = [bottom, top]
+    weights: list[float] = [4.0, 4.0]
+    k_cur, y_cur = float(n), bottom
+    for r in sorted((r for r in strong if top + 0.5 * b < r < bottom - 0.5 * b), reverse=True):
+        steps = round((y_cur - r) / b)
+        if steps < 1 or abs((y_cur - r) - steps * b) > ROW_DECLARED_COMB_TOLERANCE * b:
+            continue
+        k_cur -= steps
+        y_cur = r
+        if k_cur <= 0:
+            break
+        ks.append(k_cur)
+        ys.append(float(r))
+        weights.append(1.0)
+    if len(ks) >= ROW_ANCHOR_MIN_RUN:
+        c2, b2, a2 = np.polyfit(ks, ys, 2, w=weights)
+    else:
+        c2, b2, a2 = 0.0, span / n, top
+    # The same sanity bound the comb refinement uses: a real page bends gently.
+    if b2 <= 0 or abs(2.0 * c2 * n) > 0.4 * b2:
+        c2, b2, a2 = 0.0, span / n, top
+    return float(a2), float(b2), float(c2)
 
 
 def _full_width_row_ys(
@@ -823,6 +899,7 @@ def _detect_row_boundaries(
     h: int,
     clustered: list[tuple[int, int, int, int]] | None = None,
     data_row_count: int | None = None,
+    header_refit: bool = False,
 ) -> list[int]:
     """The full set of row-boundary y-positions: header band top, then the
     fitted grid of data-row boundaries, extended to cover this page's own
@@ -865,7 +942,7 @@ def _detect_row_boundaries(
             return header_candidates
         a, b, c, ks = grid
         a, b, c = _anchor_declared_rows_to_table(
-            a, b, c, data_row_count, binary, strong, h
+            a, b, c, data_row_count, binary, strong, h, header_refit=header_refit
         )
         return _lay_declared_rows(a, b, c, ks, header_top, data_row_count, h)
 
@@ -1316,7 +1393,11 @@ def detect_grid(
     # Rows: see _detect_row_boundaries — a page-bow-tolerant, piecewise
     # detector that fits an evenly-spaced grid to whichever row candidates
     # agree with each other, rather than trusting a single full-width pass.
-    ys = _detect_row_boundaries(binary, w, h, clustered_rows, data_row_count=data_row_count)
+    # Only the right page's column rules reliably begin at the header band's
+    # top (the left page's "L or ILL" sub-columns start lower), so only there
+    # can they correct a grid that put entry 1 on the header.
+    ys = _detect_row_boundaries(binary, w, h, clustered_rows, data_row_count=data_row_count,
+                                header_refit=gutter_side == "left")
 
     fit: ColumnFit | None = None
     if column_template is None:

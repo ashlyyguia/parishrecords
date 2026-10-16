@@ -20,7 +20,7 @@ from .security import require_service_key, validate_upload
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("ocr_service")
 
-SERVICE_VERSION = "2.2.0"  # bump on every pipeline change; /health reports it
+SERVICE_VERSION = "2.3.0"  # bump on every pipeline change; /health reports it
 
 app = FastAPI(title="Parish Register Grid", version=SERVICE_VERSION)
 
