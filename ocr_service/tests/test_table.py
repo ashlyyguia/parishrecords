@@ -9,6 +9,7 @@ from app.pipeline.table import (
     detect_grid,
     _lay_declared_rows,
     _fit_declared_row_grid,
+    _anchor_declared_rows_to_table,
     _cluster_row_segments,
     _row_strip_segments,
     _full_width_row_ys,
@@ -395,3 +396,49 @@ def test_declared_rows_stay_straight_on_an_even_page():
     assert abs(c) < 1e-6
     assert a == pytest.approx(200, abs=1)
     assert b == pytest.approx(70, abs=0.5)
+
+
+def _ruled_binary(width, height, col_xs, top, bottom):
+    """A binary page whose only long vertical ink is the table's column rules."""
+    img = np.zeros((height, width), np.uint8)
+    for x in col_xs:
+        img[top:bottom, x:x + 3] = 255
+    return img
+
+
+def test_grid_started_too_high_is_slid_down_to_the_table_bottom():
+    # Measured on IMG_3120's right page: the comb locked onto the page edge and
+    # title, two rows above the table, so laying 24 rows from there stopped two
+    # rows short and the last entries were never read. The column rules end at
+    # the last entry's bottom border, which puts entry 24 back inside the grid.
+    pitch, n = 70.0, 24
+    table_top, first_entry = 150, 220
+    rules = [first_entry + pitch * k for k in range(n + 1)]
+    bottom = int(rules[-1])
+    binary = _ruled_binary(1000, 2268, [100, 300, 600, 900], table_top, bottom)
+    a, b, c = _anchor_declared_rows_to_table(
+        first_entry - 2 * pitch, pitch, 0.0, n, binary, [int(r) for r in rules], 2268
+    )
+    assert a == pytest.approx(first_entry, abs=1)
+    assert a + b * n + c * n * n == pytest.approx(bottom, abs=1)
+
+
+def test_grid_that_already_meets_the_table_is_left_alone():
+    pitch, n = 70.0, 24
+    rules = [220 + pitch * k for k in range(n + 1)]
+    binary = _ruled_binary(1000, 2268, [100, 300, 600, 900], 150, int(rules[-1]))
+    assert _anchor_declared_rows_to_table(
+        220.0, pitch, 0.0, n, binary, [int(r) for r in rules], 2268
+    ) == (220.0, pitch, 0.0)
+
+
+def test_grid_is_never_moved_above_the_table_top():
+    # A short table (its bottom detected high, e.g. a page cut off by the
+    # frame) must not pull entry 1 up into the title above the table.
+    pitch, n = 70.0, 24
+    rules = [220 + pitch * k for k in range(n + 1)]
+    binary = _ruled_binary(1000, 2268, [100, 300, 600, 900], 200, int(rules[-1] - 3 * pitch))
+    a, _, _ = _anchor_declared_rows_to_table(
+        220.0, pitch, 0.0, n, binary, [int(r) for r in rules], 2268
+    )
+    assert a >= 200 - 0.25 * pitch

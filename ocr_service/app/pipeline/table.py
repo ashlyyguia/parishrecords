@@ -657,6 +657,122 @@ def _refine_declared_rows(
     return a, b, c
 
 
+# The table's vertical extent, from the printed vertical (column) rules: they
+# run from the header band's top edge down to the bottom border of the last
+# entry and nowhere else, so their ends mark the table where the horizontal
+# rules alone are ambiguous. A vertical run must span this fraction of the page
+# to count as a column rule rather than handwriting.
+TABLE_RULE_MIN_FRACTION = 0.4
+# How far, in row pitches, a detected rule may sit from the column rules' bottom
+# end and still be taken as the table's bottom border.
+ROW_END_SNAP_BOTTOM = 0.6
+# The grid is slid by whole rows (keeping its spacing) to meet the bottom
+# border, at most this far, and only when that is clearly better: by at least
+# ROW_ORIGIN_MIN_GAIN of a row, so measurement noise never moves a good grid.
+ROW_ORIGIN_MAX_SHIFT = 6
+ROW_ORIGIN_MIN_GAIN = 0.4
+
+
+def _table_vertical_extent(binary: np.ndarray) -> tuple[int, int] | None:
+    """``(top, bottom)`` of the table's long vertical rules, or None.
+
+    The median end of the long vertical runs: the table's column rules all
+    share the same top and bottom, while the odd page edge or binding shadow
+    (also a long vertical run, but reaching the photo's edge) sits in a tail
+    the median ignores.
+    """
+    h, _ = binary.shape
+    rule = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(15, h // 40)))
+    vertical = cv2.morphologyEx(binary, cv2.MORPH_OPEN, rule)
+    # Bridge small breaks (a crossing row rule, faded pixels) so one printed
+    # rule stays one run.
+    bridge = cv2.getStructuringElement(cv2.MORPH_RECT, (3, max(5, h // 30)))
+    vertical = cv2.morphologyEx(vertical, cv2.MORPH_CLOSE, bridge)
+    n, _, stats, _ = cv2.connectedComponentsWithStats(vertical)
+    runs = [
+        (int(stats[i, cv2.CC_STAT_TOP]), int(stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT]))
+        for i in range(1, n)
+        if stats[i, cv2.CC_STAT_HEIGHT] >= TABLE_RULE_MIN_FRACTION * h
+    ]
+    if len(runs) < 3:
+        return None
+    return int(np.median([r[0] for r in runs])), int(np.median([r[1] for r in runs]))
+
+
+def _anchor_declared_rows_to_table(
+    a: float,
+    b: float,
+    c: float,
+    n: int,
+    binary: np.ndarray,
+    strong: list[int],
+    height: int,
+) -> tuple[float, float, float]:
+    """Slide the grid by whole rows so its last boundary meets the table bottom.
+
+    The comb fixes the row *spacing* well, but not which of its rules is entry
+    1: the header band's top rule, the page edge and the title's rules above
+    the table are all spaced like rows, so the comb can start one to six rows
+    too high (measured: IMG_3120's right page, IMG_3942's and IMG_3963's left
+    pages). Laid from there, the declared 24 rows stop short of the table and
+    the last entries are never read.
+
+    The bottom border settles it. The column rules end at the last entry's
+    bottom edge and nothing below the table looks like them, so the grid is
+    moved by whole rows until its last boundary lands on that border (snapped
+    to a detected rule when one is near). Entry 1 is never moved above where
+    the column rules begin. Which row is the header is then left to the
+    caller, which tells it from the entries by its printed labels.
+    """
+    extent = _table_vertical_extent(binary)
+    if extent is None:
+        return a, b, c
+    table_top, table_bottom = extent
+
+    def y(u: float) -> float:
+        return a + b * u + c * u * u
+
+    def pitch_at(u: float) -> float:
+        return max(b + 2.0 * c * u, 1.0)
+
+    def index_of(value: float) -> float:
+        # Invert y(u) = value on the rising branch of the curve.
+        if abs(c) < 1e-9:
+            return (value - a) / b
+        disc = b * b - 4.0 * c * (a - value)
+        if disc < 0:
+            return (value - a) / b
+        return float((-b + np.sqrt(disc)) / (2.0 * c))
+
+    near = [
+        r for r in strong
+        if abs(r - table_bottom) <= ROW_END_SNAP_BOTTOM * pitch_at(index_of(table_bottom))
+    ]
+    bottom = float(min(near, key=lambda r: abs(r - table_bottom))) if near else float(table_bottom)
+    u_bottom = index_of(bottom)
+
+    def misfit(shift: int) -> float:
+        return abs(u_bottom - (n + shift))
+
+    best_shift, best_misfit = 0, misfit(0)
+    for shift in range(-ROW_ORIGIN_MAX_SHIFT, ROW_ORIGIN_MAX_SHIFT + 1):
+        if shift == 0:
+            continue
+        # Entry 1 lies below where the table begins (the header is between).
+        if y(shift) < table_top - ROW_DECLARED_COMB_TOLERANCE * pitch_at(shift):
+            continue
+        if y(n + shift) > height - 1 + ROW_DECLARED_COMB_TOLERANCE * pitch_at(n + shift):
+            continue
+        m = misfit(shift)
+        if m < best_misfit - ROW_ORIGIN_MIN_GAIN:
+            best_shift, best_misfit = shift, m
+    if best_shift == 0:
+        return a, b, c
+    s = best_shift
+    # Re-index so tooth `s` becomes tooth 0: y'(k) = y(k + s).
+    return y(s), pitch_at(s), c
+
+
 def _full_width_row_ys(
     strong: list[tuple[int, int, int, int]],
     margin_fraction: float = ROW_RULE_LEFT_MARGIN_FRACTION,
@@ -748,6 +864,9 @@ def _detect_row_boundaries(
         if grid is None:
             return header_candidates
         a, b, c, ks = grid
+        a, b, c = _anchor_declared_rows_to_table(
+            a, b, c, data_row_count, binary, strong, h
+        )
         return _lay_declared_rows(a, b, c, ks, header_top, data_row_count, h)
 
     # The candidate closest to the header is excluded from the fit: it is
