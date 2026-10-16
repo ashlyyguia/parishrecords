@@ -164,7 +164,7 @@ function buildWelcomeEmail({ displayName, email }) {
     'If you did not create this account, please contact the parish office.',
     '',
     'God bless,',
-    `The ${PARISH_NAME} Parish Office`,
+    `The ${PARISH_NAME} Office`,
   ].join('\n');
 
   const li = (t) => `<li style="margin:4px 0">${t}</li>`;
@@ -191,74 +191,110 @@ ${li('Stay informed with parish announcements and Mass schedules')}
 <p style="margin:0 0 22px"><a href="${escapeHtml(APP_URL)}" style="display:inline-block;background:#5b2c83;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-family:Arial,sans-serif;font-size:15px">Open ${escapeHtml(PARISH_NAME)}</a></p>
 <p style="margin:0 0 4px;font-size:13px;color:#6b6b6b">If you did not create this account, please contact the parish office.</p>
 </td></tr>
-<tr><td style="padding:18px 28px;background:#faf7f0;font-size:14px;color:#555">God bless,<br>The ${escapeHtml(PARISH_NAME)} Parish Office</td></tr>
+<tr><td style="padding:18px 28px;background:#faf7f0;font-size:14px;color:#555">God bless,<br>The ${escapeHtml(PARISH_NAME)} Office</td></tr>
 </table>
 </td></tr></table>
 </body></html>`;
 
-  return { subject, text, html };
+  // Same content without the <!doctype>/<html>/<body> wrapper, for services
+  // (EmailJS) that put the message inside their own HTML document.
+  const htmlBody = html
+    .replace(/^[\s\S]*?<body[^>]*>/i, '')
+    .replace(/<\/body>[\s\S]*$/i, '')
+    .trim();
+
+  return { subject, text, html, htmlBody };
+}
+
+function emailjsWelcomeConfigured() {
+  return !!(EMAILJS_SERVICE_ID && EMAILJS_PUBLIC_KEY && process.env.EMAILJS_WELCOME_TEMPLATE_ID);
 }
 
 function welcomeTransport() {
   if (process.env.SMTP_HOST) return 'smtp';
-  if (EMAILJS_SERVICE_ID && EMAILJS_PUBLIC_KEY && process.env.EMAILJS_WELCOME_TEMPLATE_ID) {
-    return 'emailjs';
-  }
+  if (emailjsWelcomeConfigured()) return 'emailjs';
   return 'none';
+}
+
+async function sendWelcomeViaSmtp(to, message) {
+  const nodemailer = require('nodemailer');
+  const port = Number(process.env.SMTP_PORT || 587);
+  const mailer = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port,
+    secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : port === 465,
+    auth: process.env.SMTP_USER
+      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      : undefined,
+    // Fail fast: some hosts (e.g. Railway) block outgoing SMTP, and the
+    // default 2-minute timeout would hold the request open.
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
+  });
+  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
+  await mailer.sendMail({
+    from: `"${EMAILJS_FROM_NAME || PARISH_NAME}" <${fromAddress}>`,
+    to,
+    replyTo: EMAILJS_REPLY_TO || undefined,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+  });
+}
+
+async function sendWelcomeViaEmailjs(to, displayName, message) {
+  const resp = await postJson('https://api.emailjs.com/api/v1.0/email/send', {
+    service_id: EMAILJS_SERVICE_ID,
+    template_id: process.env.EMAILJS_WELCOME_TEMPLATE_ID,
+    user_id: EMAILJS_PUBLIC_KEY,
+    ...(EMAILJS_PRIVATE_KEY ? { accessToken: EMAILJS_PRIVATE_KEY } : {}),
+    template_params: {
+      email: to,
+      to_email: to,
+      to_name: displayName || 'Parishioner',
+      // The EmailJS "Welcome" template holds the design itself and only
+      // fills in these plain values (EmailJS escapes HTML inside variables).
+      first_name: ((displayName || '').toString().trim().split(/\s+/)[0]) || 'Parishioner',
+      parish_name: PARISH_NAME,
+      app_url: APP_URL,
+      subject: message.subject,
+      message_html: message.htmlBody,
+      message_text: message.text,
+      from_name: EMAILJS_FROM_NAME || PARISH_NAME,
+      reply_to: EMAILJS_REPLY_TO || undefined,
+    },
+  });
+  if (resp.statusCode < 200 || resp.statusCode >= 300) {
+    throw new Error(`EmailJS send failed: ${resp.statusCode} ${resp.body || ''}`);
+  }
 }
 
 /**
  * Sends the welcome email. Returns { sent: boolean, transport }.
- * Throws only when a configured transport fails.
+ * SMTP is tried first when configured; if it fails (e.g. the host blocks
+ * SMTP ports) and EmailJS is configured, EmailJS (HTTPS) is used instead.
+ * Throws only when every configured transport fails.
  */
 async function sendWelcomeEmail(to, displayName) {
   const message = buildWelcomeEmail({ displayName, email: to });
   const transport = welcomeTransport();
 
   if (transport === 'smtp') {
-    const nodemailer = require('nodemailer');
-    const port = Number(process.env.SMTP_PORT || 587);
-    const mailer = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port,
-      secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : port === 465,
-      auth: process.env.SMTP_USER
-        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-        : undefined,
-    });
-    const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
-    await mailer.sendMail({
-      from: `"${EMAILJS_FROM_NAME || PARISH_NAME}" <${fromAddress}>`,
-      to,
-      replyTo: EMAILJS_REPLY_TO || undefined,
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
-    });
-    return { sent: true, transport };
+    try {
+      await sendWelcomeViaSmtp(to, message);
+      return { sent: true, transport: 'smtp' };
+    } catch (e) {
+      if (!emailjsWelcomeConfigured()) throw e;
+      console.warn(`[welcome-email] SMTP failed (${e.message}); trying EmailJS.`);
+      await sendWelcomeViaEmailjs(to, displayName, message);
+      return { sent: true, transport: 'emailjs' };
+    }
   }
 
   if (transport === 'emailjs') {
-    const resp = await postJson('https://api.emailjs.com/api/v1.0/email/send', {
-      service_id: EMAILJS_SERVICE_ID,
-      template_id: process.env.EMAILJS_WELCOME_TEMPLATE_ID,
-      user_id: EMAILJS_PUBLIC_KEY,
-      ...(EMAILJS_PRIVATE_KEY ? { accessToken: EMAILJS_PRIVATE_KEY } : {}),
-      template_params: {
-        email: to,
-        to_email: to,
-        to_name: displayName || 'Parishioner',
-        subject: message.subject,
-        message_html: message.html,
-        message_text: message.text,
-        from_name: EMAILJS_FROM_NAME || PARISH_NAME,
-        reply_to: EMAILJS_REPLY_TO || undefined,
-      },
-    });
-    if (resp.statusCode >= 200 && resp.statusCode < 300) {
-      return { sent: true, transport };
-    }
-    throw new Error(`EmailJS send failed: ${resp.statusCode} ${resp.body || ''}`);
+    await sendWelcomeViaEmailjs(to, displayName, message);
+    return { sent: true, transport };
   }
 
   console.warn(`[welcome-email] No email transport configured; not sent to ${to}.`);
