@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../config/backend.dart';
 import '../models/register_marriage_entry.dart';
 import 'baptismal_ocr_service.dart' show OcrRecovery;
+import 'ocr_debug_log.dart';
 
 // Reuse the baptismal failure taxonomy verbatim -- the marriage route emits
 // the same error codes -- but keep a distinct exception type so callers can
@@ -151,6 +152,7 @@ class MarriageOcrService {
     final data = decoded['data'];
     if (data is! Map) throw _failure('BAD_RESPONSE', null);
     final map = Map<String, dynamic>.from(data);
+    logOcrScanResult('marriage', map);
 
     final rows = (map['rows'] as List? ?? const [])
         .whereType<Map>()

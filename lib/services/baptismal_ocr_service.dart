@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/backend.dart';
+import 'ocr_debug_log.dart';
 import '../models/baptismal_register_row.dart';
 
 /// How the UI should help the user recover from a [BaptismalOcrFailure].
@@ -199,7 +200,9 @@ class BaptismalOcrService {
 
     final data = decoded['data'];
     if (data is! Map) throw _failure('BAD_RESPONSE', null);
-    return BaptismalOcrScan.fromJson(Map<String, dynamic>.from(data));
+    final map = Map<String, dynamic>.from(data);
+    logOcrScanResult('baptismal', map);
+    return BaptismalOcrScan.fromJson(map);
   }
 
   /// Falls back to the signed-in user's Firebase ID token when the caller
