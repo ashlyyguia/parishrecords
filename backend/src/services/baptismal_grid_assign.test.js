@@ -107,3 +107,76 @@ test('joins the same physical row when one page has extra header rows (index off
   expect(juan).toBeDefined();
   expect(juan.fields.dateOfBaptism.value).toBe('12MAY2016');
 });
+
+// --- Lines written on or across a ruled line ----------------------------------
+// A ruled page like the real register: a header band (row 0) then `n` entry
+// rows of height 70 starting at y=100, with the given columns side by side.
+function ruledPage(keys, n = 4) {
+  const cells = [];
+  keys.forEach((key, i) => {
+    cells.push(cell(key, 0, i * 300, 0, 300, 100));
+    for (let r = 1; r <= n; r += 1) cells.push(cell(key, r, i * 300, 100 + (r - 1) * 70, 300, 70));
+  });
+  return { cells };
+}
+// A word box 16px tall centred at (cx, cy).
+const word = (text, cx, cy) => ({
+  text,
+  vertices: [
+    { x: cx - 40, y: cy - 8 }, { x: cx + 40, y: cy - 8 },
+    { x: cx + 40, y: cy + 8 }, { x: cx - 40, y: cy + 8 },
+  ],
+  confidence: 1,
+});
+
+test('a second sponsor written on the bottom rule stays with its own entry', () => {
+  // Rows: 1 = 100-170, 2 = 170-240, 3 = 240-310, 4 = 310-380. Each entry's
+  // second sponsor sits on that row's bottom rule; the last one just below
+  // the table's bottom border.
+  const left = ruledPage(['child_name']);
+  const right = ruledPage(['sponsors']);
+  const leftWords = [word('ANA', 150, 135), word('BEN', 150, 205), word('CIA', 150, 275), word('DAN', 150, 345)];
+  const rightWords = [
+    word('PEDRO', 150, 135), word('ROSA', 150, 170),
+    word('JUAN', 150, 205), word('LINA', 150, 240),
+    word('MARK', 150, 275), word('NENA', 150, 310),
+    word('RUDY', 150, 345), word('TESS', 150, 382),
+  ];
+  const { rows } = gridToRows(left, leftWords, right, rightWords);
+  expect(rows.map((r) => r.fields.sponsors.value)).toEqual([
+    'PEDRO ROSA', 'JUAN LINA', 'MARK NENA', 'RUDY TESS',
+  ]);
+});
+
+test('a place of birth written above its row joins the date below it', () => {
+  // Each entry's place line is written on (or just over) the row's top rule,
+  // the date in the row; the first place line crosses into the header band.
+  const left = ruledPage(['child_name', 'place_and_birth_date']);
+  const right = ruledPage(['minister']);
+  const leftWords = [
+    word('ANA', 150, 135), word('BEN', 150, 205), word('CIA', 150, 275), word('DAN', 150, 345),
+    word('OZAMIZ', 450, 100), word('1 MAY 2009', 450, 140),
+    word('OROQUIETA', 450, 166), word('2 JUNE 2010', 450, 210),
+    word('CALAMBA', 450, 236), word('3 JULY 2011', 450, 280),
+    word('TANGUB', 450, 306), word('4 AUG 2012', 450, 350),
+  ];
+  const { rows } = gridToRows(left, leftWords, right, []);
+  expect(rows.map((r) => r.fields.placeAndBirthDate.value)).toEqual([
+    'OZAMIZ 1 MAY 2009', 'OROQUIETA 2 JUNE 2010', 'CALAMBA 3 JULY 2011', 'TANGUB 4 AUG 2012',
+  ]);
+});
+
+test('words sitting inside their rows are left where they are', () => {
+  const left = ruledPage(['child_name', 'parents']);
+  const leftWords = [
+    word('ANA', 150, 120), word('CRUZ', 150, 155),
+    word('BEN', 150, 190), word('REYES', 150, 225),
+    word('CIA', 150, 260), word('LIM', 150, 295),
+    word('DAN', 150, 330), word('TAN', 150, 365),
+    word('UNKNOWN', 450, 120), word('ROSA CRUZ', 450, 155),
+  ];
+  const { rows } = gridToRows(left, leftWords, ruledPage(['minister']), []);
+  expect(rows.map((r) => r.fields.nameOfChild.value)).toEqual(['ANA CRUZ', 'BEN REYES', 'CIA LIM', 'DAN TAN']);
+  expect(rows[0].fields.parents.value).toBe('UNKNOWN ROSA CRUZ');
+  expect(rows[1].fields.parents.value).toBe('');
+});
