@@ -81,3 +81,7 @@ book-scan/vision-test.js
 
 # Python OCR service local venvs
 ocr_service/.venv*/
+
+# graphify (code map tool): local venv and generated output
+.graphify-venv/
+graphify-out/

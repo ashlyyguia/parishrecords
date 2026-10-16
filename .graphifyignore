@@ -1,0 +1,63 @@
+# What graphify must never read. .gitignore is applied too; this file only
+# excludes more. Run graphify with --code-only so nothing is sent to an LLM.
+
+# Register photos, scans and OCR output: they hold parishioners' (and minors')
+# personal records.
+attachments/
+book-scan/
+build/
+**/ocr_debug/
+test/ocr/fixtures/
+backend/test/fixtures/
+ocr_service/tests/fixtures/
+ocr_service/samples/
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.HEIC
+*.webp
+*.pdf
+*.docx
+*.xlsx
+*.csv
+*.txt
+users.txt
+
+# Secrets and environment config
+*.env
+**/.env
+**/.env.*
+dart_define*.json
+**/google-services.json
+**/GoogleService-Info.plist
+**/*firebase-adminsdk*.json
+**/*service-account*.json
+**/holyparish*.json
+**/*.pem
+**/*.key
+**/*.p12
+**/*.jks
+**/*.keystore
+**/key.properties
+
+# Tool, editor and agent folders
+.claude/
+.superpowers/
+.playwright-mcp/
+.vscode/
+.idea/
+.firebase/
+.dart_tool/
+.graphify-venv/
+
+# Generated platform shells and lockfiles (noise, not architecture)
+android/
+ios/
+linux/
+macos/
+windows/
+web/
+**/package-lock.json
+pubspec.lock
+graphify-out/
