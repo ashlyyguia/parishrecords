@@ -13,6 +13,7 @@ import '../../services/register_ocr_parser.dart';
 import '../../utils/manual_register_notes.dart';
 import '../../utils/register_text_parsing.dart';
 import 'certificate_layouts.dart';
+import 'certificate_zoom_view.dart';
 
 /// Certificate data model for form editing
 class CertificateData {
@@ -1232,31 +1233,52 @@ class _CertificateTemplateScreenState
                     ),
                   ),
                   Expanded(
-                    child: Center(
-                      child: Container(
-                        margin: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: AspectRatio(
-                          aspectRatio:
-                              certificatePageFormat.width /
-                              certificatePageFormat.height,
-                          child: _buildCertificatePreview(),
-                        ),
-                      ),
+                    child: CertificateZoomView(
+                      aspectRatio:
+                          certificatePageFormat.width /
+                          certificatePageFormat.height,
+                      pageBuilder: (_) => _buildCertificatePreview(),
+                      onFullscreen: _openFullscreenPreview,
                     ),
                   ),
                 ],
               ),
             ),
+    );
+  }
+
+  /// Full-screen certificate preview with the same zoom controls.
+  void _openFullscreenPreview() {
+    Navigator.of(context, rootNavigator: true).push(
+      PageRouteBuilder<void>(
+        opaque: true,
+        transitionDuration: const Duration(milliseconds: 180),
+        reverseTransitionDuration: const Duration(milliseconds: 140),
+        pageBuilder: (ctx, _, _) => Scaffold(
+          backgroundColor: const Color(0xFF1F2937),
+          body: CallbackShortcuts(
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.escape): () =>
+                  Navigator.of(ctx).maybePop(),
+            },
+            child: Focus(
+              autofocus: true,
+              child: SafeArea(
+                child: CertificateZoomView(
+                  aspectRatio:
+                      certificatePageFormat.width /
+                      certificatePageFormat.height,
+                  pageBuilder: (_) => _buildCertificatePreview(),
+                  fullscreen: true,
+                  onFullscreen: () => Navigator.of(ctx).maybePop(),
+                ),
+              ),
+            ),
+          ),
+        ),
+        transitionsBuilder: (_, anim, _, child) =>
+            FadeTransition(opacity: anim, child: child),
+      ),
     );
   }
 
