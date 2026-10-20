@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:csv/csv.dart';
 import 'package:intl/intl.dart';
 import '../../../models/record.dart';
 import '../../../services/export_service.dart';
@@ -171,101 +170,6 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
     if (mounted) await _loadFromBackend();
   }
 
-  Future<void> _importCsvDialog() async {
-    final ctrl = TextEditingController();
-    int imported = 0;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Import CSV'),
-        content: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Paste CSV with headers: id(optional), name, type, date(YYYY-MM-DD). '
-                  'Type must be baptism or marriage only.',
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: ctrl,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'id,name,type,date',
-                ),
-                minLines: 8,
-                maxLines: 12,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Import'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      final rows = const CsvToListConverter(
-        eol: '\n',
-      ).convert(ctrl.text.trim());
-      if (rows.isEmpty) return;
-      final headers = rows.first.map((e) => e.toString().trim()).toList();
-      final idxName = headers.indexOf('name');
-      final idxType = headers.indexOf('type');
-      final idxDate = headers.indexOf('date');
-      for (int i = 1; i < rows.length; i++) {
-        final r = rows[i];
-        if (r.isEmpty) continue;
-        final name = idxName >= 0 && idxName < r.length
-            ? r[idxName].toString().trim()
-            : '';
-        final type = idxType >= 0 && idxType < r.length
-            ? r[idxType].toString().trim().toLowerCase()
-            : '';
-        final dateStr = idxDate >= 0 && idxDate < r.length
-            ? r[idxDate].toString().trim()
-            : '';
-        if (name.isEmpty) continue;
-        if (type != 'baptism' && type != 'marriage') {
-          continue;
-        }
-        DateTime? d = DateTime.tryParse(dateStr);
-        d ??= DateTime.now();
-        await _repo.add(
-          _strToType(type),
-          name,
-          DateTime(d.year, d.month, d.day),
-        );
-        imported++;
-      }
-      if (mounted) await _loadFromBackend();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Imported $imported records.')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
-      }
-    }
-  }
-
   Future<void> _backupFiltered() async {
     final filtered = _load();
     final records = filtered
@@ -381,11 +285,6 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                   onPressed: _openManualRegister,
                   icon: const Icon(Icons.edit_note_outlined),
                   label: const Text('Manual Register'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _importCsvDialog,
-                  icon: const Icon(Icons.file_upload_outlined),
-                  label: const Text('Import CSV'),
                 ),
                 FilledButton.icon(
                   onPressed: () => context.push('/admin/records/ocr-baptism'),
