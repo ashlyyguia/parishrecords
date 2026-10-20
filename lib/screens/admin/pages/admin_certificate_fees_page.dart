@@ -200,6 +200,7 @@ class _AdminCertificateFeesPageState
                               .contains(selectedType)
                           ? selectedType
                           : _CertificateFeesPanel._certificateTypes.first,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Certificate type',
                         prefixIcon: Icon(Icons.verified_outlined),
@@ -211,6 +212,7 @@ class _AdminCertificateFeesPageState
                               value: t,
                               child: Text(
                                 CertificateFeeRepository.getDisplayName(t),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           )
@@ -1081,6 +1083,7 @@ class _RecordCertificateFeeFormState extends State<RecordCertificateFeeForm> {
         children: [
           DropdownButtonFormField<String>(
             value: _certificateType,
+            isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Certificate type *',
               prefixIcon: Icon(Icons.verified_outlined),
@@ -1090,7 +1093,10 @@ class _RecordCertificateFeeFormState extends State<RecordCertificateFeeForm> {
                 .map(
                   (t) => DropdownMenuItem(
                     value: t,
-                    child: Text(CertificateFeeRepository.getDisplayName(t)),
+                    child: Text(
+                      CertificateFeeRepository.getDisplayName(t),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 )
                 .toList(),

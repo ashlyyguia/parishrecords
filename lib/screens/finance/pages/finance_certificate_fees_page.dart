@@ -208,11 +208,15 @@ class _FinanceCertificateFeesPageState
                     prefixIcon: Icon(Icons.verified_outlined),
                     border: OutlineInputBorder(),
                   ),
+                  isExpanded: true,
                   items: [
                     for (final t in _certificateTypes)
                       DropdownMenuItem(
                         value: t,
-                        child: Text(CertificateFeeRepository.getDisplayName(t)),
+                        child: Text(
+                          CertificateFeeRepository.getDisplayName(t),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                   ],
                   onChanged: (v) => setDialogState(() => type = v ?? type),
@@ -395,6 +399,9 @@ class _FinanceCertificateFeesPageState
       extraFilters: DropdownButtonFormField<String>(
         key: const ValueKey('certificate-type-filter'),
         initialValue: _filterType,
+        // Fill the filter's width and cut long names ("Certificate of Good
+        // Moral Character") with an ellipsis instead of overflowing it.
+        isExpanded: true,
         decoration: InputDecoration(
           labelText: 'Certificate type',
           prefixIcon: Icon(Icons.verified_outlined, color: _style.accent),
@@ -408,7 +415,10 @@ class _FinanceCertificateFeesPageState
           for (final t in _certificateTypes)
             DropdownMenuItem(
               value: t,
-              child: Text(CertificateFeeRepository.getDisplayName(t)),
+              child: Text(
+                CertificateFeeRepository.getDisplayName(t),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
         ],
         onChanged: (v) => setState(() => _filterType = v ?? 'All'),
