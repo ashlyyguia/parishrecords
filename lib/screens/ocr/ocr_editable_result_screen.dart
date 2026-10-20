@@ -263,7 +263,10 @@ class _OcrEditableResultScreenState extends State<OcrEditableResultScreen> {
                         labelText: 'Record Type',
                         border: OutlineInputBorder(),
                       ),
-                      items: RecordType.values.map((type) {
+                      // Good Moral certificates are issued, not scanned.
+                      items: RecordType.values
+                          .where((t) => t != RecordType.goodMoral)
+                          .map((type) {
                         return DropdownMenuItem(
                           value: type,
                           child: Text(type.value.toUpperCase()),

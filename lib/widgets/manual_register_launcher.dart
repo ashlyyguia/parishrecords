@@ -40,6 +40,14 @@ class ManualRegisterLauncher {
       color: const Color(0xFF64748B),
       route: '$recordsBasePath/new/death',
     ),
+    _SacramentOption(
+      type: 'good_moral',
+      label: 'Good Moral Certificate',
+      subtitle: 'Certificate of Good Moral Character',
+      icon: Icons.workspace_premium_outlined,
+      color: const Color(0xFFD97706),
+      route: '$recordsBasePath/new/good-moral',
+    ),
   ];
 
   /// Shows sacrament picker, then navigates to the matching manual register form.
@@ -70,7 +78,7 @@ class ManualRegisterLauncher {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Choose the sacrament register you want to enter.',
+                  'Choose the register or certificate you want to enter.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

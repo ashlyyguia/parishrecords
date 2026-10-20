@@ -127,6 +127,7 @@ Future<AdminAnalytics> _getCounts(FirebaseFirestore firestore) async {
     'marriage_records',
     'confirmation_records',
     'funeral_records',
+    'good_moral_records',
   ];
 
   final recordCountFutures = recordCollections

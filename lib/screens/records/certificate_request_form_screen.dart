@@ -1996,6 +1996,9 @@ class _CertificateRequestFormScreenState
         case RecordType.funeral:
           _applyFromDeathRecord(decoded);
           break;
+        case RecordType.goodMoral:
+          // Not a sacramental record: nothing to pre-fill a request from.
+          break;
       }
 
       if (!mounted) return;

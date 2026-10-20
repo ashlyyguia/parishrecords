@@ -128,6 +128,9 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
       case RecordType.funeral:
         await context.push('/records/new/death');
         break;
+      case RecordType.goodMoral:
+        await context.push('/records/new/good-moral');
+        break;
     }
   }
 
@@ -333,6 +336,12 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                               RecordType.funeral,
                               'Death',
                               Icons.person_outline,
+                              colorScheme,
+                            ),
+                            _buildTypeChip(
+                              RecordType.goodMoral,
+                              'Good Moral',
+                              Icons.workspace_premium_outlined,
                               colorScheme,
                             ),
                           ],
@@ -576,7 +585,7 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                       Row(
                         children: [
                           Text(
-                            _capitalize(record.type.name),
+                            record.type.label,
                             style: TextStyle(
                               fontSize: 13,
                               color: _getRecordTypeColor(record.type),
@@ -731,6 +740,12 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                           case RecordType.funeral:
                             context.push('/records/new/death', extra: record);
                             break;
+                          case RecordType.goodMoral:
+                            context.push(
+                              '/records/new/good-moral',
+                              extra: record,
+                            );
+                            break;
                         }
                       },
                       icon: Icon(
@@ -758,6 +773,8 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
         return Colors.purple;
       case RecordType.funeral:
         return Colors.grey;
+      case RecordType.goodMoral:
+        return Colors.amber.shade800;
     }
   }
 
@@ -771,6 +788,8 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
         return Icons.verified_outlined;
       case RecordType.funeral:
         return Icons.person_outline;
+      case RecordType.goodMoral:
+        return Icons.workspace_premium_outlined;
     }
   }
 
@@ -784,9 +803,6 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
         return Colors.red;
     }
   }
-
-  String _capitalize(String s) =>
-      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 }
 
 class _RecordAdditionalInfo {
@@ -890,6 +906,14 @@ class _AddRecordTypeScreen extends StatelessWidget {
               color: Colors.grey,
               icon: Icons.person_outline,
               onTap: () => Navigator.of(context).pop(RecordType.funeral),
+            ),
+            const SizedBox(height: 12),
+            _RecordTypeButton(
+              label: 'Good Moral',
+              description: 'Issue a Certificate of Good Moral Character',
+              color: Colors.amber.shade800,
+              icon: Icons.workspace_premium_outlined,
+              onTap: () => Navigator.of(context).pop(RecordType.goodMoral),
             ),
             const Spacer(),
             Text(

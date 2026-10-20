@@ -262,6 +262,10 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                                 value: 'confirmation',
                                 child: Text('Confirmation'),
                               ),
+                              DropdownMenuItem(
+                                value: 'goodMoral',
+                                child: Text('Good Moral'),
+                              ),
                             ],
                             onChanged: (v) =>
                                 setState(() => _type = v ?? 'all'),
@@ -472,7 +476,7 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                   DataCell(
                     AdminDesignSystem.statusBadge(
                       context,
-                      type.toUpperCase(),
+                      RecordTypeExtension.fromString(type).label.toUpperCase(),
                       badgeColor,
                     ),
                   ),
@@ -529,6 +533,8 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
         return Colors.grey;
       case 'confirmation':
         return Colors.orange;
+      case 'goodmoral':
+        return Colors.amber.shade800;
       default:
         return Colors.blueGrey;
     }
@@ -570,6 +576,9 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
         break;
       case RecordType.funeral:
         context.push('/records/new/death', extra: extra);
+        break;
+      case RecordType.goodMoral:
+        context.push('/staff/records/new/good-moral', extra: record);
         break;
     }
   }

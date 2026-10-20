@@ -21,6 +21,8 @@ class RecordsRepository {
         return _firestore.collection('confirmation_records');
       case RecordType.baptism:
         return _firestore.collection('baptism_records');
+      case RecordType.goodMoral:
+        return _firestore.collection('good_moral_records');
     }
   }
 
@@ -79,6 +81,7 @@ class RecordsRepository {
         RecordType.marriage,
         RecordType.confirmation,
         RecordType.funeral,
+        RecordType.goodMoral,
       ];
 
       for (final type in types) {
@@ -138,69 +141,29 @@ class RecordsRepository {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return Stream.value([]);
 
-    // Combine streams from all record collections
-    final baptismStream = _firestore.collection('baptism_records').snapshots();
-    final marriageStream = _firestore
-        .collection('marriage_records')
-        .snapshots();
-    final confirmationStream = _firestore
-        .collection('confirmation_records')
-        .snapshots();
-    final funeralStream = _firestore.collection('funeral_records').snapshots();
-
-    return _combineStreams(
-      baptismStream,
-      marriageStream,
-      confirmationStream,
-      funeralStream,
-    );
-  }
-
-  Stream<List<ParishRecord>> _combineStreams(
-    Stream<QuerySnapshot> s1,
-    Stream<QuerySnapshot> s2,
-    Stream<QuerySnapshot> s3,
-    Stream<QuerySnapshot> s4,
-  ) {
+    // Combine the live snapshots of every record collection; emit once each
+    // has delivered its first snapshot.
     final controller = StreamController<List<ParishRecord>>();
-    QuerySnapshot? r1, r2, r3, r4;
+    final latest = <RecordType, QuerySnapshot>{};
+    final subs = <StreamSubscription<QuerySnapshot>>[];
 
     void emit() {
-      if (r1 == null || r2 == null || r3 == null || r4 == null) return;
+      if (latest.length < RecordType.values.length) return;
       final records = <ParishRecord>[
-        ...r1!.docs.map((d) => _fromFirestore(d, RecordType.baptism)),
-        ...r2!.docs.map((d) => _fromFirestore(d, RecordType.marriage)),
-        ...r3!.docs.map((d) => _fromFirestore(d, RecordType.confirmation)),
-        ...r4!.docs.map((d) => _fromFirestore(d, RecordType.funeral)),
+        for (final type in RecordType.values)
+          ...latest[type]!.docs.map((d) => _fromFirestore(d, type)),
       ]..sort((a, b) => b.date.compareTo(a.date));
       controller.add(records);
     }
 
-    final subs = <StreamSubscription<QuerySnapshot>>[];
-    subs.add(
-      s1.listen((e) {
-        r1 = e;
-        emit();
-      }),
-    );
-    subs.add(
-      s2.listen((e) {
-        r2 = e;
-        emit();
-      }),
-    );
-    subs.add(
-      s3.listen((e) {
-        r3 = e;
-        emit();
-      }),
-    );
-    subs.add(
-      s4.listen((e) {
-        r4 = e;
-        emit();
-      }),
-    );
+    for (final type in RecordType.values) {
+      subs.add(
+        _collectionForType(type).snapshots().listen((e) {
+          latest[type] = e;
+          emit();
+        }),
+      );
+    }
 
     controller.onCancel = () async {
       for (final s in subs) {
@@ -414,6 +377,7 @@ class RecordsRepository {
         RecordType.marriage: 'marriage_records',
         RecordType.confirmation: 'confirmation_records',
         RecordType.funeral: 'funeral_records',
+        RecordType.goodMoral: 'good_moral_records',
       };
 
       DocumentSnapshot<Map<String, dynamic>>? existingDoc;
@@ -489,6 +453,7 @@ class RecordsRepository {
       'marriage_records',
       'confirmation_records',
       'funeral_records',
+      'good_moral_records',
     ];
     for (final col in collections) {
       try {
@@ -530,6 +495,7 @@ class RecordsRepository {
         'marriage_records',
         'confirmation_records',
         'funeral_records',
+        'good_moral_records',
       ];
       for (final col in collections) {
         try {
@@ -602,6 +568,7 @@ class RecordsRepository {
       'marriage_records',
       'confirmation_records',
       'funeral_records',
+      'good_moral_records',
     ];
     for (final col in collections) {
       try {
@@ -651,6 +618,7 @@ class RecordsRepository {
         'marriage_records',
         'confirmation_records',
         'funeral_records',
+        'good_moral_records',
       ];
       for (final col in collections) {
         try {

@@ -208,6 +208,14 @@ class _RecordDetailBody extends ConsumerWidget {
                     extra: rec,
                   );
                   break;
+                case RecordType.goodMoral:
+                  context.push(
+                    adminContext
+                        ? '/admin/records/new/good-moral'
+                        : '/records/new/good-moral',
+                    extra: rec,
+                  );
+                  break;
               }
             },
           ),
@@ -459,7 +467,49 @@ class _RecordDetailBody extends ConsumerWidget {
         return _buildConfirmationDetails(context, data, df);
       case RecordType.funeral:
         return _buildDeathDetails(context, data, df);
+      case RecordType.goodMoral:
+        return _buildGoodMoralDetails(context, data, df);
     }
+  }
+
+  Widget _buildGoodMoralDetails(
+    BuildContext context,
+    Map<String, dynamic> data,
+    DateFormat df,
+  ) {
+    final gm = data['goodMoral'];
+    final m = gm is Map ? gm : const {};
+    String v(String k) => (m[k] ?? '').toString().trim();
+    final issued = DateTime.tryParse(v('dateIssued'));
+    final rows = <(String, String)>[
+      (
+        'Name',
+        [v('title'), v('fullName')].where((e) => e.isNotEmpty).join(' '),
+      ),
+      ('A resident of', v('residentOf')),
+      ('Is a person of', v('personOf')),
+      ('Known as having', v('knownAs')),
+      ('Fit person for', v('purpose')),
+      ('Date issued', issued == null ? v('dateIssued') : df.format(issued)),
+      ('Signing priest', v('parishPriest')),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Certificate of Good Moral Character',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            for (final (label, value) in rows)
+              if (value.isNotEmpty) Text('$label: $value'),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildBaptismDetails(
@@ -1183,6 +1233,7 @@ class _RecordDetailBody extends ConsumerWidget {
           }
           break;
         case RecordType.funeral:
+        case RecordType.goodMoral:
           remarks = data['remarks']?.toString();
           final meta = data['meta'] as Map<String, dynamic>?;
           if (meta != null) {

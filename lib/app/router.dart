@@ -45,6 +45,7 @@ import '../screens/records/certificate_request_form_screen.dart';
 import '../screens/records/certificate_scan_screen.dart';
 import '../screens/records/certificate_requests_list_screen.dart';
 import '../screens/records/certificate_template_screen.dart';
+import '../screens/records/good_moral_form_screen.dart';
 import '../screens/records/confirmation_form_screen.dart';
 import '../screens/records/death_form_screen.dart';
 import '../screens/records/enhanced_baptism_form_screen.dart';
@@ -349,6 +350,11 @@ GoRouter createRouter() {
         },
       ),
       GoRoute(
+        path: '/records/new/good-moral',
+        builder: (context, state) =>
+            GoodMoralFormScreen(existing: _FormRouteArgs(state.extra).existing),
+      ),
+      GoRoute(
         path: '/records/new/death',
         builder: (context, state) {
           final args = _FormRouteArgs(state.extra);
@@ -465,8 +471,8 @@ GoRouter createRouter() {
                   initialOcrEntries: ocr is List<RegisterOcrEntry>
                       ? ocr
                       : (ocr is List
-                          ? ocr.whereType<RegisterOcrEntry>().toList()
-                          : null),
+                            ? ocr.whereType<RegisterOcrEntry>().toList()
+                            : null),
                   initialVolNo: extra['volNo']?.toString(),
                   initialSeriesNo: extra['seriesNo']?.toString(),
                 );
@@ -486,8 +492,8 @@ GoRouter createRouter() {
                   initialMarriageEntries: rows is List<RegisterMarriageEntry>
                       ? rows
                       : (rows is List
-                          ? rows.whereType<RegisterMarriageEntry>().toList()
-                          : null),
+                            ? rows.whereType<RegisterMarriageEntry>().toList()
+                            : null),
                   initialVolNo: extra['volNo']?.toString(),
                   initialSeriesNo: extra['seriesNo']?.toString(),
                 );
@@ -541,6 +547,7 @@ GoRouter createRouter() {
             'marriage',
             'confirmation',
             'death',
+            'good-moral',
           ])
             GoRoute(
               path: '/staff/records/new/$kind',
@@ -550,7 +557,9 @@ GoRouter createRouter() {
             path: '/staff/ocr/bulk-records',
             builder: (context, state) {
               final extra = state.extra;
-              final map = extra is Map<String, dynamic> ? extra : <String, dynamic>{};
+              final map = extra is Map<String, dynamic>
+                  ? extra
+                  : <String, dynamic>{};
               final entries = map['entries'];
               return StaffOcrBulkRecordsPage(
                 rawText: map['rawText']?.toString() ?? '',
@@ -640,6 +649,7 @@ GoRouter createRouter() {
             'marriage',
             'confirmation',
             'death',
+            'good-moral',
           ])
             GoRoute(
               path: '/admin/records/new/$kind',
@@ -717,8 +727,8 @@ GoRouter createRouter() {
                   initialOcrEntries: ocr is List<RegisterOcrEntry>
                       ? ocr
                       : (ocr is List
-                          ? ocr.whereType<RegisterOcrEntry>().toList()
-                          : null),
+                            ? ocr.whereType<RegisterOcrEntry>().toList()
+                            : null),
                   initialVolNo: extra['volNo']?.toString(),
                   initialSeriesNo: extra['seriesNo']?.toString(),
                   returnRoute: '/admin/records',
@@ -750,8 +760,8 @@ GoRouter createRouter() {
                   initialMarriageEntries: rows is List<RegisterMarriageEntry>
                       ? rows
                       : (rows is List
-                          ? rows.whereType<RegisterMarriageEntry>().toList()
-                          : null),
+                            ? rows.whereType<RegisterMarriageEntry>().toList()
+                            : null),
                   initialVolNo: extra['volNo']?.toString(),
                   initialSeriesNo: extra['seriesNo']?.toString(),
                   returnRoute: '/admin/records',
@@ -1188,6 +1198,12 @@ Widget _recordFormFor(String kind, Object? extra) {
         ocrPrefill: args.ocrPrefill,
         ocrImagePath: args.ocrImagePath,
         ocrRawText: args.ocrRawText,
+      );
+    case 'good-moral':
+      return GoodMoralFormScreen(
+        existing: args.existing,
+        fromStaff: args.fromStaff,
+        fromAdmin: args.fromAdmin,
       );
     default:
       return EnhancedBaptismFormScreen(

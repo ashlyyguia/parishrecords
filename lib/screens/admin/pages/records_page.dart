@@ -148,6 +148,9 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
         case RecordType.funeral:
           await context.push('/admin/records/new/death', extra: record);
           break;
+        case RecordType.goodMoral:
+          await context.push('/admin/records/new/good-moral', extra: record);
+          break;
       }
     }
     if (mounted) await _loadFromBackend();
@@ -352,6 +355,7 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
               DropdownMenuItem(value: 'all', child: Text('All Types')),
               DropdownMenuItem(value: 'baptism', child: Text('Baptism')),
               DropdownMenuItem(value: 'marriage', child: Text('Marriage')),
+              DropdownMenuItem(value: 'goodMoral', child: Text('Good Moral')),
             ],
             onChanged: (v) => setState(() => _type = v ?? 'all'),
           ),
@@ -569,6 +573,9 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                       case 'funeral':
                         badgeColor = Colors.grey;
                         break;
+                      case 'goodMoral':
+                        badgeColor = Colors.amber.shade800;
+                        break;
                       default:
                         badgeColor = Colors.orange;
                         break;
@@ -586,7 +593,9 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                         DataCell(
                           AdminDesignSystem.statusBadge(
                             context,
-                            type.toUpperCase(),
+                            RecordTypeExtension.fromString(
+                              type,
+                            ).label.toUpperCase(),
                             badgeColor,
                           ),
                         ),
@@ -713,6 +722,9 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
         return RecordType.funeral;
       case 'confirmation':
         return RecordType.confirmation;
+      case 'goodmoral':
+      case 'good_moral':
+        return RecordType.goodMoral;
       default:
         return RecordType.baptism;
     }

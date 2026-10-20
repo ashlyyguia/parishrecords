@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
@@ -33,6 +34,13 @@ class CertificateData {
   String parishPriest;
   String? notes;
 
+  // Good Moral certificate blanks (see GoodMoralFormScreen).
+  String title;
+  String residentOf;
+  String personOf;
+  String knownAs;
+  String purpose;
+
   CertificateData({
     this.personName = '',
     this.fatherName = '',
@@ -51,6 +59,11 @@ class CertificateData {
     this.issueDate,
     this.parishPriest = 'FR. DANILO B. RUDINAS',
     this.notes,
+    this.title = '',
+    this.residentOf = '',
+    this.personOf = '',
+    this.knownAs = '',
+    this.purpose = '',
   });
 
   factory CertificateData.fromRecord(
@@ -73,9 +86,32 @@ class CertificateData {
       case RecordType.funeral:
         _extractFuneralData(data, record, decodedNotes);
         break;
+      case RecordType.goodMoral:
+        _extractGoodMoralData(data, record, decodedNotes);
+        break;
     }
 
     return data;
+  }
+
+  static void _extractGoodMoralData(
+    CertificateData data,
+    ParishRecord record,
+    Map<String, dynamic>? notes,
+  ) {
+    data.personName = record.name;
+    data.issueDate = record.date;
+    final gm = _asMap(notes?['goodMoral']);
+    if (gm == null) return;
+    String s(String k) => (gm[k] ?? '').toString().trim();
+    if (s('fullName').isNotEmpty) data.personName = s('fullName');
+    data.title = s('title');
+    data.residentOf = s('residentOf');
+    data.personOf = s('personOf');
+    data.knownAs = s('knownAs');
+    data.purpose = s('purpose');
+    if (s('parishPriest').isNotEmpty) data.parishPriest = s('parishPriest');
+    data.issueDate = DateTime.tryParse(s('dateIssued')) ?? record.date;
   }
 
   static Map<String, dynamic>? _asMap(dynamic value) {
@@ -679,6 +715,10 @@ class _CertificateTemplateScreenState
         extracted = CertificateData();
         CertificateData._extractFuneralData(extracted, record, decodedNotes);
         break;
+      case RecordType.goodMoral:
+        extracted = CertificateData();
+        CertificateData._extractGoodMoralData(extracted, record, decodedNotes);
+        break;
     }
 
     setState(() {
@@ -815,6 +855,8 @@ class _CertificateTemplateScreenState
         return 'Certificate of Marriage';
       case RecordType.funeral:
         return 'Certificate of Funeral Rites';
+      case RecordType.goodMoral:
+        return 'Certificate of Good Moral Character';
     }
   }
 
@@ -882,6 +924,7 @@ class _CertificateTemplateScreenState
 
   /// The text for each blank on the form, from the certificate data.
   Map<String, String> _slotValues(CertificateData d) {
+    if (widget.recordType == RecordType.goodMoral) return _goodMoralValues(d);
     String day(DateTime? t) => t == null ? '' : _ordinalDay(t.day);
     String month(DateTime? t) => t == null ? '' : DateFormat('MMMM').format(t);
     String year(DateTime? t) => t?.year.toString() ?? '';
@@ -925,6 +968,31 @@ class _CertificateTemplateScreenState
       }
     }
     return values;
+  }
+
+  /// The Good Moral form's blanks. The purpose runs on from its short blank
+  /// onto the full-width line below it when it does not fit.
+  Map<String, String> _goodMoralValues(CertificateData d) {
+    final words = d.purpose.split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+    final first = StringBuffer();
+    final rest = StringBuffer();
+    for (final w in words) {
+      final target = rest.isEmpty && first.length + w.length + 1 <= 26
+          ? first
+          : rest;
+      if (target.isNotEmpty) target.write(' ');
+      target.write(w);
+    }
+    return {
+      'name': d.personName.toUpperCase(),
+      'residentOf': d.residentOf,
+      'personOf': d.personOf,
+      'knownAs': d.knownAs,
+      'fitFor': first.toString(),
+      'fitFor2': rest.toString(),
+      'dated': d.issueDate == null ? '' : 'Dated: ${_formatDate(d.issueDate)}',
+      'priest': d.parishPriest.toUpperCase(),
+    };
   }
 
   /// Blanks whose value is centred on the line rather than written from its
@@ -975,6 +1043,24 @@ class _CertificateTemplateScreenState
               pw.Positioned.fill(
                 child: pw.Image(background, fit: pw.BoxFit.fill),
               ),
+              if (layout.marks[_certificateData.title] case final m?)
+                pw.Positioned(
+                  left: m.x0 * pageW,
+                  top: m.y0 * pageH,
+                  child: pw.Container(
+                    width: (m.x1 - m.x0) * pageW,
+                    height: (m.y1 - m.y0) * pageH,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.black, width: 0.9),
+                      borderRadius: pw.BorderRadius.all(
+                        pw.Radius.elliptical(
+                          (m.x1 - m.x0) * pageW / 2,
+                          (m.y1 - m.y0) * pageH / 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               for (final entry in layout.slots.entries)
                 if ((values[entry.key] ?? '').trim().isNotEmpty)
                   if (_wrapsOnTwoLines(entry.key, layout))
@@ -1162,6 +1248,24 @@ class _CertificateTemplateScreenState
             Positioned.fill(
               child: Image.asset(layout.background, fit: BoxFit.fill),
             ),
+            if (layout.marks[_certificateData.title] case final m?)
+              Positioned(
+                left: m.x0 * w,
+                top: m.y0 * h,
+                width: (m.x1 - m.x0) * w,
+                height: (m.y1 - m.y0) * h,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.black, width: 1.2),
+                    borderRadius: BorderRadius.all(
+                      Radius.elliptical(
+                        (m.x1 - m.x0) * w / 2,
+                        (m.y1 - m.y0) * h / 2,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             for (final entry in layout.slots.entries)
               if ((values[entry.key] ?? '').trim().isNotEmpty)
                 if (_wrapsOnTwoLines(entry.key, layout))

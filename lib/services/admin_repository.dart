@@ -17,6 +17,7 @@ class AdminRepository {
       'marriage_records',
       'confirmation_records',
       'funeral_records',
+      'good_moral_records',
     ];
 
     for (final collection in collections) {
@@ -52,6 +53,8 @@ class AdminRepository {
         return RecordType.confirmation;
       case 'funeral_records':
         return RecordType.funeral;
+      case 'good_moral_records':
+        return RecordType.goodMoral;
       default:
         return RecordType.baptism;
     }
@@ -89,6 +92,7 @@ class AdminRepository {
       'marriage_records',
       'confirmation_records',
       'funeral_records',
+      'good_moral_records',
     ];
 
     for (final collection in collections) {
@@ -135,6 +139,7 @@ class AdminRepository {
       'marriage_records',
       'confirmation_records',
       'funeral_records',
+      'good_moral_records',
     ];
     for (final collection in collections) {
       try {
@@ -153,6 +158,7 @@ class AdminRepository {
       'marriage_records',
       'confirmation_records',
       'funeral_records',
+      'good_moral_records',
     ];
     for (final collection in collections) {
       try {
@@ -299,6 +305,7 @@ class AdminRepository {
         'marriage_records',
         'confirmation_records',
         'funeral_records',
+        'good_moral_records',
       ];
 
       for (final collection in collections) {
@@ -362,6 +369,7 @@ class AdminRepository {
       'marriage_records',
       'confirmation_records',
       'funeral_records',
+      'good_moral_records',
     ];
 
     for (final collection in collections) {
@@ -397,6 +405,7 @@ class AdminRepository {
         'marriage_records',
         'confirmation_records',
         'funeral_records',
+        'good_moral_records',
       ];
 
       for (final collection in collections) {
@@ -513,6 +522,9 @@ class AdminRepository {
       case 'funeral_records':
         return (data['deceased_name'] ?? data['name'] ?? 'Funeral Record')
             .toString();
+      case 'good_moral_records':
+        return (data['text'] ?? data['name'] ?? 'Good Moral Certificate')
+            .toString();
       default:
         return (data['name'] ?? 'Record').toString();
     }
@@ -541,6 +553,11 @@ class AdminRepository {
         'icon': 'check_circle',
       },
       {'name': 'funeral_records', 'type': 'Funeral Record', 'icon': 'church'},
+      {
+        'name': 'good_moral_records',
+        'type': 'Good Moral Certificate',
+        'icon': 'verified',
+      },
     ];
 
     for (final collection in recordCollections) {

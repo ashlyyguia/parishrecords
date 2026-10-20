@@ -204,12 +204,7 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
                 initialValue: _type,
                 items: [
                   for (final t in RecordType.values)
-                    DropdownMenuItem(
-                      value: t,
-                      child: Text(
-                        '${t.name[0].toUpperCase()}${t.name.substring(1)}',
-                      ),
-                    ),
+                    DropdownMenuItem(value: t, child: Text(t.label)),
                 ],
                 onChanged: (v) => setState(() => _type = v ?? _type),
                 decoration: const InputDecoration(
@@ -357,6 +352,8 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
         return 'Person Name';
       case RecordType.funeral:
         return 'Deceased Name';
+      case RecordType.goodMoral:
+        return 'Full Name';
     }
   }
 
@@ -370,6 +367,8 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
         return 'Enter the confirmed person\'s name';
       case RecordType.funeral:
         return 'Enter the deceased person\'s name';
+      case RecordType.goodMoral:
+        return 'Enter the person\'s full name';
     }
   }
 
@@ -383,6 +382,8 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
         return Icons.person;
       case RecordType.funeral:
         return Icons.church;
+      case RecordType.goodMoral:
+        return Icons.workspace_premium_outlined;
     }
   }
 
@@ -396,6 +397,8 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
         return 'Confirmation Date';
       case RecordType.funeral:
         return 'Funeral Date';
+      case RecordType.goodMoral:
+        return 'Date Issued';
     }
   }
 }
