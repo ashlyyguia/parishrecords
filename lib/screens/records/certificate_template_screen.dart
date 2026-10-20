@@ -14,6 +14,7 @@ import '../../utils/manual_register_notes.dart';
 import '../../utils/register_text_parsing.dart';
 import 'certificate_layouts.dart';
 import 'certificate_zoom_view.dart';
+import 'letter_certificate.dart';
 
 /// Certificate data model for form editing
 class CertificateData {
@@ -671,6 +672,34 @@ class _CertificateTemplateScreenState
   bool _isLoading = true;
   bool _isGenerating = false;
   bool _recordApplied = false;
+  ParishRecord? _record;
+
+  /// Good Moral and No Record certificates are typed letters on A4 bond
+  /// paper (see letter_certificate.dart), not values printed on a form.
+  bool get _isLetter =>
+      widget.recordType == RecordType.goodMoral ||
+      widget.recordType == RecordType.noRecord;
+
+  LetterCertificate? get _letter {
+    final r = _record;
+    return _isLetter && r != null ? LetterCertificate.fromRecord(r) : null;
+  }
+
+  double get _pageAspect => _isLetter
+      ? PdfPageFormat.a4.width / PdfPageFormat.a4.height
+      : certificatePageFormat.width / certificatePageFormat.height;
+
+  Widget _buildPage() {
+    if (!_isLetter) return _buildCertificatePreview();
+    final letter = _letter;
+    if (letter == null) {
+      return const ColoredBox(
+        color: Colors.white,
+        child: Center(child: Text('Record not found')),
+      );
+    }
+    return LetterCertificatePage(certificate: letter);
+  }
 
   // Controllers
   late final TextEditingController _nameCtrl;
@@ -738,6 +767,7 @@ class _CertificateTemplateScreenState
     }
 
     setState(() {
+      _record = record;
       _certificateData = extracted;
       _updateControllersFromData();
       _recordApplied = true;
@@ -1046,6 +1076,11 @@ class _CertificateTemplateScreenState
       key == 'sponsor1' && layout.sponsorLines == 1;
 
   Future<pw.Document> _generatePdf() async {
+    if (_isLetter) {
+      final letter = _letter;
+      if (letter == null) throw StateError('Record not found');
+      return letter.buildPdf();
+    }
     final pdf = pw.Document();
     final bold = pw.Font.helveticaBold();
     final layout = _layout;
@@ -1234,10 +1269,8 @@ class _CertificateTemplateScreenState
                   ),
                   Expanded(
                     child: CertificateZoomView(
-                      aspectRatio:
-                          certificatePageFormat.width /
-                          certificatePageFormat.height,
-                      pageBuilder: (_) => _buildCertificatePreview(),
+                      aspectRatio: _pageAspect,
+                      pageBuilder: (_) => _buildPage(),
                       onFullscreen: _openFullscreenPreview,
                     ),
                   ),
@@ -1265,10 +1298,8 @@ class _CertificateTemplateScreenState
               autofocus: true,
               child: SafeArea(
                 child: CertificateZoomView(
-                  aspectRatio:
-                      certificatePageFormat.width /
-                      certificatePageFormat.height,
-                  pageBuilder: (_) => _buildCertificatePreview(),
+                  aspectRatio: _pageAspect,
+                  pageBuilder: (_) => _buildPage(),
                   fullscreen: true,
                   onFullscreen: () => Navigator.of(ctx).maybePop(),
                 ),

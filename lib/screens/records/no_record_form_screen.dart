@@ -9,20 +9,23 @@ import 'package:uuid/uuid.dart';
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 import '../../widgets/record_form_theme.dart';
+import 'letter_certificate.dart';
+import 'letter_form_parts.dart';
 
-/// Entry form for a Certificate of No Record.
+/// Entry form for a Certificate of No Record, printed as a typed
+/// "CERTIFICATION" letter (see [LetterCertificate.noRecord]):
 ///
-/// The printed form states that, after examining the parish registers, no
-/// entry was found for:
+///   This is to certify that the [Baptismal] record of [FULL NAME],
+///   [daughter/son] of [father] and [mother], and was supposed to have been
+///   [baptized] in this parish, could not be found in the Records of
+///   [Baptism].
+///   This certification is issued upon the request of the above-mentioned
+///   name for [purpose].
+///   Given and sealed this [date] …            [signing priest, position]
 ///
-///   Mr./Ms./Mx. [full name]
-///   a resident of [residence]
-///
-/// so those two blanks (with the title circled) are what it needs, plus the
-/// date issued and the signing priest, which default to today and the parish
-/// priest. What the certificate was requested for is kept for the office but
-/// not printed. Saved as a `no_record_records` record; its notes hold the
-/// fields under `noRecord`.
+/// The register searched follows the certificate the client requested
+/// (baptism, marriage, confirmation or death). Saved as a `no_record_records`
+/// record; its notes hold the fields under `noRecord`.
 class NoRecordFormScreen extends ConsumerStatefulWidget {
   final ParishRecord? existing;
   final bool fromAdmin;
@@ -35,11 +38,7 @@ class NoRecordFormScreen extends ConsumerStatefulWidget {
     this.fromStaff = false,
   });
 
-  /// Titles the form offers ("Mr./Ms./Mx."); the chosen one is circled on the
-  /// printed certificate.
-  static const titles = ['Mr.', 'Ms.', 'Mx.'];
-
-  static const defaultPriest = 'FR. DANILO B. RUDINAS';
+  static const defaultPurpose = 'any legal purposes';
 
   @override
   ConsumerState<NoRecordFormScreen> createState() => _NoRecordFormScreenState();
@@ -50,13 +49,20 @@ class _NoRecordFormScreenState extends ConsumerState<NoRecordFormScreen> {
   bool _saving = false;
   late String _recordId;
 
-  String _title = NoRecordFormScreen.titles.first;
+  NoRecordRegister _register = NoRecordRegister.baptism;
   final _nameCtrl = TextEditingController();
-  final _residentOfCtrl = TextEditingController();
-  final _purposeCtrl = TextEditingController();
+  String? _sex;
+  final _fatherCtrl = TextEditingController();
+  final _motherCtrl = TextEditingController();
+  final _purposeCtrl = TextEditingController(
+    text: NoRecordFormScreen.defaultPurpose,
+  );
   DateTime _dateIssued = DateTime.now();
   final _priestCtrl = TextEditingController(
-    text: NoRecordFormScreen.defaultPriest,
+    text: kCertificateSignatories[1].name,
+  );
+  final _positionCtrl = TextEditingController(
+    text: kCertificateSignatories[1].position,
   );
   final _remarksCtrl = TextEditingController();
   final _staffNameCtrl = TextEditingController();
@@ -73,16 +79,21 @@ class _NoRecordFormScreenState extends ConsumerState<NoRecordFormScreen> {
     try {
       final decoded = json.decode(existing.notes ?? '');
       if (decoded is! Map<String, dynamic>) return;
-      final gm = decoded['noRecord'];
-      if (gm is Map) {
-        String s(String k) => (gm[k] ?? '').toString();
-        if (NoRecordFormScreen.titles.contains(s('title'))) {
-          _title = s('title');
-        }
+      final nr = decoded['noRecord'];
+      if (nr is Map) {
+        String s(String k) => (nr[k] ?? '').toString().trim();
+        _register = NoRecordRegisterText.fromId(s('register'));
         if (s('fullName').isNotEmpty) _nameCtrl.text = s('fullName');
-        _residentOfCtrl.text = s('residentOf');
-        _purposeCtrl.text = s('purpose');
+        final sex = s('sex');
+        _sex = sex == 'daughter' || sex == 'son' ? sex : null;
+        _fatherCtrl.text = s('father');
+        _motherCtrl.text = s('mother');
+        if (s('purpose').isNotEmpty) _purposeCtrl.text = s('purpose');
         if (s('parishPriest').isNotEmpty) _priestCtrl.text = s('parishPriest');
+        _positionCtrl.text = LetterCertificate.positionFor(
+          _priestCtrl.text,
+          s('priestPosition'),
+        );
         final issued = DateTime.tryParse(s('dateIssued'));
         if (issued != null) _dateIssued = issued;
       }
@@ -102,28 +113,17 @@ class _NoRecordFormScreenState extends ConsumerState<NoRecordFormScreen> {
   void dispose() {
     for (final c in [
       _nameCtrl,
-      _residentOfCtrl,
+      _fatherCtrl,
+      _motherCtrl,
       _purposeCtrl,
       _priestCtrl,
+      _positionCtrl,
       _remarksCtrl,
       _staffNameCtrl,
     ]) {
       c.dispose();
     }
     super.dispose();
-  }
-
-  String? _required(String? v) =>
-      (v == null || v.trim().isEmpty) ? 'Required' : null;
-
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _dateIssued,
-      firstDate: DateTime(1900),
-      lastDate: DateTime(2100),
-    );
-    if (picked != null) setState(() => _dateIssued = picked);
   }
 
   /// Sacramental records already in the system under this name. A
@@ -201,12 +201,15 @@ class _NoRecordFormScreenState extends ConsumerState<NoRecordFormScreen> {
     final nowIso = DateTime.now().toIso8601String();
     final details = {
       'noRecord': {
-        'title': _title,
+        'register': _register.id,
         'fullName': name,
-        'residentOf': _residentOfCtrl.text.trim(),
+        'sex': _sex,
+        'father': _fatherCtrl.text.trim(),
+        'mother': _motherCtrl.text.trim(),
         'purpose': _purposeCtrl.text.trim(),
         'dateIssued': DateFormat('yyyy-MM-dd').format(_dateIssued),
         'parishPriest': _priestCtrl.text.trim(),
+        'priestPosition': _positionCtrl.text.trim(),
       },
       'remarks': _remarksCtrl.text.trim(),
       'meta': {
@@ -302,93 +305,69 @@ class _NoRecordFormScreenState extends ConsumerState<NoRecordFormScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'Fields marked * are printed on the certificate.',
+                      'Everything except the office-use fields is printed on '
+                      'the certificate. Fields marked * are required.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    section('Person'),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 120,
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _title,
-                            decoration: const InputDecoration(
-                              labelText: 'Title *',
-                            ),
-                            items: [
-                              for (final t in NoRecordFormScreen.titles)
-                                DropdownMenuItem(value: t, child: Text(t)),
-                            ],
-                            onChanged: (v) => setState(
-                              () =>
-                                  _title = v ?? NoRecordFormScreen.titles.first,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _nameCtrl,
-                            textCapitalization: TextCapitalization.words,
-                            decoration: const InputDecoration(
-                              labelText: 'Full name *',
-                              hintText: 'e.g. Juan P. Dela Cruz',
-                            ),
-                            validator: _required,
-                          ),
-                        ),
+                    section('Record searched'),
+                    DropdownButtonFormField<NoRecordRegister>(
+                      initialValue: _register,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Register searched *',
+                        helperText:
+                            'The certificate the client requested, e.g. '
+                            'Baptism → "the Baptismal record … could not be '
+                            'found in the Records of Baptism"',
+                        helperMaxLines: 2,
+                      ),
+                      items: [
+                        for (final r in NoRecordRegister.values)
+                          DropdownMenuItem(value: r, child: Text(r.label)),
                       ],
+                      onChanged: (v) => setState(
+                        () => _register = v ?? NoRecordRegister.baptism,
+                      ),
+                    ),
+                    section('Person'),
+                    TextFormField(
+                      controller: _nameCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Full name *',
+                        hintText: 'e.g. Florida A. Nuqui',
+                      ),
+                      validator: requiredField,
                     ),
                     const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _residentOfCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'A resident of *',
-                        hintText: 'e.g. Brgy. Lower Lamac, Oroquieta City',
-                      ),
-                      validator: _required,
-                    ),
-                    section('Issuance'),
-                    InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Date issued *',
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              DateFormat.yMMMMd().format(_dateIssued),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: _pickDate,
-                            child: const Text('Change'),
-                          ),
-                        ],
-                      ),
+                    ChildOfField(
+                      value: _sex,
+                      onChanged: (v) => setState(() => _sex = v),
                     ),
                     const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _priestCtrl,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(
-                        labelText: 'Signing priest *',
-                      ),
-                      validator: _required,
-                    ),
-                    section('Office use (not printed)'),
+                    ParentsFields(father: _fatherCtrl, mother: _motherCtrl),
+                    section('Purpose'),
                     TextFormField(
                       controller: _purposeCtrl,
+                      minLines: 1,
+                      maxLines: 2,
                       decoration: const InputDecoration(
-                        labelText: 'Requested for',
-                        hintText:
-                            'e.g. marriage preparation, late registration',
+                        labelText:
+                            'Issued upon the request of the above-mentioned name for *',
+                        hintText: 'e.g. any legal purposes',
                       ),
+                      validator: requiredField,
+                    ),
+                    section('Issuance'),
+                    DateIssuedField(
+                      value: _dateIssued,
+                      onChanged: (d) => setState(() => _dateIssued = d),
                     ),
                     const SizedBox(height: 8),
+                    SignatoryFields(name: _priestCtrl, position: _positionCtrl),
+                    section('Office use (not printed)'),
                     TextFormField(
                       controller: _remarksCtrl,
                       minLines: 2,

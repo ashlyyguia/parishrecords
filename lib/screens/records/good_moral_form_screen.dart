@@ -9,21 +9,22 @@ import 'package:uuid/uuid.dart';
 import '../../models/record.dart';
 import '../../providers/records_provider.dart';
 import '../../widgets/record_form_theme.dart';
+import 'letter_certificate.dart';
+import 'letter_form_parts.dart';
 
 /// Entry form for a Certificate of Good Moral Character.
 ///
-/// The fields follow the parish's printed form, blank by blank:
+/// The certificate is a typed letter (see [LetterCertificate.goodMoral]):
 ///
-///   That Mr./Ms./Mx. [full name]
-///   a resident of [residence]
-///   is a person of [character]
-///   and has been known to the Parish Administration and clergy as having
-///   [standing]
-///   and is therefore a fit person for [purpose].
+///   This is to certify that [FULL NAME], a resident of [address], under the
+///   jurisdiction of Holy Rosary Parish, and the [daughter/son] of [father]
+///   and [mother], is known to be of Good Moral Character …
+///   This certificate is issued upon the request of the interested party to
+///   [purpose].
+///   Given and sealed this [date] …            [signing priest, position]
 ///
-/// Everything the certificate prints is required; the date issued and the
-/// signing priest default to today and the parish priest. Saved as a
-/// `good_moral_records` record; its notes hold the fields under `goodMoral`.
+/// Saved as a `good_moral_records` record; its notes hold the fields under
+/// `goodMoral`.
 class GoodMoralFormScreen extends ConsumerStatefulWidget {
   final ParishRecord? existing;
   final bool fromAdmin;
@@ -36,23 +37,14 @@ class GoodMoralFormScreen extends ConsumerStatefulWidget {
     this.fromStaff = false,
   });
 
-  /// Titles the form offers ("Mr./Ms./Mx."); the chosen one is circled on the
-  /// printed certificate.
-  static const titles = ['Mr.', 'Ms.', 'Mx.'];
-
-  static const defaultPersonOf = 'good moral character';
-  // Short enough to print at full size on its blank.
-  static const defaultKnownAs = 'good standing in the parish';
-  static const defaultPriest = 'FR. DANILO B. RUDINAS';
-
-  /// Common purposes, offered as quick picks; any text may be typed.
+  /// Common purposes, offered as quick picks; any text may be typed. Each
+  /// completes "…upon the request of the interested party to".
   static const purposes = [
-    'employment',
-    'scholarship',
-    'school admission',
-    'marriage',
-    'local or overseas travel',
-    'any legal purpose',
+    'apply for employment',
+    'apply for a scholarship',
+    'enroll in school',
+    'secure a passport',
+    'use for any legal purpose',
   ];
 
   @override
@@ -65,19 +57,18 @@ class _GoodMoralFormScreenState extends ConsumerState<GoodMoralFormScreen> {
   bool _saving = false;
   late String _recordId;
 
-  String _title = GoodMoralFormScreen.titles.first;
   final _nameCtrl = TextEditingController();
+  String? _sex;
   final _residentOfCtrl = TextEditingController();
-  final _personOfCtrl = TextEditingController(
-    text: GoodMoralFormScreen.defaultPersonOf,
-  );
-  final _knownAsCtrl = TextEditingController(
-    text: GoodMoralFormScreen.defaultKnownAs,
-  );
+  final _fatherCtrl = TextEditingController();
+  final _motherCtrl = TextEditingController();
   final _purposeCtrl = TextEditingController();
   DateTime _dateIssued = DateTime.now();
   final _priestCtrl = TextEditingController(
-    text: GoodMoralFormScreen.defaultPriest,
+    text: kCertificateSignatories[0].name,
+  );
+  final _positionCtrl = TextEditingController(
+    text: kCertificateSignatories[0].position,
   );
   final _remarksCtrl = TextEditingController();
   final _staffNameCtrl = TextEditingController();
@@ -96,16 +87,22 @@ class _GoodMoralFormScreenState extends ConsumerState<GoodMoralFormScreen> {
       if (decoded is! Map<String, dynamic>) return;
       final gm = decoded['goodMoral'];
       if (gm is Map) {
-        String s(String k) => (gm[k] ?? '').toString();
-        if (GoodMoralFormScreen.titles.contains(s('title'))) {
-          _title = s('title');
-        }
+        String s(String k) => (gm[k] ?? '').toString().trim();
         if (s('fullName').isNotEmpty) _nameCtrl.text = s('fullName');
+        final sex = s('sex');
+        _sex = sex == 'daughter' || sex == 'son' ? sex : null;
         _residentOfCtrl.text = s('residentOf');
-        _personOfCtrl.text = s('personOf');
-        _knownAsCtrl.text = s('knownAs');
-        _purposeCtrl.text = s('purpose');
+        _fatherCtrl.text = s('father');
+        _motherCtrl.text = s('mother');
+        // The old form's purpose completed "a fit person for …".
+        _purposeCtrl.text = !gm.containsKey('sex') && s('purpose').isNotEmpty
+            ? 'use for ${s('purpose')}'
+            : s('purpose');
         if (s('parishPriest').isNotEmpty) _priestCtrl.text = s('parishPriest');
+        _positionCtrl.text = LetterCertificate.positionFor(
+          _priestCtrl.text,
+          s('priestPosition'),
+        );
         final issued = DateTime.tryParse(s('dateIssued'));
         if (issued != null) _dateIssued = issued;
       }
@@ -126,29 +123,17 @@ class _GoodMoralFormScreenState extends ConsumerState<GoodMoralFormScreen> {
     for (final c in [
       _nameCtrl,
       _residentOfCtrl,
-      _personOfCtrl,
-      _knownAsCtrl,
+      _fatherCtrl,
+      _motherCtrl,
       _purposeCtrl,
       _priestCtrl,
+      _positionCtrl,
       _remarksCtrl,
       _staffNameCtrl,
     ]) {
       c.dispose();
     }
     super.dispose();
-  }
-
-  String? _required(String? v) =>
-      (v == null || v.trim().isEmpty) ? 'Required' : null;
-
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _dateIssued,
-      firstDate: DateTime(1900),
-      lastDate: DateTime(2100),
-    );
-    if (picked != null) setState(() => _dateIssued = picked);
   }
 
   Future<void> _save() async {
@@ -163,14 +148,15 @@ class _GoodMoralFormScreenState extends ConsumerState<GoodMoralFormScreen> {
     final nowIso = DateTime.now().toIso8601String();
     final details = {
       'goodMoral': {
-        'title': _title,
         'fullName': name,
+        'sex': _sex,
         'residentOf': _residentOfCtrl.text.trim(),
-        'personOf': _personOfCtrl.text.trim(),
-        'knownAs': _knownAsCtrl.text.trim(),
+        'father': _fatherCtrl.text.trim(),
+        'mother': _motherCtrl.text.trim(),
         'purpose': _purposeCtrl.text.trim(),
         'dateIssued': DateFormat('yyyy-MM-dd').format(_dateIssued),
         'parishPriest': _priestCtrl.text.trim(),
+        'priestPosition': _positionCtrl.text.trim(),
       },
       'remarks': _remarksCtrl.text.trim(),
       'meta': {
@@ -266,84 +252,53 @@ class _GoodMoralFormScreenState extends ConsumerState<GoodMoralFormScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'Fields marked * are printed on the certificate.',
+                      'Everything except the office-use fields is printed on '
+                      'the certificate. Fields marked * are required.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     section('Person'),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 120,
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _title,
-                            decoration: const InputDecoration(
-                              labelText: 'Title *',
-                            ),
-                            items: [
-                              for (final t in GoodMoralFormScreen.titles)
-                                DropdownMenuItem(value: t, child: Text(t)),
-                            ],
-                            onChanged: (v) => setState(
-                              () => _title =
-                                  v ?? GoodMoralFormScreen.titles.first,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _nameCtrl,
-                            textCapitalization: TextCapitalization.words,
-                            decoration: const InputDecoration(
-                              labelText: 'Full name *',
-                              hintText: 'e.g. Juan P. Dela Cruz',
-                            ),
-                            validator: _required,
-                          ),
-                        ),
-                      ],
+                    TextFormField(
+                      controller: _nameCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Full name *',
+                        hintText: 'e.g. Julie An P. Alvarez',
+                      ),
+                      validator: requiredField,
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _residentOfCtrl,
                       decoration: const InputDecoration(
                         labelText: 'A resident of *',
-                        hintText: 'e.g. Brgy. Lower Lamac, Oroquieta City',
+                        hintText:
+                            'e.g. P-3 Upper Lancangan, Oroquieta City, '
+                            'Misamis Occidental',
                       ),
-                      validator: _required,
-                    ),
-                    section('Character'),
-                    TextFormField(
-                      controller: _personOfCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Is a person of *',
-                      ),
-                      validator: _required,
+                      validator: requiredField,
                     ),
                     const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _knownAsCtrl,
-                      minLines: 1,
-                      maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText:
-                            'Known to the Parish Administration and clergy as having *',
-                      ),
-                      validator: _required,
+                    ChildOfField(
+                      value: _sex,
+                      onChanged: (v) => setState(() => _sex = v),
                     ),
+                    const SizedBox(height: 8),
+                    ParentsFields(father: _fatherCtrl, mother: _motherCtrl),
                     section('Purpose'),
                     TextFormField(
                       controller: _purposeCtrl,
                       minLines: 1,
-                      maxLines: 2,
+                      maxLines: 3,
                       decoration: const InputDecoration(
-                        labelText: 'Is therefore a fit person for *',
-                        hintText: 'e.g. employment',
+                        labelText:
+                            'Issued upon the request of the interested party to *',
+                        hintText:
+                            'e.g. avail youth Internship Program for Organic '
+                            'Agriculture (YIPOA)',
                       ),
-                      validator: _required,
+                      validator: requiredField,
                     ),
                     const SizedBox(height: 8),
                     Wrap(
@@ -359,33 +314,12 @@ class _GoodMoralFormScreenState extends ConsumerState<GoodMoralFormScreen> {
                       ],
                     ),
                     section('Issuance'),
-                    InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Date issued *',
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              DateFormat.yMMMMd().format(_dateIssued),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: _pickDate,
-                            child: const Text('Change'),
-                          ),
-                        ],
-                      ),
+                    DateIssuedField(
+                      value: _dateIssued,
+                      onChanged: (d) => setState(() => _dateIssued = d),
                     ),
                     const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _priestCtrl,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(
-                        labelText: 'Signing priest *',
-                      ),
-                      validator: _required,
-                    ),
+                    SignatoryFields(name: _priestCtrl, position: _positionCtrl),
                     section('Office use (not printed)'),
                     TextFormField(
                       controller: _remarksCtrl,

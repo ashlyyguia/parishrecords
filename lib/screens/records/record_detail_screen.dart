@@ -13,6 +13,7 @@ import '../../providers/records_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/records_repository.dart';
 import '../../utils/manual_register_notes.dart';
+import 'letter_certificate.dart';
 
 class RecordDetailScreen extends ConsumerWidget {
   final String recordId;
@@ -482,6 +483,9 @@ class _RecordDetailBody extends ConsumerWidget {
     }
   }
 
+  static String _cap(String v) =>
+      v.isEmpty ? v : v[0].toUpperCase() + v.substring(1);
+
   Widget _buildNoRecordDetails(
     BuildContext context,
     Map<String, dynamic> data,
@@ -491,12 +495,16 @@ class _RecordDetailBody extends ConsumerWidget {
     final m = nr is Map ? nr : const {};
     String v(String k) => (m[k] ?? '').toString().trim();
     final issued = DateTime.tryParse(v('dateIssued'));
+    final register = v('register');
     final rows = <(String, String)>[
-      ('Name', [v('title'), v('fullName')].where((e) => e.isNotEmpty).join(' ')),
-      ('A resident of', v('residentOf')),
-      ('Requested for', v('purpose')),
+      ('Register searched', register.isEmpty ? '' : NoRecordRegisterText.fromId(register).label),
+      ('Name', v('fullName')),
+      ('Daughter / Son', _cap(v('sex'))),
+      ("Father's name", v('father')),
+      ("Mother's name", v('mother')),
+      ('Purpose', v('purpose')),
       ('Date issued', issued == null ? v('dateIssued') : df.format(issued)),
-      ('Signing priest', v('parishPriest')),
+      ('Signing priest', [v('parishPriest'), v('priestPosition')].where((e) => e.isNotEmpty).join(', ')),
     ];
     return Card(
       child: Padding(
@@ -527,16 +535,14 @@ class _RecordDetailBody extends ConsumerWidget {
     String v(String k) => (m[k] ?? '').toString().trim();
     final issued = DateTime.tryParse(v('dateIssued'));
     final rows = <(String, String)>[
-      (
-        'Name',
-        [v('title'), v('fullName')].where((e) => e.isNotEmpty).join(' '),
-      ),
+      ('Name', v('fullName')),
       ('A resident of', v('residentOf')),
-      ('Is a person of', v('personOf')),
-      ('Known as having', v('knownAs')),
-      ('Fit person for', v('purpose')),
+      ('Daughter / Son', _cap(v('sex'))),
+      ("Father's name", v('father')),
+      ("Mother's name", v('mother')),
+      ('Purpose', v('purpose')),
       ('Date issued', issued == null ? v('dateIssued') : df.format(issued)),
-      ('Signing priest', v('parishPriest')),
+      ('Signing priest', [v('parishPriest'), v('priestPosition')].where((e) => e.isNotEmpty).join(', ')),
     ];
     return Card(
       child: Padding(
