@@ -100,6 +100,7 @@ flutter:
   assets:
     - assets/images/
     - assets/images/payments/
+    - assets/images/certificates/
     - assets/icons/app_icon.png
     - assets/fonts/Roboto-Regular.ttf
     - assets/fonts/Roboto-Bold.ttf

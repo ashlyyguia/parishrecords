@@ -1,11 +1,8 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
@@ -14,12 +11,8 @@ import '../../providers/records_provider.dart';
 import '../../services/register_ocr_parser.dart';
 import '../../utils/manual_register_notes.dart';
 import '../../utils/register_text_parsing.dart';
+import 'certificate_layouts.dart';
 
-/// Japan Post standard postcard (郵便ハガキ): 100 × 148 mm, portrait.
-final _japanesePostcardFormat = PdfPageFormat(
-  100 * PdfPageFormat.mm,
-  148 * PdfPageFormat.mm,
-);
 
 /// Certificate data model for form editing
 class CertificateData {
@@ -615,9 +608,6 @@ class _CertificateTemplateScreenState
   bool _isGenerating = false;
   bool _recordApplied = false;
 
-  Uint8List? _archdioceseLogoBytes;
-  Uint8List? _parishLogoBytes;
-
   // Controllers
   late final TextEditingController _nameCtrl;
   late final TextEditingController _fatherCtrl;
@@ -640,22 +630,6 @@ class _CertificateTemplateScreenState
     _certificateData = CertificateData();
     _initControllers();
     _loadRecordData();
-    _loadCertificateLogos();
-  }
-
-  Future<void> _loadCertificateLogos() async {
-    if (!_usesCertificateLogos) return;
-    try {
-      final archdiocese = await rootBundle.load('assets/images/image1.png');
-      final parish = await rootBundle.load('assets/images/image2.png');
-      if (!mounted) return;
-      setState(() {
-        _archdioceseLogoBytes = archdiocese.buffer.asUint8List();
-        _parishLogoBytes = parish.buffer.asUint8List();
-      });
-    } catch (_) {
-      // Logos optional — header falls back to text-only.
-    }
   }
 
   void _applyRecordToForm(ParishRecord record, {bool fromSearch = false}) {
@@ -823,36 +797,6 @@ class _CertificateTemplateScreenState
     }
   }
 
-  String get _sacramentLabel {
-    switch (widget.recordType) {
-      case RecordType.baptism:
-        return 'Was Baptized';
-      case RecordType.confirmation:
-        return 'Was Confirmed';
-      case RecordType.marriage:
-        return 'Were United in Holy Matrimony';
-      case RecordType.funeral:
-        return 'Funeral Rites Were Celebrated';
-    }
-  }
-
-  /// Every certificate type shows the archdiocese and parish logos beside
-  /// its title.
-  bool get _usesCertificateLogos => true;
-
-  String get _registerLabel {
-    switch (widget.recordType) {
-      case RecordType.baptism:
-        return 'Baptismal';
-      case RecordType.confirmation:
-        return 'Confirmation';
-      case RecordType.marriage:
-        return 'Marriage';
-      case RecordType.funeral:
-        return 'Funeral';
-    }
-  }
-
   Future<void> _generateAndPrint() async {
     _updateDataFromControllers();
 
@@ -912,504 +856,117 @@ class _CertificateTemplateScreenState
     }
   }
 
+  /// The form these certificates are printed on.
+  CertificateLayout get _layout => CertificateLayout.of(widget.recordType);
+
+  /// The text for each blank on the form, from the certificate data.
+  Map<String, String> _slotValues(CertificateData d) {
+    String day(DateTime? t) => t == null ? '' : _ordinalDay(t.day);
+    String month(DateTime? t) => t == null ? '' : DateFormat('MMMM').format(t);
+    String year(DateTime? t) => t?.year.toString() ?? '';
+
+    final values = <String, String>{
+      'name': d.personName.toUpperCase(),
+      'childOf': _motherFirst ? d.motherName : d.fatherName,
+      'and': _motherFirst ? d.fatherName : d.motherName,
+      'bornIn': d.birthplace,
+      'birthDay': day(d.birthDate),
+      'birthMonth': month(d.birthDate),
+      'birthYear': year(d.birthDate),
+      'sacDay': day(d.sacramentDate),
+      'sacMonth': month(d.sacramentDate),
+      'sacYear': year(d.sacramentDate),
+      'minister': d.ministerName.toUpperCase(),
+      'dated': _formatDate(d.issueDate),
+      'page': d.registryPage,
+      'volume': d.registryVolume,
+      'series': d.registrySeries,
+      'priest': d.parishPriest.toUpperCase(),
+    };
+
+    // Sponsors fill as many lines as the form has (three on the baptismal
+    // form), keeping each name whole on one line.
+    final lines = _layout.sponsorLines;
+    final names = d.sponsorName
+        .split(RegExp(r'\s*[;,\n]\s*|\s+&\s+|\s+and\s+', caseSensitive: false))
+        .map((n) => n.trim())
+        .where((n) => n.isNotEmpty)
+        .toList();
+    if (lines <= 1 || names.length <= 1) {
+      values['sponsor1'] = names.isEmpty ? d.sponsorName.trim() : names.join(', ');
+    } else {
+      final per = (names.length / lines).ceil();
+      for (var i = 0; i < lines; i++) {
+        final chunk = names.skip(i * per).take(per).toList();
+        values['sponsor${i + 1}'] = chunk.join(', ');
+      }
+    }
+    return values;
+  }
+
+  /// Blanks whose value is centred on the line rather than written from its
+  /// start: the short date parts and the priest's signature line.
+  static const _centredSlots = {
+    'birthDay', 'birthMonth', 'birthYear',
+    'sacDay', 'sacMonth', 'sacYear', 'priest',
+  };
+
+  /// Value text size as a fraction of the page height (about 10 pt on A5).
+  static const double _valueFontFraction = 0.0175;
+
   Future<pw.Document> _generatePdf() async {
     final pdf = pw.Document();
-
-    final ttfRegular = pw.Font.helvetica();
-    final ttfBold = pw.Font.helveticaBold();
-    final ttfItalic = pw.Font.helveticaOblique();
-
-    pw.MemoryImage? archdioceseLogo;
-    pw.MemoryImage? parishLogo;
-    if (_usesCertificateLogos) {
-      try {
-        final archBytes = _archdioceseLogoBytes ??
-            (await rootBundle.load('assets/images/image1.png'))
-                .buffer
-                .asUint8List();
-        final parishBytes = _parishLogoBytes ??
-            (await rootBundle.load('assets/images/image2.png'))
-                .buffer
-                .asUint8List();
-        if (archBytes.isNotEmpty) {
-          archdioceseLogo = pw.MemoryImage(archBytes);
-        }
-        if (parishBytes.isNotEmpty) {
-          parishLogo = pw.MemoryImage(parishBytes);
-        }
-      } catch (_) {}
-    }
+    final bold = pw.Font.helveticaBold();
+    final layout = _layout;
+    final background = pw.MemoryImage(
+      (await rootBundle.load(layout.background)).buffer.asUint8List(),
+    );
+    final values = _slotValues(_certificateData);
+    final format = certificatePageFormat;
+    final pageW = format.width;
+    final pageH = format.height;
+    final fontSize = pageH * _valueFontFraction;
+    final boxH = fontSize * 1.3;
 
     pdf.addPage(
       pw.Page(
-        pageFormat: _japanesePostcardFormat,
-        margin: const pw.EdgeInsets.all(14),
-        build: (context) => _buildCertificatePage(
-          ttfRegular,
-          ttfBold,
-          ttfItalic,
-          archdioceseLogo: archdioceseLogo,
-          parishLogo: parishLogo,
+        pageFormat: format,
+        margin: pw.EdgeInsets.zero,
+        build: (context) => pw.SizedBox(
+          width: pageW,
+          height: pageH,
+          child: pw.Stack(
+            children: [
+              pw.Positioned.fill(
+                child: pw.Image(background, fit: pw.BoxFit.fill),
+              ),
+              for (final entry in layout.slots.entries)
+                if ((values[entry.key] ?? '').trim().isNotEmpty)
+                  pw.Positioned(
+                    left: entry.value.x0 * pageW + 2,
+                    top: entry.value.y * pageH - boxH - pageH * 0.003,
+                    child: pw.SizedBox(
+                      width: (entry.value.x1 - entry.value.x0) * pageW - 4,
+                      height: boxH,
+                      child: pw.FittedBox(
+                        fit: pw.BoxFit.scaleDown,
+                        alignment: _centredSlots.contains(entry.key)
+                            ? pw.Alignment.bottomCenter
+                            : pw.Alignment.bottomLeft,
+                        child: pw.Text(
+                          values[entry.key]!.trim(),
+                          style: pw.TextStyle(font: bold, fontSize: fontSize),
+                        ),
+                      ),
+                    ),
+                  ),
+            ],
+          ),
         ),
       ),
     );
 
     return pdf;
-  }
-
-  pw.Widget _buildCertificatePage(
-    pw.Font regular,
-    pw.Font bold,
-    pw.Font italic, {
-    pw.MemoryImage? archdioceseLogo,
-    pw.MemoryImage? parishLogo,
-  }) {
-    final headerSmall = pw.TextStyle(font: regular, fontSize: 8);
-    final headerStrong = pw.TextStyle(font: bold, fontSize: 12);
-    final certifyBold = pw.TextStyle(font: bold, fontSize: 8);
-    final bodyFontSize = 8.0;
-
-    pw.Widget parishHeaderBlock() {
-      return pw.Center(
-        child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.center,
-          children: [
-            pw.Text('ARCHDIOCESE OF OZAMIS', style: headerSmall),
-            pw.SizedBox(height: 2),
-            pw.Text(
-              _certificateData.parishName.toUpperCase(),
-              style: headerStrong,
-              textAlign: pw.TextAlign.center,
-            ),
-            pw.Text(
-              _certificateData.parishLocation,
-              style: headerSmall,
-              textAlign: pw.TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-
-    pw.Widget titleWithLogosBlock() {
-      final titleTextStyle = pw.TextStyle(
-        font: bold,
-        fontSize: widget.recordType == RecordType.confirmation ? 16 : 14,
-      );
-      final titleWidget = pw.Text(
-        _certificateTitle,
-        style: titleTextStyle,
-        textAlign: pw.TextAlign.center,
-      );
-
-      if (archdioceseLogo != null && parishLogo != null) {
-        // Marriage certificates carry the most lines, so their logos are a
-        // little smaller to keep everything on the one page.
-        final logoBox =
-            widget.recordType == RecordType.marriage ? 38.0 : 44.0;
-        const titleWidth = 168.0;
-
-        pw.Widget logoCell(pw.MemoryImage image) => pw.SizedBox(
-              width: logoBox,
-              height: logoBox,
-              child: pw.Center(
-                child: pw.Image(image, fit: pw.BoxFit.contain),
-              ),
-            );
-
-        return pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.center,
-          children: [
-            pw.Expanded(
-              child: pw.Align(
-                alignment: pw.Alignment.centerRight,
-                child: logoCell(archdioceseLogo),
-              ),
-            ),
-            pw.SizedBox(
-              width: titleWidth,
-              child: pw.Center(child: titleWidget),
-            ),
-            pw.Expanded(
-              child: pw.Align(
-                alignment: pw.Alignment.centerLeft,
-                child: logoCell(parishLogo),
-              ),
-            ),
-          ],
-        );
-      }
-
-      return pw.Center(child: titleWidget);
-    }
-
-    pw.Widget watermark() {
-      return pw.Positioned.fill(
-        child: pw.Center(
-          child: pw.Opacity(
-            opacity: 0.03,
-            child: pw.Transform.scale(
-              scale: 6.0,
-              child: _buildCross(thick: false),
-            ),
-          ),
-        ),
-      );
-    }
-
-    pw.Widget signatureBlock() {
-      return pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.end,
-        children: [
-          if (widget.recordType == RecordType.confirmation)
-            pw.Padding(
-              padding: const pw.EdgeInsets.only(bottom: 6),
-              child: pw.Text(
-                'NOTE: FOR MARRIAGE PURPOSE',
-                style: pw.TextStyle(
-                  font: bold,
-                  fontSize: 7,
-                  color: PdfColors.red,
-                ),
-                textAlign: pw.TextAlign.right,
-              ),
-            ),
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              // Lifted so "Rev." sits on the signature line, not beside
-              // the title underneath it.
-              pw.Padding(
-                padding: const pw.EdgeInsets.only(bottom: 12),
-                child: pw.Text(
-                  'Rev.',
-                  style: pw.TextStyle(font: italic, fontSize: 8),
-                ),
-              ),
-              pw.SizedBox(width: 4),
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                  children: [
-                    pw.Container(
-                      decoration: const pw.BoxDecoration(
-                        border: pw.Border(
-                          bottom: pw.BorderSide(
-                            color: PdfColors.black,
-                            width: 1,
-                          ),
-                        ),
-                      ),
-                      padding: const pw.EdgeInsets.only(bottom: 2),
-                      child: pw.Text(
-                        _certificateData.parishPriest.toUpperCase(),
-                        style: pw.TextStyle(font: bold, fontSize: 8),
-                        textAlign: pw.TextAlign.center,
-                        maxLines: 2,
-                      ),
-                    ),
-                    pw.SizedBox(height: 2),
-                    // Centred under the signature line, not past its edge.
-                    pw.Text(
-                      'Parish Priest / VICAR',
-                      style: pw.TextStyle(font: bold, fontSize: 7),
-                      textAlign: pw.TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      );
-    }
-
-    return pw.Stack(
-      children: [
-        watermark(),
-        pw.Container(
-          decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: PdfColors.black, width: 1.5),
-          ),
-          padding: const pw.EdgeInsets.all(5),
-          child: pw.Container(
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: PdfColors.black, width: 1),
-            ),
-            padding: const pw.EdgeInsets.fromLTRB(10, 10, 10, 8),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-              children: [
-                parishHeaderBlock(),
-                pw.SizedBox(height: 6),
-                titleWithLogosBlock(),
-                pw.SizedBox(height: 8),
-
-                pw.Center(
-                  child: pw.Text(
-                    'This is to Certify:',
-                    style: certifyBold,
-                    textAlign: pw.TextAlign.center,
-                  ),
-                ),
-                pw.SizedBox(height: 6),
-
-                _buildCertRow(
-                  'That',
-                  _certificateData.personName.toUpperCase(),
-                  regular,
-                  bold,
-                  fontSize: bodyFontSize,
-                ),
-                pw.SizedBox(height: 4),
-                _buildCertRow(
-                  'Child of',
-                  _motherFirst
-                      ? _certificateData.motherName
-                      : _certificateData.fatherName,
-                  regular,
-                  bold,
-                  fontSize: bodyFontSize,
-                ),
-                pw.SizedBox(height: 2),
-                _buildCertRow(
-                  'and',
-                  _motherFirst
-                      ? _certificateData.fatherName
-                      : _certificateData.motherName,
-                  regular,
-                  bold,
-                  fontSize: bodyFontSize,
-                ),
-                pw.SizedBox(height: 4),
-                _buildCertRow(
-                  'born in',
-                  _certificateData.birthplace,
-                  regular,
-                  bold,
-                  fontSize: bodyFontSize,
-                ),
-                pw.SizedBox(height: 4),
-
-                _buildPdfDateRow(
-                  regular,
-                  bold,
-                  _certificateData.birthDate,
-                  bodyFontSize,
-                ),
-
-                pw.SizedBox(height: 10),
-
-                pw.Center(
-                  child: pw.Text(
-                    _sacramentLabel.toUpperCase(),
-                    style: pw.TextStyle(font: bold, fontSize: 11),
-                  ),
-                ),
-                pw.SizedBox(height: 8),
-
-                _buildPdfDateRow(
-                  regular,
-                  bold,
-                  _certificateData.sacramentDate,
-                  bodyFontSize,
-                ),
-
-                pw.SizedBox(height: 4),
-                pw.Center(
-                  child: pw.Text(
-                    'According to the Rite of the Roman Catholic Church',
-                    style: certifyBold,
-                    textAlign: pw.TextAlign.center,
-                  ),
-                ),
-                pw.SizedBox(height: 6),
-
-                _buildCertRow(
-                  'by the Rev. Fr.',
-                  _certificateData.ministerName.toUpperCase(),
-                  regular,
-                  bold,
-                  fontSize: bodyFontSize,
-                ),
-                pw.SizedBox(height: 4),
-
-                _buildCertRow(
-                  'The Sponsor(s) being',
-                  _certificateData.sponsorName,
-                  regular,
-                  bold,
-                  labelWidth: 72,
-                  fontSize: bodyFontSize,
-                  labelFont: italic,
-                ),
-
-                pw.Spacer(),
-
-                pw.Center(
-                  child: pw.Text(
-                    'as appears from the $_registerLabel Register of this Church',
-                    style: certifyBold,
-                    textAlign: pw.TextAlign.center,
-                  ),
-                ),
-                pw.SizedBox(height: 6),
-
-                pw.Row(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        _buildRegistryRow(
-                          'Dated :',
-                          _formatDate(_certificateData.issueDate),
-                          regular,
-                          bold,
-                        ),
-                        _buildRegistryRow(
-                          'Page  :',
-                          _certificateData.registryPage,
-                          regular,
-                          bold,
-                        ),
-                        _buildRegistryRow(
-                          'Vol.  :',
-                          _certificateData.registryVolume,
-                          regular,
-                          bold,
-                        ),
-                        _buildRegistryRow(
-                          'Series :',
-                          _certificateData.registrySeries,
-                          regular,
-                          bold,
-                        ),
-                      ],
-                    ),
-                    pw.SizedBox(width: 10),
-                    // Takes the rest of the row so it can never run off the
-                    // right edge of the small certificate page.
-                    pw.Expanded(child: signatureBlock()),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  pw.Widget _buildCross({bool thick = true}) {
-    return pw.Container(
-      width: thick ? 30 : 50,
-      height: thick ? 40 : 65,
-      child: pw.CustomPaint(
-        painter: (canvas, size) {
-          final sw = size.x;
-          final sh = size.y;
-          final midX = sw / 2;
-
-          if (thick) {
-            canvas.moveTo(midX - 4, 0);
-            canvas.lineTo(midX + 4, 0);
-            canvas.lineTo(midX + 4, sh * 0.3);
-            canvas.lineTo(sw, sh * 0.3);
-            canvas.lineTo(sw, sh * 0.45);
-            canvas.lineTo(midX + 4, sh * 0.45);
-            canvas.lineTo(midX + 4, sh);
-            canvas.lineTo(midX - 4, sh);
-            canvas.lineTo(midX - 4, sh * 0.45);
-            canvas.lineTo(0, sh * 0.45);
-            canvas.lineTo(0, sh * 0.3);
-            canvas.lineTo(midX - 4, sh * 0.3);
-            canvas.lineTo(midX - 4, 0);
-            canvas.setStrokeColor(PdfColors.black);
-            canvas.setLineWidth(1);
-            canvas.strokePath();
-          } else {
-            // Outline cross style as seen in confirmation photo
-            final strokeWidth = 1.0;
-            final barWidth = sw * 0.25;
-
-            // Vertical bar
-            canvas.drawRect(midX - barWidth / 2, 0, barWidth, sh);
-            // Horizontal bar
-            canvas.drawRect(0, sh * 0.25, sw, sh * 0.2);
-
-            canvas.setStrokeColor(PdfColors.black);
-            canvas.setLineWidth(strokeWidth);
-            canvas.strokePath();
-          }
-        },
-      ),
-    );
-  }
-
-  static const double _formLabelWidth = 52;
-
-  pw.Widget _buildUnderlinedText(
-    String text, {
-    required double width,
-    required pw.Font font,
-    double fontSize = 8,
-    pw.TextAlign align = pw.TextAlign.center,
-  }) {
-    return pw.Container(
-      width: width,
-      decoration: const pw.BoxDecoration(
-        border: pw.Border(
-          bottom: pw.BorderSide(color: PdfColors.black, width: 0.8),
-        ),
-      ),
-      padding: const pw.EdgeInsets.only(bottom: 2),
-      alignment: pw.Alignment.bottomCenter,
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(font: font, fontSize: fontSize),
-        textAlign: align,
-      ),
-    );
-  }
-
-  pw.Widget _buildPdfDateRow(
-    pw.Font regular,
-    pw.Font bold,
-    DateTime? date,
-    double fontSize,
-  ) {
-    final day = date != null ? _ordinalDay(date.day) : '';
-    final month = date != null ? DateFormat('MMMM').format(date) : '';
-    final year = date?.year.toString() ?? '';
-
-    pw.Widget plain(String text) => pw.Padding(
-          padding: const pw.EdgeInsets.only(right: 4, bottom: 2),
-          child: pw.Text(
-            text,
-            style: pw.TextStyle(font: regular, fontSize: fontSize),
-          ),
-        );
-
-    return pw.Center(
-      child: pw.Row(
-        mainAxisSize: pw.MainAxisSize.min,
-        crossAxisAlignment: pw.CrossAxisAlignment.end,
-        children: [
-          plain('on the'),
-          _buildUnderlinedText(day, width: 34, font: bold, fontSize: fontSize),
-          plain('day of'),
-          _buildUnderlinedText(
-            month,
-            width: 78,
-            font: bold,
-            fontSize: fontSize,
-          ),
-          plain(','),
-          _buildUnderlinedText(year, width: 40, font: bold, fontSize: fontSize),
-        ],
-      ),
-    );
   }
 
   String _ordinalDay(int day) {
@@ -1424,135 +981,6 @@ class _CertificateTemplateScreenState
       default:
         return '${day}th';
     }
-  }
-
-  pw.Widget _buildCertRow(
-    String label,
-    String value,
-    pw.Font regular,
-    pw.Font bold, {
-    double labelWidth = _formLabelWidth,
-    double fontSize = 8,
-    pw.Font? labelFont,
-  }) {
-    return pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.end,
-      children: [
-        pw.SizedBox(
-          width: labelWidth,
-          child: pw.Text(
-            label,
-            style: pw.TextStyle(
-              font: labelFont ?? regular,
-              fontSize: fontSize,
-            ),
-          ),
-        ),
-        pw.Expanded(
-          child: pw.Container(
-            decoration: const pw.BoxDecoration(
-              border: pw.Border(
-                bottom: pw.BorderSide(color: PdfColors.black, width: 0.8),
-              ),
-            ),
-            padding: const pw.EdgeInsets.only(bottom: 2, left: 2),
-            child: pw.Text(
-              value,
-              style: pw.TextStyle(font: bold, fontSize: fontSize),
-              textAlign: pw.TextAlign.left,
-              maxLines: 2,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  pw.Widget _buildRegistryRow(
-    String label,
-    String value,
-    pw.Font regular,
-    pw.Font bold,
-  ) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 1),
-      child: pw.Row(
-        mainAxisSize: pw.MainAxisSize.min,
-        children: [
-          pw.SizedBox(
-            width: 38,
-            child: pw.Text(
-              label,
-              style: pw.TextStyle(font: regular, fontSize: 7),
-            ),
-          ),
-          pw.SizedBox(width: 3),
-          pw.Container(
-            width: 62,
-            decoration: const pw.BoxDecoration(
-              border: pw.Border(
-                bottom: pw.BorderSide(color: PdfColors.black, width: 0.8),
-              ),
-            ),
-            child: pw.Text(
-              value,
-              style: pw.TextStyle(font: bold, fontSize: 7),
-              textAlign: pw.TextAlign.left,
-              maxLines: 1,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  pw.Widget _buildCoatOfArms() {
-    // Simple coat of arms representation (shield shape)
-    return pw.Container(
-      width: 40,
-      height: 50,
-      child: pw.CustomPaint(
-        painter: (canvas, size) {
-          final centerX = size.x / 2;
-          final topY = 5.0;
-          final bottomY = size.y - 5;
-          final width = size.x - 10;
-          final halfWidth = width / 2;
-
-          // Draw shield outline
-          final path = [
-            [centerX - halfWidth, topY + 8], // Top left
-            [centerX - halfWidth, topY + 15], // Upper left side
-            [centerX - halfWidth * 0.7, bottomY - 12], // Lower left side
-            [centerX, bottomY], // Bottom point
-            [centerX + halfWidth * 0.7, bottomY - 12], // Lower right side
-            [centerX + halfWidth, topY + 15], // Upper right side
-            [centerX + halfWidth, topY + 8], // Top right
-          ];
-
-          // Draw shield border
-          for (int i = 0; i < path.length - 1; i++) {
-            canvas.drawLine(
-              path[i][0],
-              path[i][1],
-              path[i + 1][0],
-              path[i + 1][1],
-            );
-          }
-          canvas.drawLine(path.last[0], path.last[1], path[0][0], path[0][1]);
-
-          // Cross inside shield (simple +)
-          canvas.drawLine(centerX, topY + 18, centerX, bottomY - 8);
-          canvas.drawLine(centerX - 8, topY + 28, centerX + 8, topY + 28);
-
-          // Crown on top
-          canvas.drawLine(centerX - 8, topY + 8, centerX + 8, topY + 8);
-          canvas.drawLine(centerX - 6, topY, centerX - 6, topY + 8);
-          canvas.drawLine(centerX, topY - 3, centerX, topY + 8);
-          canvas.drawLine(centerX + 6, topY, centerX + 6, topY + 8);
-        },
-      ),
-    );
   }
 
   String _formatDate(DateTime? date) {
@@ -1649,7 +1077,7 @@ class _CertificateTemplateScreenState
                                 ],
                               ),
                               child: AspectRatio(
-                                aspectRatio: 100 / 148,
+                                aspectRatio: certificatePageFormat.width / certificatePageFormat.height,
                                 child: _buildCertificatePreview(),
                               ),
                             ),
@@ -1662,527 +1090,46 @@ class _CertificateTemplateScreenState
   }
 
   Widget _buildCertificatePreview() {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.black, width: 2),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    _updateDataFromControllers();
+    final layout = _layout;
+    final values = _slotValues(_certificateData);
+    return LayoutBuilder(
+      builder: (context, box) {
+        final w = box.maxWidth;
+        final h = box.maxHeight;
+        final fontSize = h * _valueFontFraction;
+        final boxH = fontSize * 1.3;
+        return Stack(
           children: [
-            _buildPreviewParishText(),
-            const SizedBox(height: 8),
-            _buildPreviewTitleWithLogos(),
-            const SizedBox(height: 14),
-
-            Center(
-              child: Text(
-                'This is to Certify:',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 10,
-                ),
-                textAlign: TextAlign.center,
-              ),
+            Positioned.fill(
+              child: Image.asset(layout.background, fit: BoxFit.fill),
             ),
-
-            const SizedBox(height: 10),
-
-            // Person details
-            _buildPreviewRow('That', _nameCtrl.text.toUpperCase()),
-            const SizedBox(height: 6),
-            _buildPreviewRow(
-              'Child of',
-              _motherFirst ? _motherCtrl.text : _fatherCtrl.text,
-            ),
-            const SizedBox(height: 2),
-            _buildPreviewRow(
-              'and',
-              _motherFirst ? _fatherCtrl.text : _motherCtrl.text,
-            ),
-            const SizedBox(height: 6),
-            _buildPreviewRow('born in', _birthplaceCtrl.text),
-            const SizedBox(height: 6),
-
-            // Birth date row
-            _buildPreviewDateRow(
-              'on the',
-              _certificateData.birthDate != null
-                  ? _ordinalDay(_certificateData.birthDate!.day)
-                  : '__',
-              'day of',
-              _certificateData.birthDate != null
-                  ? DateFormat('MMMM').format(_certificateData.birthDate!)
-                  : '',
-              _certificateData.birthDate?.year.toString() ?? '',
-            ),
-
-            const SizedBox(height: 12),
-
-            // Sacrament statement
-            Center(
-              child: Text(
-                _sacramentLabel,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // Sacrament date
-            _buildPreviewDateRow(
-              'on the',
-              _certificateData.sacramentDate != null
-                  ? _ordinalDay(_certificateData.sacramentDate!.day)
-                  : '__',
-              'day of',
-              _certificateData.sacramentDate != null
-                  ? DateFormat('MMMM').format(_certificateData.sacramentDate!)
-                  : '',
-              _certificateData.sacramentDate?.year.toString() ?? '',
-            ),
-
-            const SizedBox(height: 6),
-
-            Center(
-              child: Text(
-                'According to the Rite of the Roman Catholic Church',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 9,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-
-            const SizedBox(height: 6),
-
-            // Minister
-            _buildPreviewMinisterRow(_ministerCtrl.text.toUpperCase()),
-
-            const SizedBox(height: 10),
-
-            // Sponsor
-            _buildPreviewSponsorRow(_sponsorCtrl.text),
-
-            const SizedBox(height: 16),
-
-            Center(
-              child: Text(
-                'as appears from the $_registerLabel Register of this Church',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 8,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Registry info
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                    _buildPreviewRegistryRow(
-                      'Dated :',
-                      _formatDate(_certificateData.issueDate),
+            for (final entry in layout.slots.entries)
+              if ((values[entry.key] ?? '').trim().isNotEmpty)
+                Positioned(
+                  left: entry.value.x0 * w + 2,
+                  top: entry.value.y * h - boxH - h * 0.003,
+                  width: (entry.value.x1 - entry.value.x0) * w - 4,
+                  height: boxH,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: _centredSlots.contains(entry.key)
+                        ? Alignment.bottomCenter
+                        : Alignment.bottomLeft,
+                    child: Text(
+                      values[entry.key]!.trim(),
+                      style: TextStyle(
+                        fontSize: fontSize,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                        height: 1.0,
+                      ),
                     ),
-                    _buildPreviewRegistryRow('Page  :', _pageCtrl.text),
-                    _buildPreviewRegistryRow('Vol.  :', _volumeCtrl.text),
-                    _buildPreviewRegistryRow('Series :', _seriesCtrl.text),
-                    ],
                   ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    if (widget.recordType == RecordType.confirmation) ...[
-                      Text(
-                        'NOTE: FOR MARRIAGE PURPOSE',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 8,
-                          color: Colors.red,
-                        ),
-                        textAlign: TextAlign.right,
-                      ),
-                      const SizedBox(height: 6),
-                    ],
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('Rev.  ', style: TextStyle(fontSize: 8)),
-                        Text(
-                          _priestCtrl.text.toUpperCase(),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 8,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      'Parish Priest / VICAR',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 7,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ],
-            ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPreviewLogo(Uint8List? bytes, {double size = 44}) {
-    if (bytes == null || bytes.isEmpty) {
-      return SizedBox(width: size, height: size);
-    }
-    return Image.memory(
-      bytes,
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.medium,
-      gaplessPlayback: true,
-      errorBuilder: (_, __, ___) => SizedBox(width: size, height: size),
-    );
-  }
-
-  Widget _buildPreviewParishText() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'ARCHDIOCESE OF OZAMIS',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            _parishCtrl.text,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            _parishLocationCtrl.text,
-            style: TextStyle(fontSize: 9),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPreviewTitleWithLogos() {
-    final title = Text(
-      _certificateTitle,
-      style: TextStyle(
-        fontWeight: FontWeight.bold,
-        fontSize: widget.recordType == RecordType.confirmation ? 13 : 12,
-      ),
-      textAlign: TextAlign.center,
-      maxLines: 2,
-    );
-
-    if (!_usesCertificateLogos ||
-        (_archdioceseLogoBytes == null && _parishLogoBytes == null)) {
-      return Center(child: title);
-    }
-
-    const logoSize = 52.0;
-    const titleWidth = 125.0;
-
-    Widget logoCell(Uint8List? bytes) => SizedBox(
-          width: logoSize,
-          height: logoSize,
-          child: Center(
-            child: _buildPreviewLogo(bytes, size: logoSize),
-          ),
         );
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: logoCell(_archdioceseLogoBytes),
-          ),
-        ),
-        SizedBox(
-          width: titleWidth,
-          child: Center(child: title),
-        ),
-        Expanded(
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: logoCell(_parishLogoBytes),
-          ),
-        ),
-      ],
+      },
     );
   }
-
-  Widget _buildPreviewCross() {
-    return Container(
-      width: 20,
-      height: 28,
-      child: CustomPaint(painter: CrossPainter()),
-    );
-  }
-
-  Widget _buildPreviewCoatOfArms() {
-    return Container(
-      width: 28,
-      height: 36,
-      child: CustomPaint(painter: CoatOfArmsPainter()),
-    );
-  }
-
-  static const double _previewLabelWidth = _formLabelWidth;
-
-  Widget _buildPreviewRow(
-    String label,
-    String value, {
-    double labelWidth = _previewLabelWidth,
-    TextStyle? labelStyle,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        SizedBox(
-          width: labelWidth,
-          child: Text(
-            label,
-            style: labelStyle ?? TextStyle(fontSize: 9),
-          ),
-        ),
-        Expanded(
-          child: Container(
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.black)),
-            ),
-            padding: const EdgeInsets.only(bottom: 2, left: 2),
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 9),
-              textAlign: TextAlign.left,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPreviewUnderlined(
-    String text,
-    double width, {
-    bool bold = false,
-  }) {
-    return Container(
-      width: width,
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.black)),
-      ),
-      padding: const EdgeInsets.only(bottom: 2),
-      alignment: Alignment.bottomCenter,
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 9,
-          fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-        ),
-        textAlign: TextAlign.center,
-      ),
-    );
-  }
-
-  Widget _buildPreviewDateRow(
-    String prefix,
-    String day,
-    String middle,
-    String month,
-    String year,
-  ) {
-    Widget plain(String text) => Padding(
-          padding: const EdgeInsets.only(right: 4, bottom: 2),
-          child: Text(text, style: TextStyle(fontSize: 9)),
-        );
-
-    return Center(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          plain(prefix),
-          _buildPreviewUnderlined(day, 26, bold: true),
-          plain(middle),
-          _buildPreviewUnderlined(month, 58, bold: true),
-          plain(','),
-          _buildPreviewUnderlined(year, 32, bold: true),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPreviewMinisterRow(String value) {
-    return _buildPreviewRow('by the Rev. Fr.', value, labelWidth: 72);
-  }
-
-  Widget _buildPreviewSponsorRow(String value) {
-    return _buildPreviewRow(
-      'The Sponsor(s) being',
-      value,
-      labelWidth: 72,
-      labelStyle: TextStyle(fontStyle: FontStyle.italic, fontSize: 9),
-    );
-  }
-
-  Widget _buildPreviewRegistryRow(String label, String value) {
-    return Row(
-      children: [
-        SizedBox(width: 40, child: Text(label, style: TextStyle(fontSize: 8))),
-        Container(
-          width: 60,
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Colors.black)),
-          ),
-          padding: const EdgeInsets.only(left: 2),
-          child: Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 8),
-            textAlign: TextAlign.left,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Custom painter for the cross decoration
-class CrossPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.black
-      ..strokeWidth = 1.5;
-
-    // Vertical line
-    canvas.drawLine(
-      Offset(size.width / 2, 0),
-      Offset(size.width / 2, size.height),
-      paint,
-    );
-
-    // Horizontal line
-    canvas.drawLine(
-      Offset(size.width / 2 - 7, size.height * 0.35),
-      Offset(size.width / 2 + 7, size.height * 0.35),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// Custom painter for the coat of arms decoration (for baptism certificates)
-class CoatOfArmsPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.black
-      ..strokeWidth = 1.2;
-
-    final centerX = size.width / 2;
-    final topY = 3.0;
-    final bottomY = size.height - 3;
-    final width = size.width - 6;
-    final halfWidth = width / 2;
-
-    // Draw shield outline
-    final path = Path()
-      ..moveTo(centerX - halfWidth, topY + 5)
-      ..lineTo(centerX - halfWidth, topY + 10)
-      ..lineTo(centerX - halfWidth * 0.7, bottomY - 8)
-      ..lineTo(centerX, bottomY)
-      ..lineTo(centerX + halfWidth * 0.7, bottomY - 8)
-      ..lineTo(centerX + halfWidth, topY + 10)
-      ..lineTo(centerX + halfWidth, topY + 5)
-      ..close();
-
-    canvas.drawPath(path, paint..style = PaintingStyle.stroke);
-
-    // Cross inside shield
-    paint.strokeWidth = 1;
-    // Vertical line of cross
-    canvas.drawLine(
-      Offset(centerX, topY + 12),
-      Offset(centerX, bottomY - 6),
-      paint,
-    );
-    // Horizontal line of cross
-    canvas.drawLine(
-      Offset(centerX - 6, topY + 20),
-      Offset(centerX + 6, topY + 20),
-      paint,
-    );
-
-    // Crown on top (3 lines)
-    paint.strokeWidth = 1;
-    // Base of crown
-    canvas.drawLine(
-      Offset(centerX - 6, topY + 5),
-      Offset(centerX + 6, topY + 5),
-      paint,
-    );
-    // Left crown peak
-    canvas.drawLine(
-      Offset(centerX - 5, topY),
-      Offset(centerX - 5, topY + 5),
-      paint,
-    );
-    // Center crown peak
-    canvas.drawLine(
-      Offset(centerX, topY - 2),
-      Offset(centerX, topY + 5),
-      paint,
-    );
-    // Right crown peak
-    canvas.drawLine(
-      Offset(centerX + 5, topY),
-      Offset(centerX + 5, topY + 5),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
