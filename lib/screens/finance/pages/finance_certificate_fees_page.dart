@@ -177,7 +177,8 @@ class _FinanceCertificateFeesPageState
     );
     final payerCtrl =
         TextEditingController(text: record['donor_name']?.toString() ?? '');
-    const methods = ['cash', 'gcash', 'bank_transfer', 'check', 'card'];
+    // Certificate fees are paid in cash at the parish office for now.
+    const methods = ['cash'];
     var method = (record['method'] ?? 'cash').toString();
     if (!methods.contains(method)) method = 'cash';
     var type = _certTypeKey(record);
