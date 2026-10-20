@@ -579,6 +579,33 @@ class ReportPdfService {
   /// Formats a peso amount for table cells, e.g. ₱1,250.00.
   static String peso(num v) => '\u20B1${NumberFormat('#,##0.00').format(v)}';
 
+  /// One [label, amount, "N records - x%"] tile per donation category:
+  /// the parish categories first (shown even at zero), then any other
+  /// fund found in [rows] (e.g. older "General" gifts).
+  static List<List<String>> donationCategoryTiles(List<Map<String, dynamic>> rows) {
+    final amount = <String, double>{};
+    final count = <String, int>{};
+    for (final r in rows) {
+      final label = donationTypeLabel(r);
+      amount[label] = (amount[label] ?? 0) + ((r['amount'] as num?)?.toDouble() ?? 0);
+      count[label] = (count[label] ?? 0) + 1;
+    }
+    final total = amount.values.fold<double>(0, (t, v) => t + v);
+    final order = [
+      ...kDonationCategories,
+      ...amount.keys.where((k) => !kDonationCategories.contains(k)).toList()..sort(),
+    ];
+    return [
+      for (final label in order)
+        [
+          label,
+          peso(amount[label] ?? 0),
+          '${count[label] ?? 0} ${(count[label] ?? 0) == 1 ? 'record' : 'records'}'
+              '${total > 0 ? ' · ${((amount[label] ?? 0) / total * 100).toStringAsFixed(1)}%' : ''}',
+        ],
+    ];
+  }
+
   /// A themed one-table report: header, title block, optional summary tiles,
   /// a striped table, an optional total line, and optional signature lines.
   static Future<Uint8List> tableReport({
@@ -590,6 +617,8 @@ class ReportPdfService {
     Set<int> right = const {},
     Set<int> center = const {},
     List<List<String>> tiles = const [],
+    List<List<String>> breakdown = const [],
+    String breakdownLabel = 'Total per category',
     String? totalLine,
     bool landscape = false,
     List<List<String>> signatures = const [],
@@ -608,6 +637,18 @@ class ReportPdfService {
         _titleBlock(title, period, generatedBy),
         if (tiles.isNotEmpty) ...[
           _tiles([for (final t in tiles) [for (final x in t) fix(x)]]),
+          pw.SizedBox(height: breakdown.isEmpty ? 14 : 10),
+        ],
+        if (breakdown.isNotEmpty) ...[
+          pw.Text(breakdownLabel.toUpperCase(), style: pw.TextStyle(fontSize: 6.5, color: _muted, letterSpacing: 0.6)),
+          pw.SizedBox(height: 4),
+          for (var i = 0; i < breakdown.length; i += 5) ...[
+            if (i > 0) pw.SizedBox(height: 6),
+            _tiles([
+              for (final t in breakdown.sublist(i, i + 5 > breakdown.length ? breakdown.length : i + 5))
+                [for (final x in t) fix(x)],
+            ]),
+          ],
           pw.SizedBox(height: 14),
         ],
         if (rows.isEmpty)

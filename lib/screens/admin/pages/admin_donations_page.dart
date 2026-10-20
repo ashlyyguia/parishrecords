@@ -59,6 +59,7 @@ class _AdminDonationsPageState extends ConsumerState<AdminDonationsPage> {
           ['Online (e-wallet)', ReportPdfService.peso(online)],
           ['Walk-in (cash)', ReportPdfService.peso(total - online)],
         ],
+        breakdown: ReportPdfService.donationCategoryTiles(rows),
         totalLine: 'Grand total: ${ReportPdfService.peso(total)}',
         landscape: true,
         signatures: const [['Prepared by:', 'Finance Officer'], ['Verified by:', 'Parish Administrator']],

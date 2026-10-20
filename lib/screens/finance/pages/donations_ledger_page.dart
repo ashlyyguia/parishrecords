@@ -95,6 +95,7 @@ class _DonationsLedgerPageState extends ConsumerState<DonationsLedgerPage> {
         tiles: [
           ['Total collected', ReportPdfService.peso(grandTotal), '${filtered.length} records'],
         ],
+        breakdown: _filterCampaign == 'All' ? ReportPdfService.donationCategoryTiles(filtered) : const [],
         totalLine: 'Grand total: ${ReportPdfService.peso(grandTotal)}',
         landscape: true,
         signatures: const [['Prepared by:', 'Finance Officer'], ['Verified by:', 'Parish Administrator']],
