@@ -335,8 +335,11 @@ class LetterCertificate {
   static const pageHeight = 841.89;
   static const marginLeft = 72.0;
   static const marginRight = 72.0;
-  static const marginTop = 58.0;
-  static const sealHeight = 82.0;
+
+  /// The letterhead prints the seals and parish name across the top; the
+  /// title starts just below them.
+  static const marginTop = 178.0;
+  static const marginBottom = 40.0;
   static const bodySize = 14.0;
   static const indent = 44.0;
   static const headSize = 18.5;
@@ -347,8 +350,11 @@ class LetterCertificate {
   double get titleSpacing => isNoRecord ? 5 : 0.4;
   double get gapBeforeSignature => isNoRecord ? 40 : 110;
 
-  static const sealLeft = 'assets/images/certificates/seal_archdiocese.png';
-  static const sealRight = 'assets/images/certificates/seal_parish.png';
+  /// The parish letterhead (seals, "ARCHDIOCESE OF OZAMIS / Holy Rosary
+  /// Parish / Oroquieta City", church watermark), stretched to A4.
+  String get background => isNoRecord
+      ? 'assets/images/certificates/no_record.jpg'
+      : 'assets/images/certificates/good_moral.jpg';
   static const bodyFont = 'Carlito';
   static const headFont = 'CrimsonText';
 
@@ -364,9 +370,7 @@ class LetterCertificate {
     final regular = await font('assets/fonts/Carlito-Regular.ttf');
     final bold = await font('assets/fonts/Carlito-Bold.ttf');
     final headBold = await font('assets/fonts/CrimsonText-Bold.ttf');
-    final headItalic = await font('assets/fonts/CrimsonText-Italic.ttf');
-    final left = await image(sealLeft);
-    final right = await image(sealRight);
+    final letterhead = await image(background);
 
     pw.TextStyle body({bool b = false}) => pw.TextStyle(
       font: b ? bold : regular,
@@ -403,74 +407,57 @@ class LetterCertificate {
     doc.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.fromLTRB(
-          marginLeft,
-          marginTop,
-          marginRight,
-          40,
-        ),
-        build: (_) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
+        margin: pw.EdgeInsets.zero,
+        build: (_) => pw.Stack(
           children: [
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.center,
-              crossAxisAlignment: pw.CrossAxisAlignment.center,
-              children: [
-                pw.SizedBox(height: sealHeight, child: pw.Image(left)),
-                pw.SizedBox(width: 22),
-                pw.Column(
-                  children: [
-                    pw.Text(
-                      'ARCHDIOCESE OF OZAMIS',
-                      style: pw.TextStyle(font: headBold, fontSize: headSize),
-                    ),
-                    pw.Text(
-                      'HOLY ROSARY PARISH',
-                      style: pw.TextStyle(font: headBold, fontSize: headSize),
-                    ),
-                    pw.Text(
-                      '7207 Oroquieta City',
-                      style: pw.TextStyle(font: headItalic, fontSize: 14),
-                    ),
-                  ],
-                ),
-                pw.SizedBox(width: 22),
-                pw.SizedBox(height: sealHeight, child: pw.Image(right)),
-              ],
+            pw.Positioned.fill(
+              child: pw.Image(letterhead, fit: pw.BoxFit.fill),
             ),
-            pw.SizedBox(height: 44),
-            pw.Center(
-              child: pw.Text(
-                title,
-                style: pw.TextStyle(
-                  font: headBold,
-                  fontSize: titleSize,
-                  letterSpacing: titleSpacing,
-                ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.fromLTRB(
+                marginLeft,
+                marginTop,
+                marginRight,
+                marginBottom,
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Center(
+                    child: pw.Text(
+                      title,
+                      style: pw.TextStyle(
+                        font: headBold,
+                        fontSize: titleSize,
+                        letterSpacing: titleSpacing,
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(height: 36),
+                  paragraph(salutation, indented: false),
+                  pw.SizedBox(height: paragraphGap),
+                  for (final p in paragraphs) ...[
+                    paragraph(p),
+                    pw.SizedBox(height: paragraphGap),
+                  ],
+                  pw.SizedBox(height: gapBeforeSignature),
+                  if (closing != null) ...[
+                    pw.Text(closing!, style: body()),
+                    pw.SizedBox(height: 40),
+                  ],
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
+                    children: [
+                      pw.Text(signatory, style: body(b: true)),
+                      pw.SizedBox(height: 3),
+                      pw.Text(position, style: body()),
+                    ],
+                  ),
+                  pw.SizedBox(height: 90),
+                  pw.Text('PARISH SEAL', style: body().copyWith(fontSize: 13)),
+                ],
               ),
             ),
-            pw.SizedBox(height: 36),
-            paragraph(salutation, indented: false),
-            pw.SizedBox(height: paragraphGap),
-            for (final p in paragraphs) ...[
-              paragraph(p),
-              pw.SizedBox(height: paragraphGap),
-            ],
-            pw.SizedBox(height: gapBeforeSignature),
-            if (closing != null) ...[
-              pw.Text(closing!, style: body()),
-              pw.SizedBox(height: 40),
-            ],
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.center,
-              children: [
-                pw.Text(signatory, style: body(b: true)),
-                pw.SizedBox(height: 3),
-                pw.Text(position, style: body()),
-              ],
-            ),
-            pw.SizedBox(height: 90),
-            pw.Text('PARISH SEAL', style: body().copyWith(fontSize: 13)),
           ],
         ),
       ),
@@ -556,89 +543,64 @@ class LetterCertificatePage extends StatelessWidget {
         child: SizedBox(
           width: LetterCertificate.pageWidth,
           height: LetterCertificate.pageHeight,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              LetterCertificate.marginLeft,
-              LetterCertificate.marginTop,
-              LetterCertificate.marginRight,
-              40,
-            ),
-            child: DefaultTextStyle(
-              style: body(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Image.asset(c.background, fit: BoxFit.fill),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  LetterCertificate.marginLeft,
+                  LetterCertificate.marginTop,
+                  LetterCertificate.marginRight,
+                  LetterCertificate.marginBottom,
+                ),
+                child: DefaultTextStyle(
+                  style: body(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Image.asset(
-                        LetterCertificate.sealLeft,
-                        height: LetterCertificate.sealHeight,
-                      ),
-                      const SizedBox(width: 22),
-                      const Column(
-                        children: [
-                          Text('ARCHDIOCESE OF OZAMIS', style: head),
-                          Text('HOLY ROSARY PARISH', style: head),
-                          Text(
-                            '7207 Oroquieta City',
-                            style: TextStyle(
-                              fontFamily: LetterCertificate.headFont,
-                              fontStyle: FontStyle.italic,
-                              fontSize: 14,
-                              color: Colors.black,
-                              height: 1.2,
-                            ),
+                      Center(
+                        child: Text(
+                          c.title,
+                          style: head.copyWith(
+                            fontSize: c.titleSize,
+                            letterSpacing: c.titleSpacing,
                           ),
+                        ),
+                      ),
+                      const SizedBox(height: 36),
+                      paragraph(c.salutation, indented: false),
+                      SizedBox(height: c.paragraphGap),
+                      for (final p in c.paragraphs) ...[
+                        paragraph(p),
+                        SizedBox(height: c.paragraphGap),
+                      ],
+                      SizedBox(height: c.gapBeforeSignature),
+                      if (c.closing != null) ...[
+                        Text(c.closing!, style: body().copyWith(height: 1.2)),
+                        const SizedBox(height: 40),
+                      ],
+                      Column(
+                        children: [
+                          Text(
+                            c.signatory,
+                            style: body(bold: true).copyWith(height: 1.2),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(c.position, style: body().copyWith(height: 1.2)),
                         ],
                       ),
-                      const SizedBox(width: 22),
-                      Image.asset(
-                        LetterCertificate.sealRight,
-                        height: LetterCertificate.sealHeight,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 44),
-                  Center(
-                    child: Text(
-                      c.title,
-                      style: head.copyWith(
-                        fontSize: c.titleSize,
-                        letterSpacing: c.titleSpacing,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 36),
-                  paragraph(c.salutation, indented: false),
-                  SizedBox(height: c.paragraphGap),
-                  for (final p in c.paragraphs) ...[
-                    paragraph(p),
-                    SizedBox(height: c.paragraphGap),
-                  ],
-                  SizedBox(height: c.gapBeforeSignature),
-                  if (c.closing != null) ...[
-                    Text(c.closing!, style: body().copyWith(height: 1.2)),
-                    const SizedBox(height: 40),
-                  ],
-                  Column(
-                    children: [
+                      const SizedBox(height: 90),
                       Text(
-                        c.signatory,
-                        style: body(bold: true).copyWith(height: 1.2),
+                        'PARISH SEAL',
+                        style: body().copyWith(fontSize: 13, height: 1.2),
                       ),
-                      const SizedBox(height: 3),
-                      Text(c.position, style: body().copyWith(height: 1.2)),
                     ],
                   ),
-                  const SizedBox(height: 90),
-                  Text(
-                    'PARISH SEAL',
-                    style: body().copyWith(fontSize: 13, height: 1.2),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
