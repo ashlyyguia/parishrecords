@@ -252,7 +252,10 @@ class _StatsRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(s.$1, style: LandingKit.display(30, color: AppColors.primary)),
+                  Text(
+                    s.$1,
+                    style: LandingKit.display(30, color: AppColors.primary),
+                  ),
                   const SizedBox(height: 6),
                   Text(
                     s.$2,

@@ -155,18 +155,12 @@ class LandingHero extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
           ),
-          child: Text(
-            eyebrow,
-            style: LandingKit.eyebrow(color: Colors.white),
-          ),
+          child: Text(eyebrow, style: LandingKit.eyebrow(color: Colors.white)),
         ),
         SizedBox(height: compact ? 16 : 20),
         Text(
           title,
-          style: LandingKit.display(
-            compact ? 32 : 46,
-            color: Colors.white,
-          ),
+          style: LandingKit.display(compact ? 32 : 46, color: Colors.white),
         ),
         if (subtitle != null) ...[
           SizedBox(height: compact ? 12 : 16),
@@ -378,7 +372,10 @@ class LandingButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = GoogleFonts.poppins(fontSize: 14.5, fontWeight: FontWeight.w600);
+    final style = GoogleFonts.poppins(
+      fontSize: 14.5,
+      fontWeight: FontWeight.w600,
+    );
     const pad = EdgeInsets.symmetric(horizontal: 22, vertical: 16);
     final radius = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(14),
