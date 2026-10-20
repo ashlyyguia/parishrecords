@@ -208,6 +208,7 @@ class _CertificateScanScreenState extends State<CertificateScanScreen> {
       RecordType.confirmation => '$shell/records/new/confirmation',
       RecordType.funeral => '$shell/records/new/death',
       RecordType.goodMoral => '$shell/records/new/good-moral',
+      RecordType.noRecord => '$shell/records/new/no-record',
     };
     context.push(
       formPath,

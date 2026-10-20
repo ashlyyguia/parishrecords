@@ -151,6 +151,9 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
         case RecordType.goodMoral:
           await context.push('/admin/records/new/good-moral', extra: record);
           break;
+        case RecordType.noRecord:
+          await context.push('/admin/records/new/no-record', extra: record);
+          break;
       }
     }
     if (mounted) await _loadFromBackend();
@@ -356,6 +359,7 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
               DropdownMenuItem(value: 'baptism', child: Text('Baptism')),
               DropdownMenuItem(value: 'marriage', child: Text('Marriage')),
               DropdownMenuItem(value: 'goodMoral', child: Text('Good Moral')),
+              DropdownMenuItem(value: 'noRecord', child: Text('No Record')),
             ],
             onChanged: (v) => setState(() => _type = v ?? 'all'),
           ),
@@ -576,6 +580,9 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
                       case 'goodMoral':
                         badgeColor = Colors.amber.shade800;
                         break;
+                      case 'noRecord':
+                        badgeColor = Colors.teal;
+                        break;
                       default:
                         badgeColor = Colors.orange;
                         break;
@@ -725,6 +732,9 @@ class _AdminRecordsPageState extends State<AdminRecordsPage> {
       case 'goodmoral':
       case 'good_moral':
         return RecordType.goodMoral;
+      case 'norecord':
+      case 'no_record':
+        return RecordType.noRecord;
       default:
         return RecordType.baptism;
     }

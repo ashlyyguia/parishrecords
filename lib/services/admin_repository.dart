@@ -18,6 +18,7 @@ class AdminRepository {
       'confirmation_records',
       'funeral_records',
       'good_moral_records',
+      'no_record_records',
     ];
 
     for (final collection in collections) {
@@ -55,6 +56,8 @@ class AdminRepository {
         return RecordType.funeral;
       case 'good_moral_records':
         return RecordType.goodMoral;
+      case 'no_record_records':
+        return RecordType.noRecord;
       default:
         return RecordType.baptism;
     }
@@ -93,6 +96,7 @@ class AdminRepository {
       'confirmation_records',
       'funeral_records',
       'good_moral_records',
+      'no_record_records',
     ];
 
     for (final collection in collections) {
@@ -140,6 +144,7 @@ class AdminRepository {
       'confirmation_records',
       'funeral_records',
       'good_moral_records',
+      'no_record_records',
     ];
     for (final collection in collections) {
       try {
@@ -159,6 +164,7 @@ class AdminRepository {
       'confirmation_records',
       'funeral_records',
       'good_moral_records',
+      'no_record_records',
     ];
     for (final collection in collections) {
       try {
@@ -306,6 +312,7 @@ class AdminRepository {
         'confirmation_records',
         'funeral_records',
         'good_moral_records',
+        'no_record_records',
       ];
 
       for (final collection in collections) {
@@ -370,6 +377,7 @@ class AdminRepository {
       'confirmation_records',
       'funeral_records',
       'good_moral_records',
+      'no_record_records',
     ];
 
     for (final collection in collections) {
@@ -406,6 +414,7 @@ class AdminRepository {
         'confirmation_records',
         'funeral_records',
         'good_moral_records',
+        'no_record_records',
       ];
 
       for (final collection in collections) {
@@ -525,6 +534,9 @@ class AdminRepository {
       case 'good_moral_records':
         return (data['text'] ?? data['name'] ?? 'Good Moral Certificate')
             .toString();
+      case 'no_record_records':
+        return (data['text'] ?? data['name'] ?? 'Certificate of No Record')
+            .toString();
       default:
         return (data['name'] ?? 'Record').toString();
     }
@@ -557,6 +569,11 @@ class AdminRepository {
         'name': 'good_moral_records',
         'type': 'Good Moral Certificate',
         'icon': 'verified',
+      },
+      {
+        'name': 'no_record_records',
+        'type': 'Certificate of No Record',
+        'icon': 'description',
       },
     ];
 

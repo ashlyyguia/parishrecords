@@ -131,6 +131,9 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
       case RecordType.goodMoral:
         await context.push('/records/new/good-moral');
         break;
+      case RecordType.noRecord:
+        await context.push('/records/new/no-record');
+        break;
     }
   }
 
@@ -342,6 +345,12 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                               RecordType.goodMoral,
                               'Good Moral',
                               Icons.workspace_premium_outlined,
+                              colorScheme,
+                            ),
+                            _buildTypeChip(
+                              RecordType.noRecord,
+                              'No Record',
+                              Icons.search_off_outlined,
                               colorScheme,
                             ),
                           ],
@@ -746,6 +755,12 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
                               extra: record,
                             );
                             break;
+                          case RecordType.noRecord:
+                            context.push(
+                              '/records/new/no-record',
+                              extra: record,
+                            );
+                            break;
                         }
                       },
                       icon: Icon(
@@ -775,6 +790,8 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
         return Colors.grey;
       case RecordType.goodMoral:
         return Colors.amber.shade800;
+      case RecordType.noRecord:
+        return Colors.teal;
     }
   }
 
@@ -790,6 +807,8 @@ class _RecordsListScreenState extends ConsumerState<RecordsListScreen> {
         return Icons.person_outline;
       case RecordType.goodMoral:
         return Icons.workspace_premium_outlined;
+      case RecordType.noRecord:
+        return Icons.search_off_outlined;
     }
   }
 
@@ -914,6 +933,14 @@ class _AddRecordTypeScreen extends StatelessWidget {
               color: Colors.amber.shade800,
               icon: Icons.workspace_premium_outlined,
               onTap: () => Navigator.of(context).pop(RecordType.goodMoral),
+            ),
+            const SizedBox(height: 12),
+            _RecordTypeButton(
+              label: 'No Record',
+              description: 'Issue a Certificate of No Record',
+              color: Colors.teal,
+              icon: Icons.search_off_outlined,
+              onTap: () => Navigator.of(context).pop(RecordType.noRecord),
             ),
             const Spacer(),
             Text(

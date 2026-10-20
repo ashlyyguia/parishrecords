@@ -48,6 +48,14 @@ class ManualRegisterLauncher {
       color: const Color(0xFFD97706),
       route: '$recordsBasePath/new/good-moral',
     ),
+    _SacramentOption(
+      type: 'no_record',
+      label: 'Certificate of No Record',
+      subtitle: 'No entry found in the parish registers',
+      icon: Icons.search_off_outlined,
+      color: const Color(0xFF0D9488),
+      route: '$recordsBasePath/new/no-record',
+    ),
   ];
 
   /// Shows sacrament picker, then navigates to the matching manual register form.

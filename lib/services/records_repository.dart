@@ -23,6 +23,8 @@ class RecordsRepository {
         return _firestore.collection('baptism_records');
       case RecordType.goodMoral:
         return _firestore.collection('good_moral_records');
+      case RecordType.noRecord:
+        return _firestore.collection('no_record_records');
     }
   }
 
@@ -82,6 +84,7 @@ class RecordsRepository {
         RecordType.confirmation,
         RecordType.funeral,
         RecordType.goodMoral,
+        RecordType.noRecord,
       ];
 
       for (final type in types) {
@@ -378,6 +381,7 @@ class RecordsRepository {
         RecordType.confirmation: 'confirmation_records',
         RecordType.funeral: 'funeral_records',
         RecordType.goodMoral: 'good_moral_records',
+        RecordType.noRecord: 'no_record_records',
       };
 
       DocumentSnapshot<Map<String, dynamic>>? existingDoc;
@@ -454,6 +458,7 @@ class RecordsRepository {
       'confirmation_records',
       'funeral_records',
       'good_moral_records',
+      'no_record_records',
     ];
     for (final col in collections) {
       try {
@@ -496,6 +501,7 @@ class RecordsRepository {
         'confirmation_records',
         'funeral_records',
         'good_moral_records',
+        'no_record_records',
       ];
       for (final col in collections) {
         try {
@@ -569,6 +575,7 @@ class RecordsRepository {
       'confirmation_records',
       'funeral_records',
       'good_moral_records',
+      'no_record_records',
     ];
     for (final col in collections) {
       try {
@@ -619,6 +626,7 @@ class RecordsRepository {
         'confirmation_records',
         'funeral_records',
         'good_moral_records',
+        'no_record_records',
       ];
       for (final col in collections) {
         try {

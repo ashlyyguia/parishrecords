@@ -266,6 +266,10 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
                                 value: 'goodMoral',
                                 child: Text('Good Moral'),
                               ),
+                              DropdownMenuItem(
+                                value: 'noRecord',
+                                child: Text('No Record'),
+                              ),
                             ],
                             onChanged: (v) =>
                                 setState(() => _type = v ?? 'all'),
@@ -533,6 +537,8 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
         return Colors.grey;
       case 'confirmation':
         return Colors.orange;
+      case 'norecord':
+        return Colors.teal;
       case 'goodmoral':
         return Colors.amber.shade800;
       default:
@@ -579,6 +585,9 @@ class _StaffRecordsPageState extends ConsumerState<StaffRecordsPage> {
         break;
       case RecordType.goodMoral:
         context.push('/staff/records/new/good-moral', extra: record);
+        break;
+      case RecordType.noRecord:
+        context.push('/staff/records/new/no-record', extra: record);
         break;
     }
   }

@@ -1,6 +1,14 @@
-/// The parish's record kinds. [goodMoral] is not a sacrament: it records a
-/// Certificate of Good Moral Character issued by the parish office.
-enum RecordType { baptism, marriage, funeral, confirmation, goodMoral }
+/// The parish's record kinds. [goodMoral] and [noRecord] are not sacraments:
+/// they record a Certificate of Good Moral Character or a Certificate of No
+/// Record issued by the parish office.
+enum RecordType {
+  baptism,
+  marriage,
+  funeral,
+  confirmation,
+  goodMoral,
+  noRecord,
+}
 
 extension RecordTypeExtension on RecordType {
   String get value {
@@ -15,6 +23,8 @@ extension RecordTypeExtension on RecordType {
         return 'confirmation';
       case RecordType.goodMoral:
         return 'good_moral';
+      case RecordType.noRecord:
+        return 'no_record';
     }
   }
 
@@ -31,6 +41,8 @@ extension RecordTypeExtension on RecordType {
         return 'Confirmation';
       case RecordType.goodMoral:
         return 'Good Moral';
+      case RecordType.noRecord:
+        return 'No Record';
     }
   }
 
@@ -48,6 +60,10 @@ extension RecordTypeExtension on RecordType {
       case 'goodmoral':
       case 'good moral':
         return RecordType.goodMoral;
+      case 'no_record':
+      case 'norecord':
+      case 'no record':
+        return RecordType.noRecord;
       default:
         return RecordType.baptism;
     }

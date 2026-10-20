@@ -59,6 +59,8 @@ class _CertificateVerifyScreenState extends State<CertificateVerifyScreen> {
         return 'Funeral';
       case RecordType.goodMoral:
         return 'Good Moral';
+      case RecordType.noRecord:
+        return 'No Record';
     }
   }
 

@@ -263,9 +263,13 @@ class _OcrEditableResultScreenState extends State<OcrEditableResultScreen> {
                         labelText: 'Record Type',
                         border: OutlineInputBorder(),
                       ),
-                      // Good Moral certificates are issued, not scanned.
+                      // Office-issued certificates are not scanned.
                       items: RecordType.values
-                          .where((t) => t != RecordType.goodMoral)
+                          .where(
+                            (t) =>
+                                t != RecordType.goodMoral &&
+                                t != RecordType.noRecord,
+                          )
                           .map((type) {
                         return DropdownMenuItem(
                           value: type,

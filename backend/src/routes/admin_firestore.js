@@ -12,6 +12,7 @@ const RECORD_COLLECTIONS = [
   'confirmation_records',
   'funeral_records',
   'good_moral_records',
+  'no_record_records',
 ];
 
 router.use(verifyFirebaseToken);

@@ -89,19 +89,25 @@ class CertificateData {
       case RecordType.goodMoral:
         _extractGoodMoralData(data, record, decodedNotes);
         break;
+      case RecordType.noRecord:
+        _extractGoodMoralData(data, record, decodedNotes, key: 'noRecord');
+        break;
     }
 
     return data;
   }
 
+  /// Fields of an office-issued certificate (Good Moral, or No Record with
+  /// [key] 'noRecord'), stored by its entry form under [key] in the notes.
   static void _extractGoodMoralData(
     CertificateData data,
     ParishRecord record,
-    Map<String, dynamic>? notes,
-  ) {
+    Map<String, dynamic>? notes, {
+    String key = 'goodMoral',
+  }) {
     data.personName = record.name;
     data.issueDate = record.date;
-    final gm = _asMap(notes?['goodMoral']);
+    final gm = _asMap(notes?[key]);
     if (gm == null) return;
     String s(String k) => (gm[k] ?? '').toString().trim();
     if (s('fullName').isNotEmpty) data.personName = s('fullName');
@@ -719,6 +725,15 @@ class _CertificateTemplateScreenState
         extracted = CertificateData();
         CertificateData._extractGoodMoralData(extracted, record, decodedNotes);
         break;
+      case RecordType.noRecord:
+        extracted = CertificateData();
+        CertificateData._extractGoodMoralData(
+          extracted,
+          record,
+          decodedNotes,
+          key: 'noRecord',
+        );
+        break;
     }
 
     setState(() {
@@ -857,6 +872,8 @@ class _CertificateTemplateScreenState
         return 'Certificate of Funeral Rites';
       case RecordType.goodMoral:
         return 'Certificate of Good Moral Character';
+      case RecordType.noRecord:
+        return 'Certificate of No Record';
     }
   }
 
@@ -925,6 +942,16 @@ class _CertificateTemplateScreenState
   /// The text for each blank on the form, from the certificate data.
   Map<String, String> _slotValues(CertificateData d) {
     if (widget.recordType == RecordType.goodMoral) return _goodMoralValues(d);
+    if (widget.recordType == RecordType.noRecord) {
+      return {
+        'name': d.personName.toUpperCase(),
+        'residentOf': d.residentOf,
+        'dated': d.issueDate == null
+            ? ''
+            : 'Dated: ${_formatDate(d.issueDate)}',
+        'priest': d.parishPriest.toUpperCase(),
+      };
+    }
     String day(DateTime? t) => t == null ? '' : _ordinalDay(t.day);
     String month(DateTime? t) => t == null ? '' : DateFormat('MMMM').format(t);
     String year(DateTime? t) => t?.year.toString() ?? '';

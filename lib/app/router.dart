@@ -46,6 +46,7 @@ import '../screens/records/certificate_scan_screen.dart';
 import '../screens/records/certificate_requests_list_screen.dart';
 import '../screens/records/certificate_template_screen.dart';
 import '../screens/records/good_moral_form_screen.dart';
+import '../screens/records/no_record_form_screen.dart';
 import '../screens/records/confirmation_form_screen.dart';
 import '../screens/records/death_form_screen.dart';
 import '../screens/records/enhanced_baptism_form_screen.dart';
@@ -355,6 +356,11 @@ GoRouter createRouter() {
             GoodMoralFormScreen(existing: _FormRouteArgs(state.extra).existing),
       ),
       GoRoute(
+        path: '/records/new/no-record',
+        builder: (context, state) =>
+            NoRecordFormScreen(existing: _FormRouteArgs(state.extra).existing),
+      ),
+      GoRoute(
         path: '/records/new/death',
         builder: (context, state) {
           final args = _FormRouteArgs(state.extra);
@@ -548,6 +554,7 @@ GoRouter createRouter() {
             'confirmation',
             'death',
             'good-moral',
+            'no-record',
           ])
             GoRoute(
               path: '/staff/records/new/$kind',
@@ -650,6 +657,7 @@ GoRouter createRouter() {
             'confirmation',
             'death',
             'good-moral',
+            'no-record',
           ])
             GoRoute(
               path: '/admin/records/new/$kind',
@@ -1201,6 +1209,12 @@ Widget _recordFormFor(String kind, Object? extra) {
       );
     case 'good-moral':
       return GoodMoralFormScreen(
+        existing: args.existing,
+        fromStaff: args.fromStaff,
+        fromAdmin: args.fromAdmin,
+      );
+    case 'no-record':
+      return NoRecordFormScreen(
         existing: args.existing,
         fromStaff: args.fromStaff,
         fromAdmin: args.fromAdmin,

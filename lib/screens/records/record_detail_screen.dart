@@ -216,6 +216,14 @@ class _RecordDetailBody extends ConsumerWidget {
                     extra: rec,
                   );
                   break;
+                case RecordType.noRecord:
+                  context.push(
+                    adminContext
+                        ? '/admin/records/new/no-record'
+                        : '/records/new/no-record',
+                    extra: rec,
+                  );
+                  break;
               }
             },
           ),
@@ -469,7 +477,44 @@ class _RecordDetailBody extends ConsumerWidget {
         return _buildDeathDetails(context, data, df);
       case RecordType.goodMoral:
         return _buildGoodMoralDetails(context, data, df);
+      case RecordType.noRecord:
+        return _buildNoRecordDetails(context, data, df);
     }
+  }
+
+  Widget _buildNoRecordDetails(
+    BuildContext context,
+    Map<String, dynamic> data,
+    DateFormat df,
+  ) {
+    final nr = data['noRecord'];
+    final m = nr is Map ? nr : const {};
+    String v(String k) => (m[k] ?? '').toString().trim();
+    final issued = DateTime.tryParse(v('dateIssued'));
+    final rows = <(String, String)>[
+      ('Name', [v('title'), v('fullName')].where((e) => e.isNotEmpty).join(' ')),
+      ('A resident of', v('residentOf')),
+      ('Requested for', v('purpose')),
+      ('Date issued', issued == null ? v('dateIssued') : df.format(issued)),
+      ('Signing priest', v('parishPriest')),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Certificate of No Record',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            for (final (label, value) in rows)
+              if (value.isNotEmpty) Text('$label: $value'),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildGoodMoralDetails(
@@ -1234,6 +1279,7 @@ class _RecordDetailBody extends ConsumerWidget {
           break;
         case RecordType.funeral:
         case RecordType.goodMoral:
+        case RecordType.noRecord:
           remarks = data['remarks']?.toString();
           final meta = data['meta'] as Map<String, dynamic>?;
           if (meta != null) {

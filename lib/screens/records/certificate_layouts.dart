@@ -58,6 +58,8 @@ class CertificateLayout {
         return _funeral;
       case RecordType.goodMoral:
         return _goodMoral;
+      case RecordType.noRecord:
+        return _noRecord;
     }
   }
 
@@ -170,6 +172,24 @@ class CertificateLayout {
       'Mr.': CertificateMark(0.1151, 0.3291, 0.1767, 0.3576),
       'Ms.': CertificateMark(0.1839, 0.3291, 0.2467, 0.3576),
       'Mx.': CertificateMark(0.2515, 0.3291, 0.3132, 0.3576),
+    },
+  );
+
+  // Measured on the 843 x 1264 px blank form. Like the Good Moral form it has
+  // no date line, so 'dated' sits under "as appears from the Records of this
+  // Church" with its own "Dated:" label.
+  static const _noRecord = CertificateLayout(
+    'assets/images/certificates/no_record.jpg',
+    {
+      'name': CertificateSlot(0.3238, 0.8837, 0.4233),
+      'residentOf': CertificateSlot(0.3060, 0.8826, 0.4589),
+      'dated': CertificateSlot(0.1186, 0.4982, 0.8228),
+      'priest': CertificateSlot(0.5018, 0.9158, 0.8734),
+    },
+    marks: {
+      'Mr.': CertificateMark(0.1151, 0.4019, 0.1767, 0.4304),
+      'Ms.': CertificateMark(0.1839, 0.4019, 0.2467, 0.4304),
+      'Mx.': CertificateMark(0.2515, 0.4019, 0.3132, 0.4304),
     },
   );
 }

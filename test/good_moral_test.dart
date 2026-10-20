@@ -73,4 +73,32 @@ void main() {
       expect(marks['Ms.']!.x1, lessThanOrEqualTo(marks['Mx.']!.x0));
     });
   });
+
+  group('RecordType.noRecord', () {
+    test('round-trips through its stored names', () {
+      expect(RecordType.noRecord.value, 'no_record');
+      expect(RecordType.noRecord.label, 'No Record');
+      for (final stored in ['no_record', 'noRecord', 'NORECORD', 'No Record']) {
+        expect(
+          RecordTypeExtension.fromString(stored),
+          RecordType.noRecord,
+          reason: stored,
+        );
+      }
+    });
+
+    test('its certificate fills the name and residence blanks', () {
+      final layout = CertificateLayout.of(RecordType.noRecord);
+      expect(layout.background, 'assets/images/certificates/no_record.jpg');
+      expect(
+        layout.slots.keys,
+        containsAll(['name', 'residentOf', 'dated', 'priest']),
+      );
+      expect(layout.slots['name']!.y, lessThan(layout.slots['residentOf']!.y));
+      expect(layout.marks.keys, ['Mr.', 'Ms.', 'Mx.']);
+      // The title choices sit on the name's line.
+      final mr = layout.marks['Mr.']!;
+      expect(layout.slots['name']!.y, inInclusiveRange(mr.y0, mr.y1 + 0.02));
+    });
+  });
 }

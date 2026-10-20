@@ -70,6 +70,12 @@ List<CertField> certificateFieldsFor(RecordType type) {
         CertField('minister', 'Officiating priest'),
         ...registry,
       ];
+    case RecordType.noRecord:
+      return const [
+        CertField('fullName', 'Full name'),
+        CertField('residentOf', 'A resident of'),
+        CertField('dated', 'Dated (issue date)', required: false),
+      ];
     case RecordType.goodMoral:
       return const [
         CertField('fullName', 'Full name'),
@@ -139,6 +145,7 @@ class CertificateOcrExtractor {
         _extractFuneral(text, lines, values);
         break;
       case RecordType.goodMoral:
+      case RecordType.noRecord:
         // Issued by the parish office, not scanned from a register
         // certificate: nothing to extract beyond the registry block.
         break;

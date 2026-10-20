@@ -353,6 +353,7 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
       case RecordType.funeral:
         return 'Deceased Name';
       case RecordType.goodMoral:
+      case RecordType.noRecord:
         return 'Full Name';
     }
   }
@@ -368,6 +369,7 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
       case RecordType.funeral:
         return 'Enter the deceased person\'s name';
       case RecordType.goodMoral:
+      case RecordType.noRecord:
         return 'Enter the person\'s full name';
     }
   }
@@ -384,6 +386,8 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
         return Icons.church;
       case RecordType.goodMoral:
         return Icons.workspace_premium_outlined;
+      case RecordType.noRecord:
+        return Icons.search_off_outlined;
     }
   }
 
@@ -398,6 +402,7 @@ class _RecordFormScreenState extends ConsumerState<RecordFormScreen> {
       case RecordType.funeral:
         return 'Funeral Date';
       case RecordType.goodMoral:
+      case RecordType.noRecord:
         return 'Date Issued';
     }
   }

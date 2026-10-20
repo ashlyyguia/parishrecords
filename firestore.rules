@@ -270,6 +270,21 @@
         allow delete: if isAdmin();
       }
 
+      // Certificates of No Record issued by the parish office.
+      match /no_record_records/{recordId} {
+        allow get, list: if isSignedIn();
+
+        allow create: if isSignedIn() && (isAdmin() || isStaff())
+          && (isAdmin() || request.resource.data.created_by_uid == request.auth.uid);
+
+        allow update: if isSignedIn() && (
+          isAdmin() ||
+          (isStaff() && resource.data.created_by_uid == request.auth.uid)
+        );
+
+        allow delete: if isAdmin();
+      }
+
       // Requests (certificate requests)
       match /requests/{requestId} {
         allow get, list: if isSignedIn() && (
