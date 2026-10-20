@@ -13,7 +13,6 @@ import '../../utils/manual_register_notes.dart';
 import '../../utils/register_text_parsing.dart';
 import 'certificate_layouts.dart';
 
-
 /// Certificate data model for form editing
 class CertificateData {
   String personName;
@@ -110,7 +109,10 @@ class CertificateData {
     }
   }
 
-  static void _applyParishFromRecord(CertificateData data, ParishRecord record) {
+  static void _applyParishFromRecord(
+    CertificateData data,
+    ParishRecord record,
+  ) {
     final parish = (record.parish ?? '').trim();
     const defaults = {'manual register', 'register_ocr', 'register ocr', 'app'};
     if (parish.isEmpty || defaults.contains(parish.toLowerCase())) {
@@ -274,8 +276,10 @@ class CertificateData {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
 
-    final slashParts =
-        trimmed.split('/').map((s) => s.trim()).where((s) => s.isNotEmpty);
+    final slashParts = trimmed
+        .split('/')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty);
     final parts = slashParts.toList();
     if (parts.length >= 2) {
       final last = parts.last;
@@ -405,9 +409,7 @@ class CertificateData {
         'officiant',
       ]);
       if (confirmation['date'] != null) {
-        data.sacramentDate = DateTime.tryParse(
-          confirmation['date'].toString(),
-        );
+        data.sacramentDate = DateTime.tryParse(confirmation['date'].toString());
       }
       final place = confirmation['place']?.toString() ?? '';
       if (place.isNotEmpty) data.parishLocation = place;
@@ -448,8 +450,10 @@ class CertificateData {
 
     final groomName = groom?['fullName']?.toString() ?? '';
     final brideName = bride?['fullName']?.toString() ?? '';
-    final combined =
-        [groomName, brideName].where((s) => s.trim().isNotEmpty).join(' & ');
+    final combined = [
+      groomName,
+      brideName,
+    ].where((s) => s.trim().isNotEmpty).join(' & ');
     if (combined.isNotEmpty) {
       data.personName = combined;
     } else if (record.name.trim().isNotEmpty) {
@@ -481,25 +485,29 @@ class CertificateData {
     final groom = _asMap(notes['groom']);
     final bride = _asMap(notes['bride']);
 
-    final groomName =
-        groom == null ? '' : ManualRegisterNotes.fieldAny(groom, ['name', 'fullName']);
-    final brideName =
-        bride == null ? '' : ManualRegisterNotes.fieldAny(bride, ['name', 'fullName']);
-    final combined =
-        [groomName, brideName].where((s) => s.isNotEmpty).join(' & ');
+    final groomName = groom == null
+        ? ''
+        : ManualRegisterNotes.fieldAny(groom, ['name', 'fullName']);
+    final brideName = bride == null
+        ? ''
+        : ManualRegisterNotes.fieldAny(bride, ['name', 'fullName']);
+    final combined = [
+      groomName,
+      brideName,
+    ].where((s) => s.isNotEmpty).join(' & ');
     if (combined.isNotEmpty) {
       data.personName = combined;
     } else {
-      final summary =
-          ManualRegisterNotes.fieldAny(notes, ['contractingParties']);
+      final summary = ManualRegisterNotes.fieldAny(notes, [
+        'contractingParties',
+      ]);
       data.personName = summary.isNotEmpty ? summary : record.name.trim();
     }
 
     // Groom's parents fill "Child of" (mother) and "and" (father); his date
     // and place of birth fill "born in" / "on the __ day of __".
     if (groom != null) {
-      final parentsText =
-          ManualRegisterNotes.fieldAny(groom, ['parents']);
+      final parentsText = ManualRegisterNotes.fieldAny(groom, ['parents']);
       if (parentsText.isNotEmpty) {
         final surname = groomName.trim().isEmpty
             ? ''
@@ -510,10 +518,11 @@ class CertificateData {
       } else {
         _splitParentsIntoCertificate(groom['parents'], data);
       }
-      final birth = ManualRegisterNotes.fieldAny(
-        groom,
-        ['datesPlaceOfBirth', 'placeAndDateOfBirth', 'birth'],
-      );
+      final birth = ManualRegisterNotes.fieldAny(groom, [
+        'datesPlaceOfBirth',
+        'placeAndDateOfBirth',
+        'birth',
+      ]);
       if (birth.isNotEmpty) {
         final split = splitPlaceAndDate(birth);
         data.birthDate = split.date ?? data.birthDate;
@@ -521,15 +530,19 @@ class CertificateData {
       }
     }
 
-    final sacramentText =
-        ManualRegisterNotes.fieldAny(notes, ['dateOfMarriage', 'date']);
+    final sacramentText = ManualRegisterNotes.fieldAny(notes, [
+      'dateOfMarriage',
+      'date',
+    ]);
     if (sacramentText.isNotEmpty) {
       data.sacramentDate =
           RegisterOcrParser.parseDate(sacramentText) ?? data.sacramentDate;
     }
 
-    data.ministerName =
-        ManualRegisterNotes.fieldAny(notes, ['minister', 'officiant']);
+    data.ministerName = ManualRegisterNotes.fieldAny(notes, [
+      'minister',
+      'officiant',
+    ]);
 
     // Sponsors (Ninong/Ninang) — combine both parties' entries.
     final sponsors = <String>[];
@@ -543,12 +556,20 @@ class CertificateData {
     }
     data.sponsorName = sponsors.join(', ');
 
-    data.registryVolume =
-        ManualRegisterNotes.fieldAny(notes, ['volNo', 'volume', 'vol']);
-    data.registrySeries =
-        ManualRegisterNotes.fieldAny(notes, ['seriesNo', 'series']);
-    data.registryPage =
-        ManualRegisterNotes.fieldAny(notes, ['lineNo', 'pageNo', 'page']);
+    data.registryVolume = ManualRegisterNotes.fieldAny(notes, [
+      'volNo',
+      'volume',
+      'vol',
+    ]);
+    data.registrySeries = ManualRegisterNotes.fieldAny(notes, [
+      'seriesNo',
+      'series',
+    ]);
+    data.registryPage = ManualRegisterNotes.fieldAny(notes, [
+      'lineNo',
+      'pageNo',
+      'page',
+    ]);
   }
 
   static void _extractFuneralData(
@@ -893,7 +914,9 @@ class _CertificateTemplateScreenState
         .where((n) => n.isNotEmpty)
         .toList();
     if (lines <= 1 || names.length <= 1) {
-      values['sponsor1'] = names.isEmpty ? d.sponsorName.trim() : names.join(', ');
+      values['sponsor1'] = names.isEmpty
+          ? d.sponsorName.trim()
+          : names.join(', ');
     } else {
       final per = (names.length / lines).ceil();
       for (var i = 0; i < lines; i++) {
@@ -907,12 +930,24 @@ class _CertificateTemplateScreenState
   /// Blanks whose value is centred on the line rather than written from its
   /// start: the short date parts and the priest's signature line.
   static const _centredSlots = {
-    'birthDay', 'birthMonth', 'birthYear',
-    'sacDay', 'sacMonth', 'sacYear', 'priest',
+    'birthDay',
+    'birthMonth',
+    'birthYear',
+    'sacDay',
+    'sacMonth',
+    'sacYear',
+    'priest',
   };
 
   /// Value text size as a fraction of the page height (about 10 pt on A5).
   static const double _valueFontFraction = 0.0175;
+
+  /// On forms with a single sponsor line, four or more sponsors shrunk onto
+  /// one line were unreadable, so that line wraps onto a second line above it
+  /// (the blank space under "The Sponsor(s) being") at a slightly smaller size.
+  static const double _wrappedFontScale = 0.85;
+  bool _wrapsOnTwoLines(String key, CertificateLayout layout) =>
+      key == 'sponsor1' && layout.sponsorLines == 1;
 
   Future<pw.Document> _generatePdf() async {
     final pdf = pw.Document();
@@ -942,24 +977,45 @@ class _CertificateTemplateScreenState
               ),
               for (final entry in layout.slots.entries)
                 if ((values[entry.key] ?? '').trim().isNotEmpty)
-                  pw.Positioned(
-                    left: entry.value.x0 * pageW + 2,
-                    top: entry.value.y * pageH - boxH - pageH * 0.003,
-                    child: pw.SizedBox(
-                      width: (entry.value.x1 - entry.value.x0) * pageW - 4,
-                      height: boxH,
-                      child: pw.FittedBox(
-                        fit: pw.BoxFit.scaleDown,
-                        alignment: _centredSlots.contains(entry.key)
-                            ? pw.Alignment.bottomCenter
-                            : pw.Alignment.bottomLeft,
-                        child: pw.Text(
-                          values[entry.key]!.trim(),
-                          style: pw.TextStyle(font: bold, fontSize: fontSize),
+                  if (_wrapsOnTwoLines(entry.key, layout))
+                    pw.Positioned(
+                      left: entry.value.x0 * pageW + 2,
+                      top: entry.value.y * pageH - 2 * boxH - pageH * 0.003,
+                      child: pw.SizedBox(
+                        width: (entry.value.x1 - entry.value.x0) * pageW - 4,
+                        height: 2 * boxH,
+                        child: pw.Align(
+                          alignment: pw.Alignment.bottomLeft,
+                          child: pw.Text(
+                            values[entry.key]!.trim(),
+                            maxLines: 2,
+                            style: pw.TextStyle(
+                              font: bold,
+                              fontSize: fontSize * _wrappedFontScale,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    pw.Positioned(
+                      left: entry.value.x0 * pageW + 2,
+                      top: entry.value.y * pageH - boxH - pageH * 0.003,
+                      child: pw.SizedBox(
+                        width: (entry.value.x1 - entry.value.x0) * pageW - 4,
+                        height: boxH,
+                        child: pw.FittedBox(
+                          fit: pw.BoxFit.scaleDown,
+                          alignment: _centredSlots.contains(entry.key)
+                              ? pw.Alignment.bottomCenter
+                              : pw.Alignment.bottomLeft,
+                          child: pw.Text(
+                            values[entry.key]!.trim(),
+                            style: pw.TextStyle(font: bold, fontSize: fontSize),
+                          ),
                         ),
                       ),
                     ),
-                  ),
             ],
           ),
         ),
@@ -1043,49 +1099,51 @@ class _CertificateTemplateScreenState
           // Preview only: certificate details come from the parish record
           // and are not edited here.
           : Container(
-                    color: Colors.grey[200],
-                    child: Column(
+              color: Colors.grey[200],
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    color: colorScheme.surface,
+                    child: Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          color: colorScheme.surface,
-                          child: Row(
-                            children: [
-                              Icon(Icons.preview, color: colorScheme.primary),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Certificate Preview',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Center(
-                            child: Container(
-                              margin: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.1),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: AspectRatio(
-                                aspectRatio: certificatePageFormat.width / certificatePageFormat.height,
-                                child: _buildCertificatePreview(),
-                              ),
-                            ),
+                        Icon(Icons.preview, color: colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Certificate Preview',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
                     ),
                   ),
+                  Expanded(
+                    child: Center(
+                      child: Container(
+                        margin: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.1),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: AspectRatio(
+                          aspectRatio:
+                              certificatePageFormat.width /
+                              certificatePageFormat.height,
+                          child: _buildCertificatePreview(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 
@@ -1106,27 +1164,49 @@ class _CertificateTemplateScreenState
             ),
             for (final entry in layout.slots.entries)
               if ((values[entry.key] ?? '').trim().isNotEmpty)
-                Positioned(
-                  left: entry.value.x0 * w + 2,
-                  top: entry.value.y * h - boxH - h * 0.003,
-                  width: (entry.value.x1 - entry.value.x0) * w - 4,
-                  height: boxH,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: _centredSlots.contains(entry.key)
-                        ? Alignment.bottomCenter
-                        : Alignment.bottomLeft,
-                    child: Text(
-                      values[entry.key]!.trim(),
-                      style: TextStyle(
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                        height: 1.0,
+                if (_wrapsOnTwoLines(entry.key, layout))
+                  Positioned(
+                    left: entry.value.x0 * w + 2,
+                    top: entry.value.y * h - 2 * boxH - h * 0.003,
+                    width: (entry.value.x1 - entry.value.x0) * w - 4,
+                    height: 2 * boxH,
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Text(
+                        values[entry.key]!.trim(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: fontSize * _wrappedFontScale,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                          height: 1.15,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Positioned(
+                    left: entry.value.x0 * w + 2,
+                    top: entry.value.y * h - boxH - h * 0.003,
+                    width: (entry.value.x1 - entry.value.x0) * w - 4,
+                    height: boxH,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: _centredSlots.contains(entry.key)
+                          ? Alignment.bottomCenter
+                          : Alignment.bottomLeft,
+                      child: Text(
+                        values[entry.key]!.trim(),
+                        style: TextStyle(
+                          fontSize: fontSize,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                          height: 1.0,
+                        ),
                       ),
                     ),
                   ),
-                ),
           ],
         );
       },
