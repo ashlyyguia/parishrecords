@@ -152,6 +152,11 @@ class ReportPdfService {
     ],
   );
 
+  static int _perRow(int n) {
+    final rowCount = (n + 4) ~/ 5;
+    return (n + rowCount - 1) ~/ rowCount;
+  }
+
   static pw.Widget _tiles(List<List<String>> items) => pw.Row(
     children: [
       for (var i = 0; i < items.length; i++) ...[
@@ -582,21 +587,30 @@ class ReportPdfService {
   /// One [label, amount, "N records - x%"] tile per donation category:
   /// the parish categories first (shown even at zero), then any other
   /// fund found in [rows] (e.g. older "General" gifts).
-  static List<List<String>> donationCategoryTiles(List<Map<String, dynamic>> rows) {
+  static List<List<String>> donationCategoryTiles(List<Map<String, dynamic>> rows) =>
+      groupTotalTiles(rows, labelOf: donationTypeLabel, order: kDonationCategories);
+
+  /// Generic per-group total tiles: [label, amount, "N records - x%"], groups
+  /// in [order] first (shown even at zero), then any other label found.
+  static List<List<String>> groupTotalTiles(
+    List<Map<String, dynamic>> rows, {
+    required String Function(Map<String, dynamic>) labelOf,
+    List<String> order = const [],
+  }) {
     final amount = <String, double>{};
     final count = <String, int>{};
     for (final r in rows) {
-      final label = donationTypeLabel(r);
+      final label = labelOf(r);
       amount[label] = (amount[label] ?? 0) + ((r['amount'] as num?)?.toDouble() ?? 0);
       count[label] = (count[label] ?? 0) + 1;
     }
     final total = amount.values.fold<double>(0, (t, v) => t + v);
-    final order = [
-      ...kDonationCategories,
-      ...amount.keys.where((k) => !kDonationCategories.contains(k)).toList()..sort(),
+    final labels = [
+      ...order,
+      ...amount.keys.where((k) => !order.contains(k)).toList()..sort(),
     ];
     return [
-      for (final label in order)
+      for (final label in labels)
         [
           label,
           peso(amount[label] ?? 0),
@@ -642,10 +656,11 @@ class ReportPdfService {
         if (breakdown.isNotEmpty) ...[
           pw.Text(breakdownLabel.toUpperCase(), style: pw.TextStyle(fontSize: 6.5, color: _muted, letterSpacing: 0.6)),
           pw.SizedBox(height: 4),
-          for (var i = 0; i < breakdown.length; i += 5) ...[
+          // At most 5 per row, spread evenly (6 groups -> 3 + 3, not 5 + 1).
+          for (var i = 0; i < breakdown.length; i += _perRow(breakdown.length)) ...[
             if (i > 0) pw.SizedBox(height: 6),
             _tiles([
-              for (final t in breakdown.sublist(i, i + 5 > breakdown.length ? breakdown.length : i + 5))
+              for (final t in breakdown.sublist(i, (i + _perRow(breakdown.length)).clamp(0, breakdown.length)))
                 [for (final x in t) fix(x)],
             ]),
           ],

@@ -32,6 +32,9 @@ class _AdminCertificateFeesPageState
   DateTime? _from;
   DateTime? _to;
 
+  /// Short tile label for the PDF breakdown ("Death" reads "Funeral").
+  static String _pdfTypeLabel(String key) => key == 'Death' ? 'Funeral' : key;
+
   Future<void> _exportFeesPdf(List<Map<String, dynamic>> rows) async {
     if (_feePdfBusy) return;
     setState(() => _feePdfBusy = true);
@@ -57,6 +60,12 @@ class _AdminCertificateFeesPageState
           ['Total collected', ReportPdfService.peso(total), '${rows.length} payments'],
           ['Average fee', ReportPdfService.peso(rows.isEmpty ? 0 : total / rows.length)],
         ],
+        breakdown: ReportPdfService.groupTotalTiles(
+          rows,
+          labelOf: (r) => _pdfTypeLabel(_CertificateFeesPanel.certificateTypeKey(r)),
+          order: [for (final t in _CertificateFeesPanel._certificateTypes) _pdfTypeLabel(t)],
+        ),
+        breakdownLabel: 'Total per certificate type',
         totalLine: 'Grand total: ${ReportPdfService.peso(total)}',
         signatures: const [['Prepared by:', 'Finance Officer'], ['Noted by:', 'Parish Priest']],
         generatedBy: ReportPdfService.currentUserLabel(),

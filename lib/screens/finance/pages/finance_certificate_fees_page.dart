@@ -48,6 +48,11 @@ class _FinanceCertificateFeesPageState
     if (t == null || t.isEmpty || t == 'Parish Certification') return 'Baptism';
     return t;
   }
+
+  /// Short tile label for the PDF breakdown ("Death" reads "Funeral").
+  static String _typeTileLabel(String key) => key == 'Death' ? 'Funeral' : key;
+  static String _certTypeLabel(Map<String, dynamic> d) => _typeTileLabel(_certTypeKey(d));
+
   DateTime? _from;
   DateTime? _to;
 
@@ -109,6 +114,10 @@ class _FinanceCertificateFeesPageState
         tiles: [
           ['Total collected', ReportPdfService.peso(grandTotal), '${filtered.length} records'],
         ],
+        breakdown: _filterType == 'All'
+            ? ReportPdfService.groupTotalTiles(filtered, labelOf: _certTypeLabel, order: [for (final t in _certificateTypes) _typeTileLabel(t)])
+            : const [],
+        breakdownLabel: 'Total per certificate type',
         totalLine: 'Grand total: ${ReportPdfService.peso(grandTotal)}',
         landscape: false,
         signatures: const [['Prepared by:', 'Finance Officer'], ['Verified by:', 'Parish Administrator']],
