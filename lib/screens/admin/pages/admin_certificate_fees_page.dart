@@ -1028,7 +1028,8 @@ class _RecordCertificateFeeFormState extends State<RecordCertificateFeeForm> {
   final _formKey = GlobalKey<FormState>();
   final _payerCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
-  static const _methods = ['cash', 'gcash', 'bank_transfer', 'check', 'card'];
+  // Certificate fees are paid in cash at the parish office for now.
+  static const _methods = ['cash'];
   String _method = 'cash';
   String _certificateType = _CertificateFeesPanel._certificateTypes.first;
   DateTime _selectedDate = DateTime.now();
