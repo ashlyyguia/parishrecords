@@ -788,6 +788,8 @@ Color donationCategoryColor(String cat) {
   switch (cat.toLowerCase()) {
     case 'tithes':
       return const Color(0xFF2563EB);
+    case 'offering':
+      return const Color(0xFF059669);
     case 'projects':
       return const Color(0xFFEA580C);
     case 'outreach':
@@ -801,6 +803,8 @@ IconData donationCategoryIcon(String cat) {
   switch (cat.toLowerCase()) {
     case 'tithes':
       return Icons.church_rounded;
+    case 'offering':
+      return Icons.volunteer_activism_rounded;
     case 'projects':
       return Icons.construction_rounded;
     case 'outreach':

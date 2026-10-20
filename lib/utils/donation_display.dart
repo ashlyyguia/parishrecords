@@ -33,7 +33,12 @@ String formatPaymentMethod(String method) {
 
 /// Donation categories the parish records (walk-in cash). "General" was
 /// retired; older records that still carry it keep their label.
-const List<String> kDonationCategories = ['Tithes', 'Projects', 'Outreach'];
+const List<String> kDonationCategories = [
+  'Tithes',
+  'Offering',
+  'Projects',
+  'Outreach',
+];
 
 /// [raw] when it is a current category, otherwise the first one (Tithes) —
 /// used to pre-select a category when editing an older record.
@@ -59,6 +64,8 @@ String formatDonationTypeLabel(String raw) {
       return 'Certificate fees';
     case 'tithes':
       return 'Tithes';
+    case 'offering':
+      return 'Offering';
     case 'projects':
       return 'Projects';
     case 'outreach':
