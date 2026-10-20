@@ -528,9 +528,12 @@ class _MarriageFormScreenState extends ConsumerState<MarriageFormScreen> {
             ),
           ),
         );
-        final target = widget.fromAdmin
+        // Back to the Records list of whichever area the form was opened
+        // from (the route path also tells us when no flag was passed).
+        final path = GoRouterState.of(context).uri.path;
+        final target = widget.fromAdmin || path.startsWith('/admin')
             ? '/admin/records'
-            : widget.fromStaff
+            : widget.fromStaff || path.startsWith('/staff')
             ? '/staff/records'
             : '/records';
         context.go(target);
