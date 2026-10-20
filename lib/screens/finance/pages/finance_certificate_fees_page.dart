@@ -34,7 +34,14 @@ class _FinanceCertificateFeesPageState
   bool _actionBusy = false;
   String _filterType = 'All';
 
-  static const _certificateTypes = ['Baptism', 'Marriage', 'Confirmation', 'Death'];
+  static const _certificateTypes = [
+    'Baptism',
+    'Marriage',
+    'Confirmation',
+    'Death',
+    'Good Moral',
+    'No Record',
+  ];
 
   static String _certTypeKey(Map<String, dynamic> d) {
     final t = (d['certificate_type'] as String?)?.trim();

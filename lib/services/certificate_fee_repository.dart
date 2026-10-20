@@ -154,6 +154,8 @@ class CertificateFeeRepository {
       'Confirmation': 'Confirmation Certificate',
       'Death': 'Death/FUNeral Certificate',
       'Parish Certification': 'Parish Certification',
+      'Good Moral': 'Certificate of Good Moral Character',
+      'No Record': 'Certificate of No Record',
     };
     return names[type] ?? type;
   }
@@ -171,6 +173,10 @@ class CertificateFeeRepository {
         return Icons.sentiment_very_dissatisfied;
       case 'Parish Certification':
         return Icons.description;
+      case 'Good Moral':
+        return Icons.workspace_premium_outlined;
+      case 'No Record':
+        return Icons.search_off_outlined;
       default:
         return Icons.article;
     }
@@ -189,6 +195,10 @@ class CertificateFeeRepository {
         return Colors.grey;
       case 'Parish Certification':
         return Colors.teal;
+      case 'Good Moral':
+        return Colors.amber.shade800;
+      case 'No Record':
+        return Colors.cyan.shade700;
       default:
         return Colors.blueGrey;
     }

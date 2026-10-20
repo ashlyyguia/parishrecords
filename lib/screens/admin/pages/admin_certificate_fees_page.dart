@@ -420,6 +420,8 @@ class _CertificateFeesPanel extends StatelessWidget {
     'Marriage',
     'Confirmation',
     'Death',
+    'Good Moral',
+    'No Record',
   ];
 
   static String certificateTypeKey(Map<String, dynamic> d) {
