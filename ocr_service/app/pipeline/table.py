@@ -442,6 +442,156 @@ def _extend_row_curve(
     return k
 
 
+ROW_SNAP_TOLERANCE = 0.22
+
+
+def _snap_declared_rows(
+    a: float,
+    b: float,
+    c: float,
+    n: int,
+    strong: list[int],
+    candidates: list[int],
+    tol_frac: float = ROW_SNAP_TOLERANCE,
+) -> list[float]:
+    """Move each tooth of the fitted grid onto the printed rule it stands for.
+
+    The fitted curve is a smooth guess. Where the page curls into the spine the
+    rules are not on any low-order curve: on the marriage register's right page
+    the top six entries' rules stop short of the table's left border (the
+    parents column bends away into the gutter), so the full-width filter drops
+    them, the fit only sees the lower half, and extrapolating that upward put
+    entry 1 half a row low -- its first two names landed in the header.
+
+    Those rules are still printed and still detected, merely short. So: snap
+    every tooth that has a full-width rule within tolerance, then walk outward
+    from the snapped teeth one row at a time, carrying the neighbour's offset
+    from the curve (the curl bends rows gradually, so the next rule is offset by
+    about as much as this one), and snap to any long rule -- full-width or not
+    -- found there. Interior sub-dividers sit half a row from any tooth, so the
+    tolerance keeps them out. Teeth with no rule nearby follow the offset of
+    the nearest snapped teeth, interpolated between them.
+    """
+    teeth = [a + b * k + c * k * k for k in range(n + 1)]
+    local = [max(b + 2.0 * c * k, 1.0) for k in range(n + 1)]
+    strong_arr = np.array(sorted(strong), dtype=np.float64)
+    cand_arr = np.array(sorted(set(candidates) | set(strong)), dtype=np.float64)
+
+    def nearest(arr: np.ndarray, y: float, tol: float) -> float | None:
+        if arr.size == 0:
+            return None
+        i = int(np.abs(arr - y).argmin())
+        return float(arr[i]) if abs(arr[i] - y) <= tol else None
+
+    offset: list[float | None] = [None] * (n + 1)
+    for k in range(n + 1):
+        hit = nearest(strong_arr, teeth[k], tol_frac * local[k])
+        if hit is not None:
+            offset[k] = hit - teeth[k]
+    if all(o is None for o in offset):
+        return teeth
+
+    changed = True
+    while changed:
+        changed = False
+        for k in range(n + 1):
+            if offset[k] is not None:
+                continue
+            for nb in (k + 1, k - 1):
+                if 0 <= nb <= n and offset[nb] is not None:
+                    hit = nearest(cand_arr, teeth[k] + offset[nb], tol_frac * local[k])
+                    if hit is not None:
+                        offset[k] = hit - teeth[k]
+                        changed = True
+                    break
+
+    known = [k for k in range(n + 1) if offset[k] is not None]
+    filled = np.interp(np.arange(n + 1), known, [offset[k] for k in known])
+    out = [teeth[k] + float(filled[k]) for k in range(n + 1)]
+    # Snapping must never fold the grid: keep it strictly increasing by at
+    # least half a local pitch, else fall back to the smooth curve.
+    if any(out[k + 1] - out[k] < 0.5 * local[k] for k in range(n)):
+        return teeth
+    return out
+
+
+ROW_WALK_PITCH_GAIN = 0.5
+ROW_WALK_MAX_MISSES = 0.4
+
+
+def _walk_declared_rows(
+    bottom: float,
+    pitch: float,
+    n: int,
+    rules: list[int],
+    tol_frac: float = ROW_SNAP_TOLERANCE,
+) -> tuple[list[float], int] | None:
+    """Trace the declared rows upward from the table's bottom border, one
+    printed rule at a time.
+
+    The bottom border is the one row boundary measured independently of the
+    row rules (the column rules end on it). From there each entry's top rule
+    is about one pitch above the previous one, and the pitch changes only
+    gradually down a page (perspective, page curl), so: predict the next rule
+    one local pitch up, take the long rule nearest that prediction if one is
+    within tolerance, and let the measured gap nudge the local pitch. A row
+    whose rule was not detected is stepped over at the current pitch.
+
+    This follows a page whose pitch is not a low-order curve of the row index
+    -- the marriage register's left page grows from ~132 px at the top to
+    ~165 px at the bottom, and a single quadratic fitted through its rules (and
+    its half-row groom/bride sub-dividers) ended half a row short of the
+    bottom border. Sub-dividers sit half a pitch from any prediction, outside
+    the tolerance, so the trace steps over them.
+
+    Returns ``(boundaries top-to-bottom, rules hit)``, or None when the bottom
+    border has no rule on it or too many rows had to be stepped over blind.
+    """
+    arr = np.array(sorted(set(rules)), dtype=np.float64)
+    if arr.size == 0 or pitch <= 0:
+        return None
+    i = int(np.abs(arr - bottom).argmin())
+    if abs(arr[i] - bottom) > tol_frac * pitch:
+        return None
+    ys = [float(arr[i])]
+    hits, p = 1, float(pitch)
+    for _ in range(n):
+        guess = ys[-1] - p
+        j = int(np.abs(arr - guess).argmin())
+        if abs(arr[j] - guess) <= tol_frac * p and arr[j] < ys[-1] - 0.5 * p:
+            gap = ys[-1] - float(arr[j])
+            p = (1.0 - ROW_WALK_PITCH_GAIN) * p + ROW_WALK_PITCH_GAIN * gap
+            ys.append(float(arr[j]))
+            hits += 1
+        else:
+            ys.append(guess)
+    if (n + 1 - hits) > ROW_WALK_MAX_MISSES * (n + 1):
+        return None
+    return ys[::-1], hits
+
+
+def _pitch_irregularity(ys: list[float]) -> float:
+    """Mean change in row pitch from one row to the next, as a fraction of the
+    mean pitch -- ~0 for a grid that tracks real rules, large for one that
+    jumps between entry rules and half-row sub-dividers."""
+    gaps = np.diff(np.array(ys, dtype=np.float64))
+    if gaps.size < 2 or gaps.mean() <= 0:
+        return 0.0
+    return float(np.abs(np.diff(gaps)).mean() / gaps.mean())
+
+
+def _rule_hits(ys: list[float], rules: list[int], tol_frac: float = ROW_SNAP_TOLERANCE) -> int:
+    arr = np.array(sorted(set(rules)), dtype=np.float64)
+    if arr.size == 0:
+        return 0
+    gaps = np.diff(np.array(ys, dtype=np.float64))
+    hits = 0
+    for k, y in enumerate(ys):
+        local = gaps[min(k, gaps.size - 1)]
+        hits += int(np.abs(arr - y).min() <= tol_frac * local)
+    return hits
+
+
 def _lay_declared_rows(
     a: float,
     b: float,
@@ -450,6 +600,7 @@ def _lay_declared_rows(
     header_top: int,
     data_row_count: int,
     height: int,
+    snapped: list[float] | None = None,
 ) -> list[int]:
     """Boundaries for a *declared* number of data rows.
 
@@ -473,6 +624,8 @@ def _lay_declared_rows(
     k0 = min(ks)
 
     def y(k: int) -> float:
+        if snapped is not None:
+            return snapped[k - k0]
         return a + b * k + c * k * k
 
     entry_top = y(k0)
@@ -944,7 +1097,31 @@ def _detect_row_boundaries(
         a, b, c = _anchor_declared_rows_to_table(
             a, b, c, data_row_count, binary, strong, h, header_refit=header_refit
         )
-        return _lay_declared_rows(a, b, c, ks, header_top, data_row_count, h)
+        long_rules = [cl[0] for cl in clustered if cl[1] >= min_span]
+        snapped = _snap_declared_rows(a, b, c, data_row_count, strong, long_rules)
+        extent = _table_vertical_extent(binary)
+        if extent is not None:
+            n = data_row_count
+            # The fit's own pitch at the bottom can be badly off when its
+            # curvature was driven by sub-dividers, so try a few starting
+            # pitches and keep the trace that lands on the most rules.
+            starts = {
+                max(b + 2.0 * c * n, 1.0),
+                max(b + c * n, 1.0),
+                max((extent[1] - extent[0]) / (n + 0.5), 1.0),
+            }
+            walks = [w for w in (_walk_declared_rows(float(extent[1]), p0, n, long_rules)
+                                 for p0 in sorted(starts)) if w is not None]
+            walked = max(walks, key=lambda w: (w[1], -_pitch_irregularity(w[0])),
+                         default=None)
+            if walked is not None:
+                w_ys, _ = walked
+                if (_rule_hits(w_ys, long_rules) >= _rule_hits(snapped, long_rules) - 1
+                        and _pitch_irregularity(w_ys) < _pitch_irregularity(snapped)):
+                    snapped = w_ys
+        return _lay_declared_rows(
+            a, b, c, ks, header_top, data_row_count, h, snapped=snapped
+        )
 
     # The candidate closest to the header is excluded from the fit: it is
     # not a data-row boundary, and it would bias the pitch estimate toward

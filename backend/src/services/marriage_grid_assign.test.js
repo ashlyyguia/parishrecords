@@ -121,3 +121,71 @@ test('a single word in a paired cell is not flagged uncertain', () => {
   expect(rows[0].groom.name).toBe('Marlon');
   expect(rows[0].bride.name).toBe('');
 });
+
+// A register-sized grid: header row 0, then `n` entry rows of height `h` from
+// y = top, with the given column keys side by side.
+function grid(keys, { n = 5, top = 100, h = 100, colW = 200, headerH = 60 } = {}) {
+  const cells = [];
+  keys.forEach((key, i) => {
+    cells.push(cell(key, 0, i * colW, top - headerH, colW, headerH));
+    for (let r = 1; r <= n; r += 1) cells.push(cell(key, r, i * colW, top + (r - 1) * h, colW, h));
+  });
+  return { width: keys.length * colW, height: top + n * h + 50, cells };
+}
+// A word box of handwriting height (word() is 6 px tall).
+function tall(text, x, y, h = 20) {
+  return {
+    text,
+    confidence: 90,
+    vertices: [{ x, y }, { x: x + 50, y }, { x: x + 50, y: y + h }, { x, y: y + h }],
+  };
+}
+
+test('reads a cell line by line, left to right, even when a line drifts', () => {
+  const left = grid(['contracting_parties']);
+  // "JOHN" sits 4 px lower than "REYNAN" on the same handwritten line.
+  const words = [
+    tall('REYNAN', 80, 102), tall('JOHN', 20, 108),
+    tall('MEJORADA', 60, 128),
+    tall('MERA', 20, 152), tall('MAGNAONG', 60, 174),
+  ];
+  const { rows } = marriageGridToRows(left, words, { cells: [] }, []);
+  expect(rows[1].groom.name).toBe('JOHN REYNAN MEJORADA');
+  expect(rows[1].bride.name).toBe('MERA MAGNAONG');
+});
+
+test('takes words written past the outermost column edge into that column', () => {
+  const left = grid(['contracting_parties', 'marriage_date']);
+  left.width = 500; // the date column ends at 400, the page at 500
+  const words = [word('JUAN', 20, 120), word('NOVEMBER', 410, 110), word('2022', 420, 170)];
+  const { rows } = marriageGridToRows(left, words, { cells: [] }, []);
+  expect(rows[1].dateOfMarriage).toBe('NOVEMBER 2022');
+});
+
+test('drops a stray entry number wherever it lands in a name', () => {
+  const left = grid(['contracting_parties']);
+  const words = [tall('RICHARD', 20, 110), tall('12', 140, 112), tall('CAMACHO', 75, 110)];
+  const { rows } = marriageGridToRows(left, words, { cells: [] }, []);
+  expect(rows[1].groom.name).toBe('RICHARD CAMACHO');
+});
+
+test('a full entry pushes a line written above its rule back into its own entry', () => {
+  // Near the spine every entry's first parent is written just above the grid
+  // line, so by position alone each entry would hold its neighbour's last
+  // parent. Each entry holds four lines; the cascade puts them back.
+  const right = grid(['parents'], { n: 3 });
+  const words = [];
+  const names = [['A1', 'A2', 'A3', 'A4'], ['B1', 'B2', 'B3', 'B4'], ['C1', 'C2', 'C3', 'C4']];
+  names.forEach((entry, e) => {
+    entry.forEach((nm, k) => {
+      // Lines at -8, 17, 42, 67 px from the entry's top rule: the first one is
+      // above it (in the header for entry 1, in the previous entry otherwise).
+      words.push(word(nm, 20, 100 + e * 100 - 11 + k * 25));
+    });
+  });
+  const { rows } = marriageGridToRows({ cells: [] }, [], right, words);
+  const byRow = Object.fromEntries(rows.map((r) => [r.index, `${r.groom.parents} / ${r.bride.parents}`]));
+  expect(byRow[1]).toBe('A1 A2 / A3 A4');
+  expect(byRow[2]).toBe('B1 B2 / B3 B4');
+  expect(byRow[3]).toBe('C1 C2 / C3 C4');
+});

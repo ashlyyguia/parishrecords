@@ -466,4 +466,4 @@ function gridToRows(leftPage, leftWords, rightPage, rightWords) {
   return { rows: filled, warnings: [] };
 }
 
-module.exports = { GRID_KEY_TO_FIELD, gridToRows };
+module.exports = { GRID_KEY_TO_FIELD, gridToRows, groupLines, assignLines };

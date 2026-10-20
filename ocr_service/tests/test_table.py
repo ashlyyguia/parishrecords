@@ -10,6 +10,8 @@ from app.pipeline.table import (
     _lay_declared_rows,
     _fit_declared_row_grid,
     _anchor_declared_rows_to_table,
+    _snap_declared_rows,
+    _walk_declared_rows,
     _cluster_row_segments,
     _row_strip_segments,
     _full_width_row_ys,
@@ -470,3 +472,44 @@ def test_left_page_grid_is_not_moved_by_the_header_check():
     assert _anchor_declared_rows_to_table(
         150.0, pitch, 0.0, n, binary, rules, 2268, header_refit=False
     ) == (150.0, pitch, 0.0)
+
+
+def _growing_rules(n=15, top=550.0, first=132.0, last=165.0):
+    """Entry rules whose pitch grows linearly down the page, like the marriage
+    register's left page photographed from above its foot."""
+    pitches = np.linspace(first, last, n)
+    return [top] + list(top + np.cumsum(pitches))
+
+
+def test_walk_traces_a_growing_pitch_from_the_bottom_border_past_sub_dividers():
+    entries = _growing_rules()
+    # A groom/bride sub-divider halfway down every entry.
+    subs = [(a + b) / 2 for a, b in zip(entries, entries[1:])]
+    rules = sorted(int(round(y)) for y in entries + subs)
+    out = _walk_declared_rows(entries[-1] + 8, 148.0, 15, rules)
+    assert out is not None
+    ys, hits = out
+    assert hits == 16
+    assert ys == pytest.approx([round(y) for y in entries], abs=1.0)
+
+
+def test_walk_gives_up_when_no_rule_meets_the_bottom_border():
+    rules = [int(round(y)) for y in _growing_rules()]
+    assert _walk_declared_rows(rules[-1] + 80, 150.0, 15, rules) is None
+
+
+def test_snap_moves_curve_teeth_onto_short_rules_near_the_spine():
+    # IMG_20260915_094052 right page: entries 1-6's rules stop short of the
+    # table's left border (the parents column curls into the spine), so only
+    # the lower ten are "strong". The curve fitted to those runs ever lower
+    # towards the top, 52 px (a third of a row) low by entry 1.
+    truth = [525, 685, 819, 966, 1105, 1254, 1405, 1556, 1708, 1863, 2019,
+             2178, 2330, 2492, 2656, 2824]
+    strong = truth[6:]
+    short = truth[:6]
+    curve = [577, 710, 845, 983, 1123, 1266, 1411, 1558, 1708, 1861, 2015,
+             2172, 2332, 2493, 2657, 2824]
+    k = np.arange(16, dtype=np.float64)
+    c2, b2, a2 = np.polyfit(k, curve, 2)
+    out = _snap_declared_rows(a2, b2, c2, 15, strong, short + strong)
+    assert out == pytest.approx(truth, abs=1.0)
